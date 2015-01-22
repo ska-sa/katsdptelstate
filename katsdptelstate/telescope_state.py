@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 class InvalidKeyError(Exception):
     pass
 
+class ImmutableKeyError(Exception):
+    pass
+
 class TelescopeState(object):
     def __init__(self, host='localhost', db=0):
         self._r = redis.StrictRedis(db=db)
@@ -75,8 +78,7 @@ class TelescopeState(object):
         if ts is None and not immutable: ts = time.time()
         existing_type = self._r.type(key)
         if existing_type == 'string':
-            logger.error("Attempt to overwrite immutable key.")
-            return 0
+            raise ImmutableKeyError("Attempt to overwrite immutable key.")
         if immutable:
             return self._r.set(key, cPickle.dumps(value))
         else:
