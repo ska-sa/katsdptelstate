@@ -1,8 +1,13 @@
-simonr-telescope-model
-======================
+SDP Telescope State
+===================
 
-First pass at telescope model. This will need to be integrated in kattelmod at some stage, hence it is not
-a fully fledged package as yet.
+A client package to allow connection to the redis db that stores telescope state information.
+
+Operates as a key/value store which timestamps incoming values and inserts them into an ordered set (non-exclusive).
+
+Immutables can be declared which function as strict one time set attributes.
+
+Keys can be access via attribute or dict syntax.
 
 Getting Started
 ---------------
@@ -15,8 +20,6 @@ Ubuntu: source download and install is best
 Then `pip install redis`
 
 Then run a local `redis-server`
-
-Detailed usage example is shown in the notebook.
 
 Simple Example
 --------------
@@ -31,6 +34,7 @@ tm.add('n_chans',32768)
 tm.list_keys()
 print tm.n_chans
  # keys work as attributes and return latest values
+print tm['n_chans']
 
 st = time.time()
 tm.add('n_chans',4096)
@@ -39,9 +43,16 @@ tm.add('n_chans',16384)
 tm.get('n_chans')
  # everything is actually timestamped underneath
 
-tm.get('n_chans',st=st,et=et)
+tm.get_range('n_chans',st=st,et=et)
  # time ranges can be used and are really fast
 
 tm.add('n_chans',1024,ts=time.time()-10)
  # add an item 10 seconds back
+
+tm.add('no_change',1234,immutable=True)
+ # this cannot be changed, only deleted
+
+tm.add('no_change',456)
+ # will raise katsdptelstate.ImmutableKeyError
+
 ```
