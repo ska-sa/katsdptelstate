@@ -50,8 +50,39 @@ class TelescopeState(object):
         msg = self._ps.get_message(channel)
         if msg is not None: msg = msg['data']
         return msg
-    
-    def list_keys(self, filter='*', show_counts=False):
+
+    def has_key(self, key_name):
+        """Check to see if the specified key exists in the database."""
+        self._r.exists(key_name)
+
+    def override_local_defaults(self, parser, config_key='config'):
+        """Override local defaults with remote config options.
+
+        Look for a config dict in the Telescope State Repository and
+        use any configuration values in this to override the default
+        values for options before they are parsed.
+
+        So precedence is defaults -> telescope state -> command line.
+        This method must be called before parser.parse_args is called.
+
+        Parameters
+        ----------
+        parser : :class: `OptionParser` object
+            The parser for which to override defaults. 
+        config_key : string
+            Configuration key to use to retrieve config dict from Telescope State Repository.
+
+        """
+        if not self.has_key(config_key):
+            logger.warning("Requested merge to non-existant config key {}".format(config_key))
+        else:
+            for (k,v) in parser.defaults.iteritems():
+                if config_dict.has_key(k): 
+                    parser.defaults[k] = config_dict[k]
+                    logger.debug("Local default {}={} overriden by TelescopeState config to value {}".format(k,v,config_dict[k]))
+        return parser
+
+    def keys(self, filter='*', show_counts=False):
         """Return a list of keys currently in the model."""
         key_list = []
         if show_counts:
