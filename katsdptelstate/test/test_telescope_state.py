@@ -14,7 +14,7 @@ class TestSDPTelescopeState(unittest.TestCase):
              # expects a reachable redis instance to be running locally
         except redis.ConnectionError:
             print "No local redis db available. Are you sure it is running ?"
-            raise redis.ConnectionError
+            raise
         self.ts._r.delete('test_key')
         self.ts._r.delete('test_immutable')
          # make sure we are clean
@@ -22,7 +22,7 @@ class TestSDPTelescopeState(unittest.TestCase):
     @classmethod
     def tearDownClass(self):
         self.ts._r.delete('test_key')
-        self.ts._r.delete('tes_immutable')
+        self.ts._r.delete('test_immutable')
 
     def test_basic_add(self):
         self.ts.add('test_key',1234.5)

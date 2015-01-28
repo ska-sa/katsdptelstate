@@ -8,7 +8,7 @@ except ImportError:
     __version__ = "unknown"
 else:
     try:
-        dist = _pkg_resources.get_distribution("katpoint")
+        dist = _pkg_resources.get_distribution("katsdptelstate")
         # ver needs to be a list since tuples in Python <= 2.5 don't have
         # a .index method.
         ver = list(dist.parsed_version)
