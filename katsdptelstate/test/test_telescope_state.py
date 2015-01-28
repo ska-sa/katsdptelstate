@@ -73,8 +73,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_key',
                 {'string_opt': 'ts', 'int_opt': 2, 'int_opt2': 2, 'flag': True, 'other': 5.0},
                 immutable=True)
-        print self.ts.keys()
-        print self.ts.has_key('test_key')
         self.ts.override_local_defaults(parser, 'test_key')
         (opts, args) = parser.parse_args(['--int-opt2', '5'])
         # Telescope state default overrides command line default
