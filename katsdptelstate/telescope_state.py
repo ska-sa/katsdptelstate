@@ -53,7 +53,7 @@ class TelescopeState(object):
 
     def has_key(self, key_name):
         """Check to see if the specified key exists in the database."""
-        self._r.exists(key_name)
+        return self._r.exists(key_name)
 
     def override_local_defaults(self, parser, config_key='config'):
         """Override local defaults with remote config options.
@@ -76,6 +76,7 @@ class TelescopeState(object):
         if not self.has_key(config_key):
             logger.warning("Requested merge to non-existant config key {}".format(config_key))
         else:
+            config_dict = self.get(config_key)
             for (k,v) in parser.defaults.iteritems():
                 if config_dict.has_key(k): 
                     parser.defaults[k] = config_dict[k]

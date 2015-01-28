@@ -84,4 +84,4 @@ class TestSDPTelescopeState(unittest.TestCase):
         # Command-line argument overrides both
         self.assertEqual(5, opts.int_opt2)
         # Other telescope state data shouldn't affect things
-        self.assertNotIn('other', opts)
+        self.assertNotIn('other', opts.__dict__)
