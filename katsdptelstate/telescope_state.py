@@ -64,23 +64,34 @@ class TelescopeState(object):
 
         So precedence is defaults -> telescope state -> command line.
         This method must be called before parser.parse_args is called.
+        Note that options without a default (or `None` as default) will
+        not be overridden.
 
         Parameters
         ----------
-        parser : :class: `OptionParser` object
+        parser : :class: `OptionParser` or :class:`ArgumentParser` object
             The parser for which to override defaults. 
         config_key : string
             Configuration key to use to retrieve config dict from Telescope State Repository.
 
         """
         if not self.has_key(config_key):
-            logger.warning("Requested merge to non-existant config key {}".format(config_key))
+            logger.warning("Requested merge to non-existent config key {}".format(config_key))
         else:
             config_dict = self.get(config_key)
-            for (k,v) in parser.defaults.iteritems():
-                if config_dict.has_key(k): 
-                    parser.defaults[k] = config_dict[k]
-                    logger.debug("Local default {}={} overriden by TelescopeState config to value {}".format(k,v,config_dict[k]))
+            if hasattr(parser, 'defaults'):   # optparse
+                for (k,v) in parser.defaults.iteritems():
+                    if config_dict.has_key(k):
+                        parser.defaults[k] = config_dict[k]
+                        logger.debug("Local default {}={} overridden by TelescopeState config to value {}".format(k,v,config_dict[k]))
+            else:
+                # argparse doesn't have a way to iterate over defaults,
+                # so iterate over the config instead
+                for (k,v) in config_dict.iteritems():
+                    old_default = parser.get_default(k)
+                    if old_default is not None:
+                        parser.set_defaults(**{k: v})
+                        logger.debug("Local default {}={} overridden by TelescopeState config to value {}".format(k,old_default,v))
         return parser
 
     def keys(self, filter='*', show_counts=False):
