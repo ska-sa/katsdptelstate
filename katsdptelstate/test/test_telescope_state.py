@@ -77,7 +77,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         parser.add_option('--flag', action='store_true', default=False)
         parser.add_option('--no-default', type='int')
         self.ts.add('test_key',
-                {'string_opt': 'ts', 'int_opt': 2, 'int_opt2': 2, 'flag': True, 'other': 5.0},
+                {'string_opt': 'ts', 'int_opt': 2, 'int_opt2': 2, 'flag': True, 'other': 5.0,
+                    'no_default': 10},
                 immutable=True)
         self.ts.override_local_defaults(parser, 'test_key')
         (opts, args) = parser.parse_args(['--int-opt2', '5'])
@@ -85,8 +86,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual('ts', opts.string_opt)
         self.assertEqual(2, opts.int_opt)
         self.assertEqual(True, opts.flag)
-        # Arguments without a default are not overridden
-        self.assertIsNone(opts.no_default)
+        # Arguments without a default are still overridden
+        self.assertEqual(10, opts.no_default)
         # Command-line default applies if telescope state doesn't override
         self.assertEqual('cmdline2', opts.string_opt2)
         # Command-line argument overrides both
@@ -97,6 +98,7 @@ class TestSDPTelescopeState(unittest.TestCase):
     def test_override_local_defaults_argparse(self):
         import argparse
         parser = argparse.ArgumentParser()
+        parser.add_argument('positional', type=float)
         parser.add_argument('-s', '--string-opt', type=str, default='cmdline')
         parser.add_argument('--string-opt2', type=str, default='cmdline2')
         parser.add_argument('-i', '--int-opt', type=int, default=3)
@@ -108,13 +110,13 @@ class TestSDPTelescopeState(unittest.TestCase):
                     'no_default': 10},
                 immutable=True)
         self.ts.override_local_defaults(parser, 'test_key')
-        args = parser.parse_args(['--int-opt2', '5'])
+        args = parser.parse_args([0.0, '--int-opt2', '5'])
         # Telescope state default overrides command-line default
         self.assertEqual('ts', args.string_opt)
         self.assertEqual(2, args.int_opt)
         self.assertEqual(True, args.flag)
-        # Arguments without a default are not overridden
-        self.assertIsNone(args.no_default)
+        # Arguments without a default are still overridden
+        self.assertEqual(10, args.no_default)
         # Command-line default applies if telescope state doesn't override
         self.assertEqual('cmdline2', args.string_opt2)
         # Command-line argument overrides both

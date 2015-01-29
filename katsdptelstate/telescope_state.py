@@ -64,8 +64,6 @@ class TelescopeState(object):
 
         So precedence is defaults -> telescope state -> command line.
         This method must be called before parser.parse_args is called.
-        Note that options without a default (or `None` as default) will
-        not be overridden.
 
         Parameters
         ----------
@@ -85,11 +83,14 @@ class TelescopeState(object):
                         parser.defaults[k] = config_dict[k]
                         logger.debug("Local default {}={} overridden by TelescopeState config to value {}".format(k,v,config_dict[k]))
             else:
-                # argparse doesn't have a way to iterate over defaults,
-                # so iterate over the config instead
+                # argparse doesn't have a public way to see all options.
+                # Calling parse_args() doesn't work because an empty argument
+                # list is invalid if there are positional arguments. So we are
+                # forced to reach into the internals.
+                parser_keys = set(parser._defaults.keys() + [x.dest for x in parser._actions])
                 for (k,v) in config_dict.iteritems():
-                    old_default = parser.get_default(k)
-                    if old_default is not None:
+                    if k in parser_keys:
+                        old_default = parser.get_default(k)
                         parser.set_defaults(**{k: v})
                         logger.debug("Local default {}={} overridden by TelescopeState config to value {}".format(k,old_default,v))
         return parser
