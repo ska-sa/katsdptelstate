@@ -62,6 +62,13 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_key',x)
         self.assertTrue((self.ts.test_key == x).all())
 
+    def test_has_key(self):
+        self.assertFalse(self.ts.has_key('test_key'))
+        self.ts.add('test_key', 1234)
+        self.ts.add('test_immutable', 1234.5, immutable=True)
+        self.assertTrue(self.ts.has_key('test_key'))
+        self.assertTrue(self.ts.has_key('test_immutable'))
+
     def test_override_local_defaults_optparse(self):
         import optparse
         parser = optparse.OptionParser()
