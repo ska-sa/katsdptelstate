@@ -61,3 +61,34 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.add('test_key',x)
         self.assertTrue((self.ts.test_key == x).all())
+
+    def test_has_key(self):
+        self.assertFalse(self.ts.has_key('test_key'))
+        self.ts.add('test_key', 1234)
+        self.ts.add('test_immutable', 1234.5, immutable=True)
+        self.assertTrue(self.ts.has_key('test_key'))
+        self.assertTrue(self.ts.has_key('test_immutable'))
+
+    def test_override_local_defaults_optparse(self):
+        import optparse
+        parser = optparse.OptionParser()
+        parser.add_option('-s', '--string-opt', type='str', default='cmdline')
+        parser.add_option('--string-opt2', type='str', default='cmdline2')
+        parser.add_option('-i', '--int-opt', type='int', default=3)
+        parser.add_option('--int-opt2', type='int', default=3)
+        parser.add_option('--flag', action='store_true', default=False)
+        self.ts.add('test_key',
+                {'string_opt': 'ts', 'int_opt': 2, 'int_opt2': 2, 'flag': True, 'other': 5.0},
+                immutable=True)
+        self.ts.override_local_defaults(parser, 'test_key')
+        (opts, args) = parser.parse_args(['--int-opt2', '5'])
+        # Telescope state default overrides command line default
+        self.assertEqual('ts', opts.string_opt)
+        self.assertEqual(2, opts.int_opt)
+        self.assertEqual(True, opts.flag)
+        # Command-line default applies if telescope state doesn't override
+        self.assertEqual('cmdline2', opts.string_opt2)
+        # Command-line argument overrides both
+        self.assertEqual(5, opts.int_opt2)
+        # Other telescope state data shouldn't affect things
+        self.assertNotIn('other', opts.__dict__)
