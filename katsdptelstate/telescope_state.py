@@ -3,6 +3,7 @@ import struct
 import time
 import cPickle
 import logging
+import argparse
 
 logger = logging.getLogger(__name__)
 
@@ -146,4 +147,54 @@ class TelescopeState(object):
             packed_et = struct.pack('>d',float(et))
             ret_vals = self._r.zrangebylex(key,"[{}".format(packed_st),"[{}".format(packed_et))
             return [self._strip(str_val) for str_val in ret_vals]
-            
+
+class ArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        self.config_key = kwargs.pop('config_key', 'config')
+        super(ArgumentParser, self).__init__(*args, **kwargs)
+        self.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST')
+        self.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
+        self.config_keys = set()
+
+    def add_argument(self, *args, **kwargs):
+        action = super(ArgumentParser, self).add_argument(*args, **kwargs)
+        # Check if we have finished initialising ourself yet
+        if hasattr(self, 'config_keys'):
+            if action.dest is not None and action.dest is not argparse.SUPPRESS:
+                self.config_keys.add(action.dest)
+        return action
+
+    def _load_defaults(self, namespace, telstate, name):
+        config_dict = telstate.get(self.config_key)
+        parts = name.split('.')
+        cur = config_dict
+        dicts = [cur]
+        for part in parts:
+            cur = cur.get(part)
+            if cur is None:
+                break
+            dicts.append(cur)
+
+        # Go from most specific to most general, so that specific values
+        # take precedence.
+        for cur in reversed(dicts):
+            for key in self.config_keys:
+                if key in cur and not hasattr(namespace, key):
+                    setattr(namespace, key, cur[key])
+
+    def parse_known_args(self, args=None, namespace=None):
+        if namespace is None:
+            namespace = argparse.Namespace()
+        config_parser = argparse.ArgumentParser(add_help=False)
+        config_parser.add_argument('--telstate', type=TelescopeState)
+        config_parser.add_argument('--name', type=str, default='')
+        try:
+            config_args, other = config_parser.parse_known_args(args)
+        except argparse.ArgumentError:
+            other = args
+        else:
+            if config_args.telstate is not None:
+                namespace.telstate = config_args.telstate
+                namespace.name = config_args.name
+                self._load_defaults(namespace, config_args.telstate, config_args.name)
+        return super(ArgumentParser, self).parse_known_args(other, namespace)
