@@ -164,21 +164,22 @@ class TelescopeState(object):
         """
         if not self._r.exists(key): raise KeyError
         if st is None and et is None:
-            return self._strip(self._r.zrange(key,-1,-1)[0])
+            ret_list = self._strip(self._r.zrange(key,-1,-1)[0])
         elif st == 0 or et == 0:
-            return [self._strip(str_val) for str_val in self._r.zrange(key,0,-1)]
+            ret_list = [self._strip(str_val) for str_val in self._r.zrange(key,0,-1)]
         else:
             packed_st = struct.pack('>d',float(st))
             packed_et = struct.pack('>d',float(et))
             ret_vals = self._r.zrangebylex(key,"[{}".format(packed_st),"[{}".format(packed_et))
             ret_list = [self._strip(str_val) for str_val in ret_vals]
-            if return_format is None:
-                return ret_list
-            elif return_format is 'recarray':
-                val_shape = ret_list[0][0].shape
-                return np.array(ret_list, dtype=[('value', np.complex, val_shape), ('time', np.float)])
-            else:
-                raise ValueError
+            
+        if return_format is None:
+            return ret_list
+        elif return_format is 'recarray':
+            val_shape = np.atleast_2d(ret_list)[0][0].shape
+            return np.array(ret_list, dtype=[('value', np.complex, val_shape), ('time', np.float)])
+        else:
+            raise ValueError
             
                 
             
