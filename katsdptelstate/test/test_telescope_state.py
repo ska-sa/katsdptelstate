@@ -65,11 +65,11 @@ class TestSDPTelescopeState(unittest.TestCase):
 
 @mock.patch('katsdptelstate.telescope_state.TelescopeState', autospec=True)
 class TestArgumentParser(unittest.TestCase):
-    def _stub_get(self, name):
+    def _stub_get(self, name, default=None):
         if name == 'config':
             return self.config
         else:
-            raise KeyError
+            return default
 
     def setUp(self):
         self.parser = ArgumentParser()

@@ -130,9 +130,9 @@ class TelescopeState(object):
                 return self._strip(self._r.zrange(key,-1,-1)[0])[0]
         return None
     
-    def get(self, key):
+    def get(self, key, default=None):
         val = self._get(key)
-        if val is None: raise KeyError
+        if val is None: return default
         return val
     
     def get_range(self, key, st=None, et=None):
@@ -165,7 +165,7 @@ class ArgumentParser(argparse.ArgumentParser):
         return action
 
     def _load_defaults(self, namespace, telstate, name):
-        config_dict = telstate.get(self.config_key)
+        config_dict = telstate.get(self.config_key, {})
         parts = name.split('.')
         cur = config_dict
         dicts = [cur]
