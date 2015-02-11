@@ -4,6 +4,7 @@ import time
 import cPickle
 import logging
 import argparse
+from .endpoint import Endpoint, endpoint_parser
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +15,18 @@ class ImmutableKeyError(Exception):
     pass
 
 class TelescopeState(object):
-    def __init__(self, host='localhost', db=0):
-        self._r = redis.StrictRedis(db=db)
+    def __init__(self, endpoint='localhost', db=0):
+        if not isinstance(endpoint, Endpoint):
+            endpoint = endpoint_parser(default_port=None)(endpoint)
+        if endpoint.port is not None:
+            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port, db=db)
+        else:
+            self._r = redis.StrictRedis(host=endpoint.host, db=db)
         self._ps = self._r.pubsub(ignore_subscribe_messages=True)
         self._default_channel = 'tm_info'
         self._ps.subscribe(self._default_channel)
          # subscribe to the telescope model info channel
-        
+
     def _strip(self, str_val):
         if len(str_val) < 8: return None
         ts = struct.unpack('>d',str_val[:8])[0]
@@ -125,10 +131,10 @@ class ArgumentParser(argparse.ArgumentParser):
     """Argument parser that can load defaults from a telescope state. It can be
     used as a drop-in replacement for `argparse.ArgumentParser`. It adds the
     options `--telstate` and `--name`. The first takes the hostname of a
-    telescope state repository. If specified, `parse_args` will first connect
-    to this host and fetch defaults (which override the defaults specified by
-    `add_argument`). The telescope state will also be available in the
-    returned `argparse.Namespace`.
+    telescope state repository (optionally with a port). If specified,
+    `parse_args` will first connect to this host and fetch defaults (which
+    override the defaults specified by `add_argument`). The telescope state
+    will also be available in the returned `argparse.Namespace`.
 
     If `name` is specified, it consists of a dot-separated list of
     identifiers, specifying a path through a tree of dictionaries of config.
@@ -146,7 +152,7 @@ class ArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         self.config_key = kwargs.pop('config_key', 'config')
         super(ArgumentParser, self).__init__(*args, **kwargs)
-        self.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST')
+        self.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
         self.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
         self.config_keys = set()
 
