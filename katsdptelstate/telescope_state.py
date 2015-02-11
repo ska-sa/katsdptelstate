@@ -173,13 +173,9 @@ class TelescopeState(object):
             ret_vals = self._r.zrangebylex(key,"[{}".format(packed_st),"[{}".format(packed_et))
             ret_list = [self._strip(str_val) for str_val in ret_vals]
             
-        if return_format is None:
+        if return_format is not 'recarray':
             return ret_list
-        elif return_format is 'recarray':
-            val_shape = np.atleast_2d(ret_list)[0][0].shape
-            return np.array(ret_list, dtype=[('value', np.complex, val_shape), ('time', np.float)])
         else:
-            raise ValueError
-            
-                
-            
+            val_shape = np.array(np.atleast_2d(ret_list)[0][0]).shape
+            val_type = np.array(np.atleast_2d(ret_list)[0][0]).dtype
+            return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])

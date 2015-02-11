@@ -61,3 +61,28 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.add('test_key',x)
         self.assertTrue((self.ts.test_key == x).all())
+        
+    def test_return_format(self):
+        """Test recarray return format of get_range method:
+              Tests that values returned by db are identical to the input values."""
+        arr = [[1.,2.,3.],[0.,4.,0.],[10.,9.,7.]]
+        self.ts.delete('x')
+        self.ts.add('x',arr[0])
+        self.ts.add('x',arr[1])
+        self.ts.add('x',arr[2])
+        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        self.assertTrue((val == arr).all())
+        
+    def test_return_format_type(self):
+        """Test recarray return format of get_range method:
+              Tests that values returned by db have identical types to the input values."""
+        arr = [[1.,2.,3.],[0.,4.,0.]]
+        arr_type = type(arr[0][0])
+        self.ts.delete('x')
+        self.ts.add('x',arr[0])
+        self.ts.add('x',arr[1])
+        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        self.assertTrue(val.dtype == arr_type)
+
+        
+        
