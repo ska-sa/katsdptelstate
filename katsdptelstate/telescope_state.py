@@ -56,33 +56,6 @@ class TelescopeState(object):
         """Check to see if the specified key exists in the database."""
         self._r.exists(key_name)
 
-    def override_local_defaults(self, parser, config_key='config'):
-        """Override local defaults with remote config options.
-
-        Look for a config dict in the Telescope State Repository and
-        use any configuration values in this to override the default
-        values for options before they are parsed.
-
-        So precedence is defaults -> telescope state -> command line.
-        This method must be called before parser.parse_args is called.
-
-        Parameters
-        ----------
-        parser : :class: `OptionParser` object
-            The parser for which to override defaults. 
-        config_key : string
-            Configuration key to use to retrieve config dict from Telescope State Repository.
-
-        """
-        if not self.has_key(config_key):
-            logger.warning("Requested merge to non-existant config key {}".format(config_key))
-        else:
-            for (k,v) in parser.defaults.iteritems():
-                if config_dict.has_key(k): 
-                    parser.defaults[k] = config_dict[k]
-                    logger.debug("Local default {}={} overriden by TelescopeState config to value {}".format(k,v,config_dict[k]))
-        return parser
-
     def keys(self, filter='*', show_counts=False):
         """Return a list of keys currently in the model."""
         key_list = []
@@ -149,6 +122,27 @@ class TelescopeState(object):
             return [self._strip(str_val) for str_val in ret_vals]
 
 class ArgumentParser(argparse.ArgumentParser):
+    """Argument parser that can load defaults from a telescope state. It can be
+    used as a drop-in replacement for `argparse.ArgumentParser`. It adds the
+    options `--telstate` and `--name`. The first takes the hostname of a
+    telescope state repository. If specified, `parse_args` will first connect
+    to this host and fetch defaults (which override the defaults specified by
+    `add_argument`). The telescope state will also be available in the
+    returned `argparse.Namespace`.
+
+    If `name` is specified, it consists of a dot-separated list of
+    identifiers, specifying a path through a tree of dictionaries of config.
+    For example, `foo.0` will cause configuration to be searched in
+    `config`, `config["foo"]` and `config["foo"]["0"]`. If configuration is
+    found in multiple places, the most specific location will be used first.
+    It is not an error for one of these dictionaries not to exist, but it is
+    an error if a name is found but is not a dictionary.
+
+    Parameters
+    ----------
+    config_key : str, optional
+        Name of the config dictionary within the telescope state (default: `config`)
+    """
     def __init__(self, *args, **kwargs):
         self.config_key = kwargs.pop('config_key', 'config')
         super(ArgumentParser, self).__init__(*args, **kwargs)
