@@ -1,4 +1,4 @@
-from .telescope_state import TelescopeState, InvalidKeyError, ImmutableKeyError
+from .telescope_state import TelescopeState, InvalidKeyError, ImmutableKeyError, ArgumentParser
 
 # Attempt to determine installed package version
 # borrowed from katpoint
