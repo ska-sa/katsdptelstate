@@ -39,7 +39,7 @@ class Endpoint(object):
             return False
         else:
             # IPv4 multicast is the range 224.0.0.0 - 239.255.255.255
-            if raw[0] >= '\xE0' and raw[0] < '\xF0':
+            if raw[0] >= chr(224) and raw[0] <= chr(239):
                 for iface in netifaces.interfaces():
                     for addr in netifaces.ifaddresses(iface).get(netifaces.AF_INET, []):
                         # Skip point-to-point links (includes loopback)
