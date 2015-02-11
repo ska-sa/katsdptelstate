@@ -99,7 +99,7 @@ def endpoint_list_parser(default_port, single_port=False):
     def parser(text):
         sub_parser = endpoint_parser(default_port)
         parts = text.split(',')
-        ret = []
+        endpoints = []
         for part in parts:
             endpoint = sub_parser(part.strip())
             pos = endpoint.host.rfind('+')
@@ -112,17 +112,17 @@ def endpoint_list_parser(default_port, single_port=False):
                     start_raw = struct.unpack('>I', socket.inet_aton(start))[0]
                     for i in range(start_raw, start_raw + count):
                         host = socket.inet_ntoa(struct.pack('>I', i))
-                        ret.append(Endpoint(host, endpoint.port))
+                        endpoints.append(Endpoint(host, endpoint.port))
                 except socket.error:
                     raise ValueError('invalid IPv4 address in {0}'.format(start))
             else:
-                ret.append(endpoint)
+                endpoints.append(endpoint)
         if single_port:
-            if not ret:
+            if not endpoints:
                 raise ValueError('empty list')
             else:
-                for endpoint in ret:
-                    if endpoint.port != ret[0].port:
+                for endpoint in endpoints:
+                    if endpoint.port != endpoints[0].port:
                         raise ValueError('all endpoints must use the same port')
-        return ret
+        return endpoints
     return parser
