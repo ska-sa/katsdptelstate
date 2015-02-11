@@ -10,13 +10,14 @@ class Endpoint(object):
         self.port = port
 
     def __eq__(self, other):
-        return isinstance(other, Endpoint) and self.host == other.host and self.port == other.port
+        return self.host == other.host and self.port == other.port
 
     def __ne__(self, other):
         return not self == other
 
     def __str__(self):
         if ':' in self.host:
+            # IPv6 address - escape it
             return '[{0}]:{1}'.format(self.host, self.port)
         else:
             return '{0}:{1}'.format(self.host, self.port)
