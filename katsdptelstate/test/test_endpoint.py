@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from katsdpingest.endpoint import Endpoint, endpoint_parser, endpoint_list_parser
+from katsdptelstate.endpoint import Endpoint, endpoint_parser, endpoint_list_parser
 from nose.tools import *
 
 class TestEndpoint(object):

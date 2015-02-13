@@ -5,6 +5,7 @@ import cPickle
 import logging
 import argparse
 from .endpoint import Endpoint, endpoint_parser
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -114,18 +115,50 @@ class TelescopeState(object):
         if val is None: return default
         return val
     
-    def get_range(self, key, st=None, et=None):
-        """Get the value specified by the key from the model."""
+    def get_range(self, key, st=None, et=None, return_format=None):
+        """Get the value specified by the key from the model.
+        
+        Parameters
+        ----------
+        key : string 
+            database key to extract
+        st : float, default None
+            start time
+        et: float, default None
+            end time
+        return_format : string, default None
+            'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
+            None returns values and times as 2D list of elements format (key_value, time)
+        
+        Returns
+        -------
+        array of key_value, time database elements between specified time range
+        
+        Notes
+        -----
+        For the cases of:
+            * st and et arguments, both non-zero : returns (key_value, time) range between times st and et
+            * No st argument, no et argument : returns most recent (key_value, time)
+            * st or et arguments zero : returns all (key_value, time) in database
+            * Only st or et, second argument non-zero : returns error
+        """
         if not self._r.exists(key): raise KeyError
         if st is None and et is None:
-            return self._strip(self._r.zrange(key,-1,-1)[0])
+            ret_list = self._strip(self._r.zrange(key,-1,-1)[0])
         elif st == 0 or et == 0:
-            return [self._strip(str_val) for str_val in self._r.zrange(key,0,-1)]
+            ret_list = [self._strip(str_val) for str_val in self._r.zrange(key,0,-1)]
         else:
             packed_st = struct.pack('>d',float(st))
             packed_et = struct.pack('>d',float(et))
             ret_vals = self._r.zrangebylex(key,"[{}".format(packed_st),"[{}".format(packed_et))
-            return [self._strip(str_val) for str_val in ret_vals]
+            ret_list = [self._strip(str_val) for str_val in ret_vals]
+
+        if return_format is not 'recarray':
+            return ret_list
+        else:
+            val_shape = np.array(np.atleast_2d(ret_list)[0][0]).shape
+            val_type = np.array(np.atleast_2d(ret_list)[0][0]).dtype
+            return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
 
 class ArgumentParser(argparse.ArgumentParser):
     """Argument parser that can load defaults from a telescope state. It can be
