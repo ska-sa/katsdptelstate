@@ -84,6 +84,18 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('x',arr[1])
         val = self.ts.get_range('x',st=0,return_format='recarray')['value']
         self.assertTrue(val.dtype == arr_type)
+        
+    def test_get_previous(self):
+        """Test get_previous method:
+              Tests that correct (most recent) value is returned."""
+        arr = [[1.,2.,3.],[0.,4.,0.],[10.,9.,7.]]
+        arr_type = type(arr[0][0])
+        self.ts.delete('x')
+        self.ts.add('x',arr[0],ts=1.0)
+        self.ts.add('x',arr[1],ts=2.5)
+        self.ts.add('x',arr[2],ts=5.0)
+        val = self.ts.get_previous('x',2.8)
+        self.assertEqual(val[0],arr[1])
 
 @mock.patch('katsdptelstate.telescope_state.TelescopeState', autospec=True)
 class TestArgumentParser(unittest.TestCase):
