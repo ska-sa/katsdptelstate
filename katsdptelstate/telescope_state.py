@@ -159,6 +159,35 @@ class TelescopeState(object):
             val_shape = np.array(np.atleast_2d(ret_list)[0][0]).shape
             val_type = np.array(np.atleast_2d(ret_list)[0][0]).dtype
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
+            
+    def get_previous(self, key, t, dt=2.0):
+        """
+        Get the most recent value of a Telescope Stake key prior to a given time,
+        within a specified interval.
+
+        Parameters
+        ----------
+        key : string 
+            key to be extracted from the ts
+        t : float
+            time that key value is desired, default 2.0 seconds 
+        dt : float 
+            search time interval [t-dt, t] for key value
+
+        Returns
+        -------
+        (key value, time) for time in the Telescope State closest to t, 
+        or None if key value is not present in the time range
+
+        """  
+        key_list = self.get_range(key,st=t-dt,et=t)
+        
+        if key_list == []:
+            # key_list empty because key value not present in the time range, return None
+            return None
+        else:
+            time_diffs = [t - np.float(line[1]) for line in key_list]
+            return key_list[np.argmin(time_diffs)]
 
 class ArgumentParser(argparse.ArgumentParser):
     """Argument parser that can load defaults from a telescope state. It can be
