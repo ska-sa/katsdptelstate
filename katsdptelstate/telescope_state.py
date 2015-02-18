@@ -206,11 +206,21 @@ class ArgumentParser(argparse.ArgumentParser):
     It is not an error for one of these dictionaries not to exist, but it is
     an error if a name is found but is not a dictionary.
 
+    A side-effect of the implementation is that calling `parse_args` or
+    `parse_known_args` permanently changes the defaults. A parser should thus
+    only be used once and then thrown away. Also, because it changes the
+    defaults rather than injecting actual arguments, argparse features like
+    required arguments and mutually exclusive groups might not work as
+    expected.
+
     Parameters
     ----------
     config_key : str, optional
         Name of the config dictionary within the telescope state (default: `config`)
     """
+
+    _SPECIAL_NAMES = ['telstate', 'name']
+
     def __init__(self, *args, **kwargs):
         self.config_key = kwargs.pop('config_key', 'config')
         super(ArgumentParser, self).__init__(*args, **kwargs)
@@ -229,7 +239,7 @@ class ArgumentParser(argparse.ArgumentParser):
                 self.config_keys.add(action.dest)
         return action
 
-    def _load_defaults(self, namespace, telstate, name):
+    def _load_defaults(self, telstate, name):
         config_dict = telstate.get(self.config_key, {})
         parts = name.split('.')
         cur = config_dict
@@ -242,13 +252,15 @@ class ArgumentParser(argparse.ArgumentParser):
 
         # Go from most specific to most general, so that specific values
         # take precedence.
+        seen = set(self._SPECIAL_NAMES)  # Prevents these being overridden
         for cur in reversed(dicts):
             for key in self.config_keys:
-                if key in cur and not hasattr(namespace, key):
-                    setattr(namespace, key, cur[key])
+                if key in cur and key not in seen:
+                    super(ArgumentParser, self).set_defaults(**{key: cur[key]})
+                    seen.add(key)
 
     def set_defaults(self, **kwargs):
-        for special in ['telstate', 'name']:
+        for special in self._SPECIAL_NAMES:
             if special in kwargs:
                 self.config_parser.set_defaults(**{special: kwargs.pop(special)})
         super(ArgumentParser, self).set_defaults(**kwargs)
@@ -264,5 +276,5 @@ class ArgumentParser(argparse.ArgumentParser):
             if config_args.telstate is not None:
                 namespace.telstate = config_args.telstate
                 namespace.name = config_args.name
-                self._load_defaults(namespace, config_args.telstate, config_args.name)
+                self._load_defaults(config_args.telstate, config_args.name)
         return super(ArgumentParser, self).parse_known_args(other, namespace)
