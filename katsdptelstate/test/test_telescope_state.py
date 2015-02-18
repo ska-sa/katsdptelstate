@@ -109,6 +109,7 @@ class TestArgumentParser(unittest.TestCase):
         patcher = mock.patch('katsdptelstate.telescope_state.TelescopeState', autospec=True)
         self.addCleanup(patcher.stop)
         self.TelescopeState = patcher.start()
+        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         # Create a fixture
         self.parser = ArgumentParser()
         self.parser.add_argument('positional', type=str)
@@ -155,7 +156,6 @@ class TestArgumentParser(unittest.TestCase):
 
     def test_telstate_no_name(self):
         """Passing --telstate but not --name loads from root config"""
-        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--telstate=example.com'])
         self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('', args.name)
@@ -168,7 +168,6 @@ class TestArgumentParser(unittest.TestCase):
 
     def test_telstate_nested(self):
         """Passing a nested name loads from all levels of the hierarchy"""
-        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--telstate=example.com', '--name=level1.level2'])
         self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('level1.level2', args.name)
@@ -179,7 +178,6 @@ class TestArgumentParser(unittest.TestCase):
 
     def test_telstate_override(self):
         """Command-line parameters override telescope state"""
-        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--int-arg=0', '--float-arg=0', '--telstate=example.com', '--name=level1.level2'])
         self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('level1.level2', args.name)
@@ -190,9 +188,25 @@ class TestArgumentParser(unittest.TestCase):
 
     def test_default_telstate(self):
         """Calling `set_default` with `telstate` keyword works"""
-        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         self.parser.set_defaults(telstate='example.com')
         args = self.parser.parse_args(['hello'])
         self.TelescopeState.assert_called_once_with('example.com')
         self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual(10, args.int_arg)
+
+    def test_convert_argument(self):
+        """String argument in telescope state that cannot be converted must be
+        converted to the appropriate type.
+        """
+        self.config['int_arg'] = '50'
+        args = self.parser.parse_args(['--telstate=example.com', 'hello'])
+        self.assertEqual(50, args.int_arg)
+
+    def test_bad_argument(self):
+        """String argument in telescope state that cannot be converted must
+        raise an error."""
+        self.config['int_arg'] = 'not an int'
+        with mock.patch.object(self.parser, 'error', autospec=True, side_effect=RuntimeError) as mock_error:
+            with self.assertRaises(RuntimeError):
+                args = self.parser.parse_args(['--telstate=example.com', 'hello'])
+            mock_error.assert_called_once_with(mock.ANY)
