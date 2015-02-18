@@ -97,7 +97,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         val = self.ts.get_previous('x',2.8)
         self.assertEqual(val[0],arr[1])
 
-@mock.patch('katsdptelstate.telescope_state.TelescopeState', autospec=True)
 class TestArgumentParser(unittest.TestCase):
     def _stub_get(self, name, default=None):
         if name == 'config':
@@ -106,6 +105,11 @@ class TestArgumentParser(unittest.TestCase):
             return default
 
     def setUp(self):
+        # Set up a mock version of TelescopeState which applies for the whole test
+        patcher = mock.patch('katsdptelstate.telescope_state.TelescopeState', autospec=True)
+        self.addCleanup(patcher.stop)
+        self.TelescopeState = patcher.start()
+        # Create a fixture
         self.parser = ArgumentParser()
         self.parser.add_argument('positional', type=str)
         self.parser.add_argument('--int-arg', type=int, default=5)
@@ -118,6 +122,7 @@ class TestArgumentParser(unittest.TestCase):
             'no_default': 'telstate',
             'bool_arg': True,
             'not_arg': 'should not be seen',
+            'telstate': 'example.org',
             'level1': {
                 'int_arg': 11,
                 'level2': {
@@ -126,7 +131,7 @@ class TestArgumentParser(unittest.TestCase):
             }
         }
 
-    def test_no_telstate(self, TelescopeState):
+    def test_no_telstate(self):
         """Passing explicit arguments but no telescope model sets the arguments."""
         args = self.parser.parse_args(['hello', '--int-arg=3', '--float-arg=2.5', '--no-default=test', '--bool-arg'])
         self.assertIsNone(args.telstate)
@@ -137,7 +142,7 @@ class TestArgumentParser(unittest.TestCase):
         self.assertEqual('test', args.no_default)
         self.assertEqual(True, args.bool_arg)
 
-    def test_no_telstate_defaults(self, TelescopeState):
+    def test_no_telstate_defaults(self):
         """Passing no optional arguments sets those arguments"""
         args = self.parser.parse_args(['hello'])
         self.assertIsNone(args.telstate)
@@ -148,11 +153,11 @@ class TestArgumentParser(unittest.TestCase):
         self.assertIsNone(args.no_default)
         self.assertEqual(False, args.bool_arg)
 
-    def test_telstate_no_name(self, TelescopeState):
+    def test_telstate_no_name(self):
         """Passing --telstate but not --name loads from root config"""
-        TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
+        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--telstate=example.com'])
-        self.assertIs(TelescopeState.return_value, args.telstate)
+        self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('', args.name)
         self.assertEqual(10, args.int_arg)
         self.assertEqual(4.5, args.float_arg)
@@ -161,25 +166,33 @@ class TestArgumentParser(unittest.TestCase):
         self.assertNotIn('help', vars(args))
         self.assertNotIn('not_arg', vars(args))
 
-    def test_telstate_nested(self, TelescopeState):
+    def test_telstate_nested(self):
         """Passing a nested name loads from all levels of the hierarchy"""
-        TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
+        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--telstate=example.com', '--name=level1.level2'])
-        self.assertIs(TelescopeState.return_value, args.telstate)
+        self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('level1.level2', args.name)
         self.assertEqual('hello', args.positional)
         self.assertEqual(11, args.int_arg)
         self.assertEqual(12.5, args.float_arg)
         self.assertEqual('telstate', args.no_default)
 
-    def test_telstate_override(self, TelescopeState):
+    def test_telstate_override(self):
         """Command-line parameters override telescope state"""
-        TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
+        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
         args = self.parser.parse_args(['hello', '--int-arg=0', '--float-arg=0', '--telstate=example.com', '--name=level1.level2'])
-        self.assertIs(TelescopeState.return_value, args.telstate)
+        self.assertIs(self.TelescopeState.return_value, args.telstate)
         self.assertEqual('level1.level2', args.name)
         self.assertEqual('hello', args.positional)
         self.assertEqual(0, args.int_arg)
         self.assertEqual(0.0, args.float_arg)
         self.assertEqual('telstate', args.no_default)
-        
+
+    def test_default_telstate(self):
+        """Calling `set_default` with `telstate` keyword works"""
+        self.TelescopeState.return_value.get = mock.MagicMock(side_effect=self._stub_get)
+        self.parser.set_defaults(telstate='example.com')
+        args = self.parser.parse_args(['hello'])
+        self.TelescopeState.assert_called_once_with('example.com')
+        self.assertIs(self.TelescopeState.return_value, args.telstate)
+        self.assertEqual(10, args.int_arg)

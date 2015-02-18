@@ -214,8 +214,11 @@ class ArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         self.config_key = kwargs.pop('config_key', 'config')
         super(ArgumentParser, self).__init__(*args, **kwargs)
-        self.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
-        self.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
+        # Create a separate parser that will extract only the special args
+        self.config_parser = argparse.ArgumentParser(add_help=False)
+        for parser in [super(ArgumentParser, self), self.config_parser]:
+            parser.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
+            parser.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
         self.config_keys = set()
 
     def add_argument(self, *args, **kwargs):
@@ -244,14 +247,17 @@ class ArgumentParser(argparse.ArgumentParser):
                 if key in cur and not hasattr(namespace, key):
                     setattr(namespace, key, cur[key])
 
+    def set_defaults(self, **kwargs):
+        for special in ['telstate', 'name']:
+            if special in kwargs:
+                self.config_parser.set_defaults(**{special: kwargs.pop(special)})
+        super(ArgumentParser, self).set_defaults(**kwargs)
+
     def parse_known_args(self, args=None, namespace=None):
         if namespace is None:
             namespace = argparse.Namespace()
-        config_parser = argparse.ArgumentParser(add_help=False)
-        config_parser.add_argument('--telstate', type=TelescopeState)
-        config_parser.add_argument('--name', type=str, default='')
         try:
-            config_args, other = config_parser.parse_known_args(args)
+            config_args, other = self.config_parser.parse_known_args(args)
         except argparse.ArgumentError:
             other = args
         else:
