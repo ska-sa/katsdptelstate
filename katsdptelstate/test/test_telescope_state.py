@@ -97,6 +97,10 @@ class TestSDPTelescopeState(unittest.TestCase):
         val = self.ts.get_previous('x',2.8)
         self.assertEqual(val[0],arr[1])
 
+class MockException(Exception):
+    """Exception class used for monkey-patching functions that don't return."""
+    pass
+
 class TestArgumentParser(unittest.TestCase):
     def _stub_get(self, name, default=None):
         if name == 'config':
@@ -206,7 +210,20 @@ class TestArgumentParser(unittest.TestCase):
         """String argument in telescope state that cannot be converted must
         raise an error."""
         self.config['int_arg'] = 'not an int'
-        with mock.patch.object(self.parser, 'error', autospec=True, side_effect=RuntimeError) as mock_error:
-            with self.assertRaises(RuntimeError):
+        # We make the mock raise an exception, since the patched code is not
+        # expecting the function to return.
+        with mock.patch.object(self.parser, 'error', autospec=True, side_effect=MockException) as mock_error:
+            with self.assertRaises(MockException):
                 args = self.parser.parse_args(['--telstate=example.com', 'hello'])
             mock_error.assert_called_once_with(mock.ANY)
+
+    def test_help(self):
+        """Passing --help prints help without trying to construct the telescope state"""
+        # We make the mock raise an exception, since the patched code is not
+        # expecting the function to return.
+        with mock.patch.object(self.parser, 'exit', autospec=True, side_effect=MockException) as mock_exit:
+            with self.assertRaises(MockException):
+                args = self.parser.parse_args(['--telstate=example.com', '--help'])
+            mock_exit.assert_called_once_with()
+            # Make sure we did not try to construct a telescope state
+            self.assertItemsEqual([], self.TelescopeState.call_args_list)
