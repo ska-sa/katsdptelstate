@@ -227,7 +227,7 @@ class ArgumentParser(argparse.ArgumentParser):
         # Create a separate parser that will extract only the special args
         self.config_parser = argparse.ArgumentParser(add_help=False)
         for parser in [super(ArgumentParser, self), self.config_parser]:
-            parser.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
+            parser.add_argument('--telstate', default=None, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
             parser.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
         self.config_keys = set()
 
@@ -273,8 +273,13 @@ class ArgumentParser(argparse.ArgumentParser):
         except argparse.ArgumentError:
             other = args
         else:
-            if config_args.telstate is not None:
+            try:
+                # exception occurs if telstate redis database unavailable
+                #  in which case, don't attempt to load defaults from telstate
+                config_args.telstate = TelescopeState(config_args.telstate)
                 namespace.telstate = config_args.telstate
                 namespace.name = config_args.name
                 self._load_defaults(config_args.telstate, config_args.name)
-        return super(ArgumentParser, self).parse_known_args(other, namespace)
+            except redis.exceptions.ConnectionError:
+                pass
+        return super(ArgumentParser, self).parse_known_args(other, namespace)            
