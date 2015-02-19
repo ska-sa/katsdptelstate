@@ -249,7 +249,7 @@ class ArgumentParser(argparse.ArgumentParser):
         super(ArgumentParser, self).__init__(*args, **kwargs)
         # Create a separate parser that will extract only the special args
         self.config_parser = argparse.ArgumentParser(add_help=False)
-        self.config_parser.add_argument('--help', action=_HelpAction, parser=self)
+        self.config_parser.add_argument('-h', '--help', action=_HelpAction, default=argparse.SUPPRESS, parser=self)
         for parser in [super(ArgumentParser, self), self.config_parser]:
             parser.add_argument('--telstate', help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
             parser.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
