@@ -189,6 +189,29 @@ class TelescopeState(object):
             time_diffs = [t - np.float(line[1]) for line in key_list]
             return key_list[np.argmin(time_diffs)]
 
+
+class _HelpAction(argparse.Action):
+    """Class modelled on argparse._HelpAction that prints help for the
+    main parser."""
+    def __init__(self,
+                 option_strings,
+                 parser,
+                 dest=argparse.SUPPRESS,
+                 default=argparse.SUPPRESS,
+                 help=None):
+        super(_HelpAction, self).__init__(
+            option_strings=option_strings,
+            dest=dest,
+            default=default,
+            nargs=0,
+            help=help)
+        self._parser = parser
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        self._parser.print_help()
+        self._parser.exit()
+
+
 class ArgumentParser(argparse.ArgumentParser):
     """Argument parser that can load defaults from a telescope state. It can be
     used as a drop-in replacement for `argparse.ArgumentParser`. It adds the
@@ -226,8 +249,9 @@ class ArgumentParser(argparse.ArgumentParser):
         super(ArgumentParser, self).__init__(*args, **kwargs)
         # Create a separate parser that will extract only the special args
         self.config_parser = argparse.ArgumentParser(add_help=False)
+        self.config_parser.add_argument('-h', '--help', action=_HelpAction, default=argparse.SUPPRESS, parser=self)
         for parser in [super(ArgumentParser, self), self.config_parser]:
-            parser.add_argument('--telstate', type=TelescopeState, help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
+            parser.add_argument('--telstate', help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
             parser.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
         self.config_keys = set()
 
@@ -274,7 +298,10 @@ class ArgumentParser(argparse.ArgumentParser):
             other = args
         else:
             if config_args.telstate is not None:
-                namespace.telstate = config_args.telstate
+                try:
+                    namespace.telstate = TelescopeState(config_args.telstate)
+                except redis.ConnectionError as e:
+                    self.error(str(e))
                 namespace.name = config_args.name
-                self._load_defaults(config_args.telstate, config_args.name)
+                self._load_defaults(namespace.telstate, namespace.name)
         return super(ArgumentParser, self).parse_known_args(other, namespace)
