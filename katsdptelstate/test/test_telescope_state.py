@@ -45,10 +45,19 @@ class TestSDPTelescopeState(unittest.TestCase):
 
     def test_time_range(self):
         self.ts.delete('test_key')
-        self.ts.add('test_key',8192)
-        st = time.time()
-        self.ts.add('test_key',16384)
-        self.assertEqual(1,len(self.ts.get_range('test_key',st=st, et=time.time())))
+        self.ts.add('test_key',8192,2)
+        self.ts.add('test_key',16384,3)
+        self.ts.add('test_key',4096,3)
+        self.ts.add('test_key',2048,4)
+        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key'))
+        self.assertEqual([(8192,2)], self.ts.get_range('test_key',et=3))
+        self.assertEqual([(8192,2)], self.ts.get_range('test_key',st=-1,et=2.5))
+        self.assertEqual([(16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',st=3))
+        self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
+        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',include_previous=True))
+        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',st=2.5,include_previous=True))
+        self.assertEqual([(2048,4)], self.ts.get_range('test_key',st=5,et=6,include_previous=True))
+        self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
 
     def test_immutable(self):
         self.ts.delete('test_immutable')
