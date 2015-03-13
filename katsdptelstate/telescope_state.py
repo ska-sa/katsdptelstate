@@ -114,52 +114,70 @@ class TelescopeState(object):
         val = self._get(key)
         if val is None: return default
         return val
-    
-    def get_range(self, key, st=None, et=None, return_format=None):
+
+    def get_range(self, key, st=None, et=None, return_format=None, include_previous=False):
         """Get the value specified by the key from the model.
-        
+
         Parameters
         ----------
-        key : string 
+        key : string
             database key to extract
-        st : float, default None
-            start time
-        et: float, default None
-            end time
-        return_format : string, default None
+        st : float, optional
+            start time, defaults to the start of time
+        et: float, optional
+            end time, defaults to the end of time
+        return_format : string, optional
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
-            None returns values and times as 2D list of elements format (key_value, time)
-        
+            `None` returns values and times as 2D list of elements format (key_value, time)
+        include_previous : bool, optional
+            If `True`, the last value prior to the start time (if any) is
+            included. The current implementation has a significant performance
+            impact (it queries all values from the start).
+
         Returns
         -------
         array of key_value, time database elements between specified time range
-        
+
         Notes
         -----
-        For the cases of:
-            * st and et arguments, both non-zero : returns (key_value, time) range between times st and et
-            * No st argument, no et argument : returns most recent (key_value, time)
-            * st or et arguments zero : returns all (key_value, time) in database
-            * Only st or et, second argument non-zero : returns error
+        Timestamps exactly equal to the start time are included, while those equal to the
+        end time are excluded.
         """
         if not self._r.exists(key): raise KeyError
-        if st is None and et is None:
-            ret_list = self._strip(self._r.zrange(key,-1,-1)[0])
-        elif st == 0 or et == 0:
-            ret_list = [self._strip(str_val) for str_val in self._r.zrange(key,0,-1)]
+        if include_previous or st is None:
+            packed_st = '-'
         else:
-            packed_st = struct.pack('>d',float(st))
-            packed_et = struct.pack('>d',float(et))
-            ret_vals = self._r.zrangebylex(key,"[{}".format(packed_st),"[{}".format(packed_et))
-            ret_list = [self._strip(str_val) for str_val in ret_vals]
+            # Negative values (including negative zero) don't sort properly when
+            # treated as byte strings
+            if st <= 0.0:
+                st = 0.0
+            packed_st = '[' + struct.pack('>d', float(st))
+        if et is None:
+            packed_et = '+'
+        else:
+            if et <= 0.0:
+                et = 0.0
+            packed_et = '(' + struct.pack('>d', float(et))
+        ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
+        ret_list = [self._strip(str_val) for str_val in ret_vals]
 
-        if return_format is not 'recarray':
+        if include_previous and st is not None:
+            # Find the last value prior to the start time
+            start_idx = 0
+            for idx, value in enumerate(ret_list):
+                if value[1] <= st:
+                    start_idx = idx
+            ret_list = ret_list[start_idx:]
+
+        if return_format is None:
             return ret_list
-        else:
+        elif return_format == 'recarray':
             val_shape = np.array(np.atleast_2d(ret_list)[0][0]).shape
             val_type = np.array(np.atleast_2d(ret_list)[0][0]).dtype
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
-            
+        else:
+            raise ValueError('Unknown return_format {}'.format(return_format))
+
     def get_previous(self, key, t, dt=2.0):
         """
         Get the most recent value of a Telescope Stake key prior to a given time,
@@ -181,7 +199,7 @@ class TelescopeState(object):
 
         """  
         key_list = self.get_range(key,st=t-dt,et=t)
-        
+
         if key_list == []:
             # key_list empty because key value not present in the time range, return None
             return None
