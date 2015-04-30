@@ -36,22 +36,22 @@ class TelescopeState(object):
         except cPickle.UnpicklingError:
             ret_val = str_val[8:]
         return (ret_val,ts)
-        
+
     def __getattr__(self, key):
         val = self._get(key)
         if val is None: raise AttributeError
         return val
-        
+
     def __getitem__(self,key):
         val = self._get(key)
         if val is None: raise KeyError
         return val
-    
+
     def send_message(self, data, channel=None):
         """Broadcast a message to all telescope model users."""
         if channel is None: channel = self._default_channel
         return self._r.publish(channel, data)
-    
+
     def get_message(self, channel=None):
         """Get the oldest unread telescope model message."""
         if channel is None: channel = self._default_channel
@@ -77,11 +77,11 @@ class TelescopeState(object):
         else:
             key_list = self._r.keys(filter)
         return key_list
-    
+
     def delete(self, key):
         """Remove a key, and all values, from the model."""
         return self._r.delete(key)
-    
+
     def add(self, key, value, ts=None, immutable=False):
         """Add a new key / value pair to the model."""
         if self.__class__.__dict__.has_key(key):
@@ -96,7 +96,7 @@ class TelescopeState(object):
         else:
             packed_ts = struct.pack('>d',float(ts))
             return self._r.zadd(key, 0, "{}{}".format(packed_ts,cPickle.dumps(value)))
-    
+
     def _get(self, key):
         if self._r.exists(key):
             try:
@@ -109,59 +109,109 @@ class TelescopeState(object):
             except redis.ResponseError:
                 return self._strip(self._r.zrange(key,-1,-1)[0])[0]
         return None
-    
+
     def get(self, key, default=None):
         val = self._get(key)
         if val is None: return default
         return val
 
-    def get_range(self, key, st=None, et=None, return_format=None, include_previous=False):
+    def get_range(self, key, st=None, et=None, dt=None, return_format=None, include_previous=False):
         """Get the value specified by the key from the model.
 
         Parameters
         ----------
         key : string
             database key to extract
-        st : float, optional
-            start time, defaults to the start of time
-        et: float, optional
-            end time, defaults to the end of time
+        st, et : floats, optional
+            start time, end time
+            default to the most recent value
+        dt : float
+            limit the search for the key value to time interval [t-dt, t]
         return_format : string, optional
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
             `None` returns values and times as 2D list of elements format (key_value, time)
         include_previous : bool, optional
             If `True`, the last value prior to the start time (if any) is
             included. The current implementation has a significant performance
-            impact (it queries all values from the start).
+            impact (it queries all values from the start)
 
         Returns
         -------
-        array of key_value, time database elements between specified time range
+        list of (key_value, time) or key_value (for immutables) database elements between specified time range
 
         Notes
         -----
         Timestamps exactly equal to the start time are included, while those equal to the
         end time are excluded.
+
+        Usage examples:
+
+        get_range('key_name') 
+            returns most recent (key_value, time) pair or key_value (for immutable)  
+
+        get_range('key_name',st=0)
+            returns array of all (key_value, time) pairs or key_values (for immutable) in the telescope state database
+
+        get_range('key_name',st=0,et=t1)
+            returns array of all (key_value, time) pairs or key_values (for immutable) before time t1
+
+        get_range('key_name',st=t0,et=t1)
+            returns array of all (key_value, time) pairs or key_values (for immutable) between times t0 and t1
+
+        get_range('key_name',st=t0)
+            returns array of all (key_value, time) pairs or key_values (for immutable) after time t0
+
+        get_range('key_name',st=t0,et=t1,dt=dw)
+            returns ValueError as this usage is ambiguous
+
+        get_range('key_name',et=t1)
+            returns the most recent (key_value, time) pair or key_values (for immutable) prior to time t1
+
+        Note - the above usage is inefficient, it is better to specify backward search window:
+
+        get_range('key_name',et=t1,dt=tw)
+            returns the most recent (key_value, time) pair or key_value (for immutable) prior to time t1, within
+            the time window [t1-dw,t1] or [] if no key value exists in the time window
         """
         if not self._r.exists(key): raise KeyError
-        if include_previous or st is None:
-            packed_st = '-'
-        else:
-            # Negative values (including negative zero) don't sort properly when
-            # treated as byte strings
-            if st <= 0.0:
-                st = 0.0
-            packed_st = '[' + struct.pack('>d', float(st))
-        if et is None:
-            packed_et = '+'
-        else:
-            if et <= 0.0:
-                et = 0.0
-            packed_et = '(' + struct.pack('>d', float(et))
-        ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
-        ret_list = [self._strip(str_val) for str_val in ret_vals]
 
-        if include_previous and st is not None:
+        # if dt is set, search range [et-dt,et] for key value
+        if dt is not None:
+            if (st is not None) or (et is None):
+                raise ValueError('Ambiguous set of parameters. Window parameter dt only to be used with et.')                    
+            else:
+                st = et-dt
+
+        # if st and et None, return most recent value
+        if st is None and et is None and not include_previous:
+            ret_list = [self._strip(self._r.zrange(key,-1,-1)[0])]
+        else:
+            # if st <= 0, get values from the beginning
+            # if st is None or include_previous, get values from the beginning for trimming later
+            if include_previous or st <= 0.0 or st is None:
+                packed_st = '-'
+                # Negative values (including negative zero) don't sort properly when
+                # treated as byte strings
+            else:
+                packed_st = '[' + struct.pack('>d', float(st))
+            # if et is None, get values to the most recent
+            if et is None:
+                packed_et = '+'
+            else:
+                packed_et = '(' + struct.pack('>d', float(et))
+            # get values from redis, extract into (key_value, time) pairs
+            ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
+            ret_list = [self._strip(str_val) for str_val in ret_vals]
+
+        # extract most recent value from list
+        if dt is not None or st is None:
+        	try:
+        		ret_list = [ret_list[-1]]
+        	except IndexError:
+        		# there was no key value in the window
+        		ret_list = []
+
+        if include_previous:
             # Find the last value prior to the start time
             start_idx = 0
             for idx, value in enumerate(ret_list):
@@ -177,36 +227,6 @@ class TelescopeState(object):
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
         else:
             raise ValueError('Unknown return_format {}'.format(return_format))
-
-    def get_previous(self, key, t, dt=2.0):
-        """
-        Get the most recent value of a Telescope Stake key prior to a given time,
-        within a specified interval.
-
-        Parameters
-        ----------
-        key : string 
-            key to be extracted from the ts
-        t : float
-            time that key value is desired, default 2.0 seconds 
-        dt : float 
-            search time interval [t-dt, t] for key value
-
-        Returns
-        -------
-        (key value, time) for time in the Telescope State closest to t, 
-        or None if key value is not present in the time range
-
-        """  
-        key_list = self.get_range(key,st=t-dt,et=t)
-
-        if key_list == []:
-            # key_list empty because key value not present in the time range, return None
-            return None
-        else:
-            time_diffs = [t - np.float(line[1]) for line in key_list]
-            return key_list[np.argmin(time_diffs)]
-
 
 class _HelpAction(argparse.Action):
     """Class modelled on argparse._HelpAction that prints help for the
