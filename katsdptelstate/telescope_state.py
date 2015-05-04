@@ -122,10 +122,11 @@ class TelescopeState(object):
         ----------
         key : string
             database key to extract
-        st, et : floats, optional
-            start time, end time
-            default to the most recent value
-        dt : float
+        st : float, optional
+            start time, default returns the most recent value prior to et
+        et: float, optional
+            end time, defaults to the end of time
+        dt : float, optional
             limit the search for the key value to time interval [t-dt, t]
         return_format : string, optional
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
@@ -137,7 +138,7 @@ class TelescopeState(object):
 
         Returns
         -------
-        list of (key_value, time) or key_value (for immutables) database elements between specified time range
+        list of (value, time) or value (for immutables) records between specified time range
 
         Notes
         -----
@@ -147,30 +148,30 @@ class TelescopeState(object):
         Usage examples:
 
         get_range('key_name') 
-            returns most recent (key_value, time) pair or key_value (for immutable)  
+            returns most recent record  
 
         get_range('key_name',st=0)
-            returns array of all (key_value, time) pairs or key_values (for immutable) in the telescope state database
+            returns list of all records in the telescope state database
 
         get_range('key_name',st=0,et=t1)
-            returns array of all (key_value, time) pairs or key_values (for immutable) before time t1
+            returns list of all records before time t1
 
         get_range('key_name',st=t0,et=t1)
-            returns array of all (key_value, time) pairs or key_values (for immutable) between times t0 and t1
+            returns list of all records between times t0 and t1
 
         get_range('key_name',st=t0)
-            returns array of all (key_value, time) pairs or key_values (for immutable) after time t0
+            returns array of all records after time t0
 
         get_range('key_name',st=t0,et=t1,dt=dw)
             returns ValueError as this usage is ambiguous
 
         get_range('key_name',et=t1)
-            returns the most recent (key_value, time) pair or key_values (for immutable) prior to time t1
+            returns the most recent record prior to time t1
 
         Note - the above usage is inefficient, it is better to specify backward search window:
 
         get_range('key_name',et=t1,dt=tw)
-            returns the most recent (key_value, time) pair or key_value (for immutable) prior to time t1, within
+            returns the most recent record prior to time t1, within
             the time window [t1-dw,t1] or [] if no key value exists in the time window
         """
         if not self._r.exists(key): raise KeyError
