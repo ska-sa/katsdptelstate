@@ -115,26 +115,28 @@ class TelescopeState(object):
         if val is None: return default
         return val
 
-    def get_range(self, key, st=None, et=None, dt=None, return_format=None, include_previous=False):
+    def get_range(self, key, st=None, et=None, dt=None, return_format=None, include_previous=None):
         """Get the value specified by the key from the model.
 
         Parameters
         ----------
         key : string
-            database key to extract
+            Database key to extract
         st : float, optional
-            start time, default returns the most recent value prior to et
+            Start time, default returns the most recent value prior to et
         et: float, optional
-            end time, defaults to the end of time
-        dt : float, optional
-            limit the search for the key value to time interval [t-dt, t]
+            End time, defaults to the end of time
         return_format : string, optional
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
-            `None` returns values and times as 2D list of elements format (key_value, time)
-        include_previous : bool, optional
-            If `True`, the last value prior to the start time (if any) is
-            included. The current implementation has a significant performance
-            impact (it queries all values from the start)
+            'None' returns values and times as 2D list of elements format (value, time)
+        include_previous : bool or float, optional
+            Default False if st is specified, True if st is unspecified 
+            Numeric value returns [st, et) as well as the last value prior to the start time (if any),
+               within a search window given by include_previous 
+            'False' returns [st, et)
+            'True' returns [st, et) as well as the last value prior to the start time (if any),
+               with unlimited search window. The current implementation has a significant performance 
+               impact (it queries all values from the start).
 
         Returns
         -------
@@ -157,39 +159,48 @@ class TelescopeState(object):
             returns list of all records before time t1
 
         get_range('key_name',st=t0,et=t1)
-            returns list of all records between times t0 and t1
+            returns list of all records in the range [t0,t1)
 
         get_range('key_name',st=t0)
             returns array of all records after time t0
 
-        get_range('key_name',st=t0,et=t1,dt=dw)
-            returns ValueError as this usage is ambiguous
+        get_range('key_name',st=t0,et=t1,include_previous=dw)
+            returns list of all records in the range [t0,t1) plus the most recent record prior 
+            to time t0, if there is such a record in the time window [t0-dw,t0]
+
+        get_range('key_name',et=t1,include_previous=tw)
+            returns the most recent record prior to time t1, within the time window [t1-dw,t1] 
+            or [] if no key value exists in the time window
 
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
 
         Note - the above usage is inefficient, it is better to specify backward search window:
-
-        get_range('key_name',et=t1,dt=tw)
-            returns the most recent record prior to time t1, within
-            the time window [t1-dw,t1] or [] if no key value exists in the time window
         """
         if not self._r.exists(key): raise KeyError
 
-        # if dt is set, search range [et-dt,et] for key value
-        if dt is not None:
-            if (st is not None) or (et is None):
-                raise ValueError('Ambiguous set of parameters. Window parameter dt only to be used with et.')                    
-            else:
-                st = et-dt
+        # set up include_previous default values
+        if include_previous is None:
+            include_previous = True if st is None else False
 
-        # if st and et None, return most recent value
-        if st is None and et is None and not include_previous:
+        # if include_previous is True, search from the beginning
+        # if include_previous is numeric, search prior window include_previous for key value
+        orig_st = st
+        if include_previous is True:
+            st = 0
+        elif include_previous is not False:
+            if st is None: 
+                st = et - float(include_previous) 
+            else:
+                st = st - float(include_previous) 
+
+        # if st and et None, and include_previous is True, return most recent value
+        if st is None and et is None and include_previous:
             ret_list = [self._strip(self._r.zrange(key,-1,-1)[0])]
         else:
             # if st <= 0, get values from the beginning
             # if st is None or include_previous, get values from the beginning for trimming later
-            if include_previous or st <= 0.0 or st is None:
+            if include_previous is True or st <= 0.0 or st is None:
                 packed_st = '-'
                 # Negative values (including negative zero) don't sort properly when
                 # treated as byte strings
@@ -199,26 +210,26 @@ class TelescopeState(object):
             if et is None:
                 packed_et = '+'
             else:
+                if et < 0: et = 0.0
                 packed_et = '(' + struct.pack('>d', float(et))
             # get values from redis, extract into (key_value, time) pairs
             ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
             ret_list = [self._strip(str_val) for str_val in ret_vals]
 
-        # extract most recent value from list
-        if dt is not None or st is None:
-        	try:
-        		ret_list = [ret_list[-1]]
-        	except IndexError:
-        		# there was no key value in the window
-        		ret_list = []
-
         if include_previous:
-            # Find the last value prior to the start time
-            start_idx = 0
-            for idx, value in enumerate(ret_list):
-                if value[1] <= st:
-                    start_idx = idx
-            ret_list = ret_list[start_idx:]
+            if orig_st is None:
+                try:
+                    ret_list = [ret_list[-1]]
+                except IndexError:
+                    # there was no key value in the window
+                    ret_list = []
+            else:
+                # Find the last value prior to the start time
+                start_idx = 0
+                for idx, value in enumerate(ret_list):
+                    if value[1] < orig_st:
+                        start_idx = idx
+                ret_list = ret_list[start_idx:]
 
         if return_format is None:
             return ret_list
