@@ -87,6 +87,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual([(2048,4)], self.ts.get_range('test_key'))
         self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=3))
         self.assertEqual([], self.ts.get_range('test_key', et=3, include_previous=0.5))
+        self.assertEqual([], self.ts.get_range('test_key', include_previous=0.5))
         self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
         self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=2.5, include_previous=6))
         self.assertEqual([(8192,1), (16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key', st=0))

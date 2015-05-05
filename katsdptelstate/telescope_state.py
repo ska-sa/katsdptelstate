@@ -115,7 +115,7 @@ class TelescopeState(object):
         if val is None: return default
         return val
 
-    def get_range(self, key, st=None, et=None, dt=None, return_format=None, include_previous=None):
+    def get_range(self, key, st=None, et=None, return_format=None, include_previous=None):
         """Get the value specified by the key from the model.
 
         Parameters
@@ -162,20 +162,20 @@ class TelescopeState(object):
             returns list of all records in the range [t0,t1)
 
         get_range('key_name',st=t0)
-            returns array of all records after time t0
-
-        get_range('key_name',st=t0,et=t1,include_previous=dw)
-            returns list of all records in the range [t0,t1) plus the most recent record prior 
-            to time t0, if there is such a record in the time window [t0-dw,t0]
-
-        get_range('key_name',et=t1,include_previous=tw)
-            returns the most recent record prior to time t1, within the time window [t1-dw,t1] 
-            or [] if no key value exists in the time window
+            returns list of all records after time t0
 
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
 
         Note - the above usage is inefficient, it is better to specify backward search window:
+
+        get_range('key_name',et=t1,include_previous=dw)
+            returns the most recent record prior to time t1, within the time window [t1-dw,t1) 
+            or [] if no key value exists in the time window
+
+        get_range('key_name',st=t0,et=t1,include_previous=dw)
+            returns list of all records in the range [t0,t1) plus the most recent record prior 
+            to time t0, if there is such a record in the time window [t0-dw,t0)
         """
         if not self._r.exists(key): raise KeyError
 
@@ -183,24 +183,29 @@ class TelescopeState(object):
         if include_previous is None:
             include_previous = True if st is None else False
 
-        # if include_previous is True, search from the beginning
-        # if include_previous is numeric, search prior window include_previous for key value
         orig_st = st
-        if include_previous is True:
-            st = 0
-        elif include_previous is not False:
-            if st is None: 
-                st = et - float(include_previous) 
-            else:
-                st = st - float(include_previous) 
-
         # if st and et None, and include_previous is True, return most recent value
-        if st is None and et is None and include_previous:
-            ret_list = [self._strip(self._r.zrange(key,-1,-1)[0])]
+        if st is None and et is None and isinstance(include_previous,bool):
+            if include_previous is False:
+                ret_list = []
+            elif include_previous is True:
+                ret_list = [self._strip(self._r.zrange(key,-1,-1)[0])]
         else:
+            # if include_previous is True, search from the beginning
+            # if include_previous is numeric, search prior window include_previous for key value
+            if include_previous is True:
+                st = 0
+            elif include_previous is not False:
+                if et is not None:
+                    st = et - float(include_previous) if st is None else st - float(include_previous) 
+                else:
+                    et = time.time()
+                    st = et - float(include_previous) if st is None else st - float(include_previous)
+                    orig_st = st
+
             # if st <= 0, get values from the beginning
             # if st is None or include_previous, get values from the beginning for trimming later
-            if include_previous is True or st <= 0.0 or st is None:
+            if st <= 0.0 or st is None:
                 packed_st = '-'
                 # Negative values (including negative zero) don't sort properly when
                 # treated as byte strings
@@ -210,7 +215,7 @@ class TelescopeState(object):
             if et is None:
                 packed_et = '+'
             else:
-                if et < 0: et = 0.0
+                if et <= 0: et = 0.0
                 packed_et = '(' + struct.pack('>d', float(et))
             # get values from redis, extract into (key_value, time) pairs
             ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
