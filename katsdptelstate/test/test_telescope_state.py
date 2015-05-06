@@ -43,22 +43,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.delete('test_key')
 
-    def test_time_range(self):
-        self.ts.delete('test_key')
-        self.ts.add('test_key',8192,2)
-        self.ts.add('test_key',16384,3)
-        self.ts.add('test_key',4096,3)
-        self.ts.add('test_key',2048,4)
-        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key'))
-        self.assertEqual([(8192,2)], self.ts.get_range('test_key',et=3))
-        self.assertEqual([(8192,2)], self.ts.get_range('test_key',st=-1,et=2.5))
-        self.assertEqual([(16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',st=3))
-        self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
-        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',include_previous=True))
-        self.assertEqual([(8192,2), (16384,3), (4096,3), (2048,4)], self.ts.get_range('test_key',st=2.5,include_previous=True))
-        self.assertEqual([(2048,4)], self.ts.get_range('test_key',st=5,et=6,include_previous=True))
-        self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
-
     def test_immutable(self):
         self.ts.delete('test_immutable')
         self.ts.add('test_immutable',1234.5,immutable=True)
@@ -93,18 +77,28 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('x',arr[1])
         val = self.ts.get_range('x',st=0,return_format='recarray')['value']
         self.assertTrue(val.dtype == arr_type)
-        
-    def test_get_previous(self):
-        """Test get_previous method:
-              Tests that correct (most recent) value is returned."""
-        arr = [[1.,2.,3.],[0.,4.,0.],[10.,9.,7.]]
-        arr_type = type(arr[0][0])
-        self.ts.delete('x')
-        self.ts.add('x',arr[0],ts=1.0)
-        self.ts.add('x',arr[1],ts=2.5)
-        self.ts.add('x',arr[2],ts=5.0)
-        val = self.ts.get_previous('x',2.8)
-        self.assertEqual(val[0],arr[1])
+
+    def test_time_range(self):
+        self.ts.delete('test_key')
+        self.ts.add('test_key',8192,1)
+        self.ts.add('test_key',16384,2)
+        self.ts.add('test_key',4096,3)
+        self.ts.add('test_key',2048,4)
+        self.assertEqual([(2048,4)], self.ts.get_range('test_key'))
+        self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=3))
+        self.assertEqual([], self.ts.get_range('test_key', et=3, include_previous=0.5))
+        self.assertEqual([], self.ts.get_range('test_key', include_previous=0.5))
+        self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=2.5, include_previous=6))
+        self.assertEqual([(8192,1), (16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key', st=0))
+        self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key',st=0,et=3.5))
+        self.assertEqual([(8192,1)], self.ts.get_range('test_key',st=-1,et=1.5))
+        self.assertEqual([(16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key',st=2))
+        self.assertEqual([(8192,1)], self.ts.get_range('test_key',et=1.5))
+        self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
+        self.assertEqual([(8192,1), (16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key',st=1.5,include_previous=True))
+        self.assertEqual([(2048,4)], self.ts.get_range('test_key',st=5,et=6,include_previous=True))
+        self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
 
 class MockException(Exception):
     """Exception class used for monkey-patching functions that don't return."""
