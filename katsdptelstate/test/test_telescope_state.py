@@ -78,6 +78,17 @@ class TestSDPTelescopeState(unittest.TestCase):
         val = self.ts.get_range('x',st=0,return_format='recarray')['value']
         self.assertTrue(val.dtype == arr_type)
 
+    def test_return_format_type_string(self):
+        """Test recarray return format of get_range method:
+              Tests that array of variable length strings are correctly returned."""
+        self.ts.delete('x')
+        self.ts.add('x','hi')
+        self.ts.add('x','how')
+        self.ts.add('x','are')
+        self.ts.add('x','you?')
+        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        self.assertTrue(val[3] == 'you?')
+
     def test_time_range(self):
         self.ts.delete('test_key')
         self.ts.add('test_key',8192,1)
