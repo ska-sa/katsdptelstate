@@ -60,11 +60,11 @@ class TestSDPTelescopeState(unittest.TestCase):
         """Test recarray return format of get_range method:
               Tests that values returned by db are identical to the input values."""
         arr = [[1.,2.,3.],[0.,4.,0.],[10.,9.,7.]]
-        self.ts.delete('x')
-        self.ts.add('x',arr[0])
-        self.ts.add('x',arr[1])
-        self.ts.add('x',arr[2])
-        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        self.ts.delete('test_x')
+        self.ts.add('test_x',arr[0])
+        self.ts.add('test_x',arr[1])
+        self.ts.add('test_x',arr[2])
+        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
         self.assertTrue((val == arr).all())
 
     def test_return_format_type(self):
@@ -72,22 +72,22 @@ class TestSDPTelescopeState(unittest.TestCase):
               Tests that values returned by db have identical types to the input values."""
         arr = [[1.,2.,3.],[0.,4.,0.]]
         arr_type = type(arr[0][0])
-        self.ts.delete('x')
-        self.ts.add('x',arr[0])
-        self.ts.add('x',arr[1])
-        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        self.ts.delete('test_x')
+        self.ts.add('test_x',arr[0])
+        self.ts.add('test_x',arr[1])
+        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
         self.assertTrue(val.dtype == arr_type)
 
     def test_return_format_type_string(self):
         """Test recarray return format of get_range method:
               Tests that array of variable length strings are correctly returned."""
-        self.ts.delete('x')
-        self.ts.add('x','hi')
-        self.ts.add('x','how')
-        self.ts.add('x','are')
-        self.ts.add('x','you?')
+        self.ts.delete('test_x')
+        self.ts.add('test_x','hi')
+        self.ts.add('test_x','how')
+        self.ts.add('test_x','are')
+        self.ts.add('test_x','you?')
         val = self.ts.get_range('x',st=0,return_format='recarray')['value']
-        self.assertTrue(val[3] == 'you?')
+        self.assertEqual('you?', val[3])
 
     def test_time_range(self):
         self.ts.delete('test_key')
