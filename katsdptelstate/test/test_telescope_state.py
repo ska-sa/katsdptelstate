@@ -4,6 +4,7 @@ import unittest
 import redis
 import os, time
 import mock
+import numpy as np
 
 from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, ArgumentParser
 
@@ -86,7 +87,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_x','how')
         self.ts.add('test_x','are')
         self.ts.add('test_x','you?')
-        val = self.ts.get_range('x',st=0,return_format='recarray')['value']
+        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
         self.assertEqual('you?', val[3])
 
     def test_time_range(self):
@@ -98,6 +99,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual([(2048,4)], self.ts.get_range('test_key'))
         self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=3))
         self.assertEqual([], self.ts.get_range('test_key', et=3, include_previous=0.5))
+        self.assertTrue(np.array_equal(np.array([]), self.ts.get_range('test_key', et=3, include_previous=0.5, return_format='recarray')['value']))
         self.assertEqual([], self.ts.get_range('test_key', include_previous=0.5))
         self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
         self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=2.5, include_previous=6))

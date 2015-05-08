@@ -239,9 +239,11 @@ class TelescopeState(object):
         if return_format is None:
             return ret_list
         elif return_format == 'recarray':
-            val_shape = np.array(ret_list[0][0]).shape
-            val_type = np.array(ret_list[0][0]).dtype
-            if val_type.type is np.string_: val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:,0]]) 
+            val_shape, val_type = None, None
+            if not ret_list == []:
+                val_shape = np.array(ret_list[0][0]).shape 
+                val_type = np.array(ret_list[0][0]).dtype 
+                if val_type.type is np.string_: val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:,0]]) 
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
         else:
             raise ValueError('Unknown return_format {}'.format(return_format))
