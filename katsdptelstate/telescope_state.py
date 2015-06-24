@@ -61,7 +61,7 @@ class TelescopeState(object):
 
     def has_key(self, key_name):
         """Check to see if the specified key exists in the database."""
-        self._r.exists(key_name)
+        return self._r.exists(key_name)
 
     def keys(self, filter='*', show_counts=False):
         """Return a list of keys currently in the model."""
