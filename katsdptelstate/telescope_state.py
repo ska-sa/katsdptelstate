@@ -63,6 +63,10 @@ class TelescopeState(object):
         """Check to see if the specified key exists in the database."""
         return self._r.exists(key_name)
 
+    def is_immutable(self, key):
+        """Check to see if the specified key is an immutable."""
+        return self._r.type(key) == 'string'
+
     def keys(self, filter='*', show_counts=False):
         """Return a list of keys currently in the model."""
         key_list = []
@@ -178,6 +182,9 @@ class TelescopeState(object):
             to time t0, if there is such a record in the time window [t0-dw,t0)
         """
         if not self._r.exists(key): raise KeyError
+
+        if self._r.type(key) == 'string': return self._get(key)
+         # immutables return value with no timestamp information
 
         # set up include_previous default values
         if include_previous is None:
