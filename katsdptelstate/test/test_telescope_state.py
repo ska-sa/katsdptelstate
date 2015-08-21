@@ -62,6 +62,11 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertTrue(self.ts.has_key('test_key'))
         self.assertFalse(self.ts.has_key('nonexistent_test_key'))
 
+    def test_contains(self):
+        self.ts.add('test_key',1234.5)
+        self.assertTrue('test_key' in self.ts)
+        self.assertFalse('nonexistent_test_key' in self.ts)
+
     def test_return_format(self):
         """Test recarray return format of get_range method:
               Tests that values returned by db are identical to the input values."""
