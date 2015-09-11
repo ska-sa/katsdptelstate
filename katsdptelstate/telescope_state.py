@@ -80,6 +80,7 @@ class TelescopeState(object):
                 key_list.append((k,kcount))
         else:
             key_list = self._r.keys(filter)
+	key_list.sort()
         return key_list
 
     def delete(self, key):
