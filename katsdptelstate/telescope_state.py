@@ -47,6 +47,9 @@ class TelescopeState(object):
         if val is None: raise KeyError
         return val
 
+    def __contains__(self, x):
+        return self.has_key(x)
+
     def send_message(self, data, channel=None):
         """Broadcast a message to all telescope model users."""
         if channel is None: channel = self._default_channel
