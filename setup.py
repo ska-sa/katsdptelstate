@@ -9,7 +9,7 @@ setup (
     packages = find_packages(),
     package_data={'': ['conf/*']},
     include_package_data = True,
-    install_requires = ['redis'],
+    install_requires = ['redis', 'netifaces'],
     tests_require = ['mock'],
     scripts = [],
     zip_safe = False,
