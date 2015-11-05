@@ -1,14 +1,11 @@
+import redis
 import struct
 import time
 import cPickle
 import logging
 import argparse
-
-import redis
-import numpy as np
-
 from .endpoint import Endpoint, endpoint_parser
-from .timeout import Timeout
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +25,8 @@ class TelescopeState(object):
             self._r = redis.StrictRedis(host=endpoint.host, db=db)
         self._ps = self._r.pubsub(ignore_subscribe_messages=True)
         self._default_channel = 'tm_info'
-        err_msg = "Could not connect to telstate redis server '{}'".format(endpoint)
-        with Timeout(seconds=5, error_message=err_msg):
-            self._ps.subscribe(self._default_channel)
-             # subscribe to the telescope model info channel
+        self._ps.subscribe(self._default_channel)
+         # subscribe to the telescope model info channel
 
     def _strip(self, str_val):
         if len(str_val) < 8: return None
