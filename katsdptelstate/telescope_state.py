@@ -20,7 +20,8 @@ class TelescopeState(object):
         if not isinstance(endpoint, Endpoint):
             endpoint = endpoint_parser(default_port=None)(endpoint)
         if endpoint.port is not None:
-            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port, db=db)
+            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
+                                        db=db, socket_timeout=5)
         else:
             self._r = redis.StrictRedis(host=endpoint.host, db=db)
         self._ps = self._r.pubsub(ignore_subscribe_messages=True)
