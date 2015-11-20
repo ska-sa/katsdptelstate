@@ -1,3 +1,4 @@
 redis
 netifaces
 mock
+numpy
