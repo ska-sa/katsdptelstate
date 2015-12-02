@@ -32,6 +32,7 @@ class TestEndpoint(object):
         endpoint = Endpoint('hello', 80)
         assert_equal(('hello', 80), tuple(endpoint))
 
+
 class TestEndpointList(object):
     def test_parser(self):
         parser = endpoint_list_parser(1234)

@@ -2,6 +2,7 @@ import socket
 import struct
 import netifaces
 
+
 class Endpoint(object):
     """A TCP or UDP endpoint consisting of a host and a port"""
 
@@ -53,6 +54,7 @@ class Endpoint(object):
             else:
                 return False
 
+
 def endpoint_parser(default_port):
     """Return a factory function that parses a string. The string is either
     `hostname`, or `hostname:port`, where `port` is an integer. IPv6 addresses
@@ -84,6 +86,7 @@ def endpoint_parser(default_port):
                 raise ValueError(str(e))
         return Endpoint(host, port)
     return parser
+
 
 def endpoint_list_parser(default_port, single_port=False):
     """Return a factory function that parses a string. The string comprises

@@ -7,6 +7,7 @@ import numpy as np
 
 from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, ArgumentParser
 
+
 class TestSDPTelescopeState(unittest.TestCase):
     @classmethod
     def setUpClass(self):
@@ -26,105 +27,107 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts._r.delete('test_immutable')
 
     def test_basic_add(self):
-        self.ts.add('test_key',1234.5)
+        self.ts.add('test_key', 1234.5)
         self.assertEqual(self.ts.test_key, 1234.5)
         self.assertEqual(self.ts['test_key'], 1234.5)
-        
+
         self.ts.delete('test_key')
         with self.assertRaises(AttributeError):
             self.ts.test_key
 
     def test_method_protection(self):
         with self.assertRaises(InvalidKeyError):
-            self.ts.add('get',1234.5)
+            self.ts.add('get', 1234.5)
 
     def test_delete(self):
-        self.ts.add('test_key',1234.5)
+        self.ts.add('test_key', 1234.5)
         self.ts.delete('test_key')
         self.ts.delete('test_key')
 
     def test_immutable(self):
         self.ts.delete('test_immutable')
-        self.ts.add('test_immutable',1234.5,immutable=True)
+        self.ts.add('test_immutable', 1234.5, immutable=True)
         with self.assertRaises(ImmutableKeyError):
-            self.ts.add('test_immutable',1234.5)
-        
+            self.ts.add('test_immutable', 1234.5)
+
     def test_complex_store(self):
         import numpy as np
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
         self.ts.delete('test_key')
-        self.ts.add('test_key',x)
+        self.ts.add('test_key', x)
         self.assertTrue((self.ts.test_key == x).all())
 
     def test_has_key(self):
-        self.ts.add('test_key',1234.5)
+        self.ts.add('test_key', 1234.5)
         self.assertTrue(self.ts.has_key('test_key'))
         self.assertFalse(self.ts.has_key('nonexistent_test_key'))
 
     def test_contains(self):
-        self.ts.add('test_key',1234.5)
+        self.ts.add('test_key', 1234.5)
         self.assertTrue('test_key' in self.ts)
         self.assertFalse('nonexistent_test_key' in self.ts)
 
     def test_return_format(self):
         """Test recarray return format of get_range method:
               Tests that values returned by db are identical to the input values."""
-        arr = [[1.,2.,3.],[0.,4.,0.],[10.,9.,7.]]
+        arr = [[1., 2., 3.], [0., 4., 0.], [10., 9., 7.]]
         self.ts.delete('test_x')
-        self.ts.add('test_x',arr[0])
-        self.ts.add('test_x',arr[1])
-        self.ts.add('test_x',arr[2])
-        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
+        self.ts.add('test_x', arr[0])
+        self.ts.add('test_x', arr[1])
+        self.ts.add('test_x', arr[2])
+        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
         self.assertTrue((val == arr).all())
 
     def test_return_format_type(self):
         """Test recarray return format of get_range method:
               Tests that values returned by db have identical types to the input values."""
-        arr = [[1.,2.,3.],[0.,4.,0.]]
+        arr = [[1., 2., 3.], [0., 4., 0.]]
         arr_type = type(arr[0][0])
         self.ts.delete('test_x')
-        self.ts.add('test_x',arr[0])
-        self.ts.add('test_x',arr[1])
-        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
+        self.ts.add('test_x', arr[0])
+        self.ts.add('test_x', arr[1])
+        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
         self.assertTrue(val.dtype == arr_type)
 
     def test_return_format_type_string(self):
         """Test recarray return format of get_range method:
               Tests that array of variable length strings are correctly returned."""
         self.ts.delete('test_x')
-        self.ts.add('test_x','hi')
-        self.ts.add('test_x','how')
-        self.ts.add('test_x','are')
-        self.ts.add('test_x','you?')
-        val = self.ts.get_range('test_x',st=0,return_format='recarray')['value']
+        self.ts.add('test_x', 'hi')
+        self.ts.add('test_x', 'how')
+        self.ts.add('test_x', 'are')
+        self.ts.add('test_x', 'you?')
+        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
         self.assertEqual('you?', val[3])
 
     def test_time_range(self):
         self.ts.delete('test_key')
-        self.ts.add('test_key',8192,1)
-        self.ts.add('test_key',16384,2)
-        self.ts.add('test_key',4096,3)
-        self.ts.add('test_key',2048,4)
-        self.assertEqual([(2048,4)], self.ts.get_range('test_key'))
-        self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=3))
+        self.ts.add('test_key', 8192, 1)
+        self.ts.add('test_key', 16384, 2)
+        self.ts.add('test_key', 4096, 3)
+        self.ts.add('test_key', 2048, 4)
+        self.assertEqual([(2048, 4)], self.ts.get_range('test_key'))
+        self.assertEqual([(16384, 2)], self.ts.get_range('test_key', et=3))
         self.assertEqual([], self.ts.get_range('test_key', et=3, include_previous=0.5))
         self.assertTrue(np.array_equal(np.array([]), self.ts.get_range('test_key', et=3, include_previous=0.5, return_format='recarray')['value']))
         self.assertEqual([], self.ts.get_range('test_key', include_previous=0.5))
-        self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
-        self.assertEqual([(16384,2)], self.ts.get_range('test_key', et=2.5, include_previous=6))
-        self.assertEqual([(8192,1), (16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key', st=0))
-        self.assertEqual([(8192,1), (16384,2), (4096,3)], self.ts.get_range('test_key',st=0,et=3.5))
-        self.assertEqual([(8192,1)], self.ts.get_range('test_key',st=-1,et=1.5))
-        self.assertEqual([(16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key',st=2))
-        self.assertEqual([(8192,1)], self.ts.get_range('test_key',et=1.5))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(16384, 2)], self.ts.get_range('test_key', et=2.5, include_previous=6))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=0))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=0, et=3.5))
+        self.assertEqual([(8192, 1)], self.ts.get_range('test_key', st=-1, et=1.5))
+        self.assertEqual([(16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=2))
+        self.assertEqual([(8192, 1)], self.ts.get_range('test_key', et=1.5))
         self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
-        self.assertEqual([(8192,1), (16384,2), (4096,3), (2048,4)], self.ts.get_range('test_key',st=1.5,include_previous=True))
-        self.assertEqual([(2048,4)], self.ts.get_range('test_key',st=5,et=6,include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
+        self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
+
 
 class MockException(Exception):
     """Exception class used for monkey-patching functions that don't return."""
     pass
+
 
 class TestArgumentParser(unittest.TestCase):
     def _stub_get(self, name, default=None):
