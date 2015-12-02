@@ -4,16 +4,20 @@ import time
 import cPickle
 import logging
 import argparse
-from .endpoint import Endpoint, endpoint_parser
 import numpy as np
 
+from .endpoint import Endpoint, endpoint_parser
+
+
 logger = logging.getLogger(__name__)
+
 
 class InvalidKeyError(Exception):
     pass
 
 class ImmutableKeyError(Exception):
     pass
+
 
 class TelescopeState(object):
     def __init__(self, endpoint='localhost', db=0):
@@ -31,19 +35,19 @@ class TelescopeState(object):
 
     def _strip(self, str_val):
         if len(str_val) < 8: return None
-        ts = struct.unpack('>d',str_val[:8])[0]
+        ts = struct.unpack('>d', str_val[:8])[0]
         try:
             ret_val = cPickle.loads(str_val[8:])
         except cPickle.UnpicklingError:
             ret_val = str_val[8:]
-        return (ret_val,ts)
+        return (ret_val, ts)
 
     def __getattr__(self, key):
         val = self._get(key)
         if val is None: raise AttributeError
         return val
 
-    def __getitem__(self,key):
+    def __getitem__(self, key):
         val = self._get(key)
         if val is None: raise KeyError
         return val
@@ -81,10 +85,10 @@ class TelescopeState(object):
                     kcount = self._r.zcard(k)
                 except redis.ResponseError:
                     kcount = 1
-                key_list.append((k,kcount))
+                key_list.append((k, kcount))
         else:
             key_list = self._r.keys(filter)
-	key_list.sort()
+        key_list.sort()
         return key_list
 
     def delete(self, key):
@@ -103,8 +107,8 @@ class TelescopeState(object):
         if immutable:
             return self._r.set(key, cPickle.dumps(value))
         else:
-            packed_ts = struct.pack('>d',float(ts))
-            return self._r.zadd(key, 0, "{}{}".format(packed_ts,cPickle.dumps(value)))
+            packed_ts = struct.pack('>d', float(ts))
+            return self._r.zadd(key, 0, "{}{}".format(packed_ts, cPickle.dumps(value)))
 
     def _get(self, key):
         if self._r.exists(key):
@@ -116,7 +120,7 @@ class TelescopeState(object):
                 except cPickle.UnpicklingError:
                     return str_val
             except redis.ResponseError:
-                return self._strip(self._r.zrange(key,-1,-1)[0])[0]
+                return self._strip(self._r.zrange(key, -1, -1)[0])[0]
         return None
 
     def get(self, key, default=None):
@@ -139,12 +143,12 @@ class TelescopeState(object):
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
             'None' returns values and times as 2D list of elements format (value, time)
         include_previous : bool or float, optional
-            Default False if st is specified, True if st is unspecified 
+            Default False if st is specified, True if st is unspecified
             Numeric value returns [st, et) as well as the last value prior to the start time (if any),
-               within a search window given by include_previous 
+               within a search window given by include_previous
             'False' returns [st, et)
             'True' returns [st, et) as well as the last value prior to the start time (if any),
-               with unlimited search window. The current implementation has a significant performance 
+               with unlimited search window. The current implementation has a significant performance
                impact (it queries all values from the start).
 
         Returns
@@ -158,8 +162,8 @@ class TelescopeState(object):
 
         Usage examples:
 
-        get_range('key_name') 
-            returns most recent record  
+        get_range('key_name')
+            returns most recent record
 
         get_range('key_name',st=0)
             returns list of all records in the telescope state database
@@ -179,11 +183,11 @@ class TelescopeState(object):
         Note - the above usage is inefficient, it is better to specify backward search window:
 
         get_range('key_name',et=t1,include_previous=dw)
-            returns the most recent record prior to time t1, within the time window [t1-dw,t1) 
+            returns the most recent record prior to time t1, within the time window [t1-dw,t1)
             or [] if no key value exists in the time window
 
         get_range('key_name',st=t0,et=t1,include_previous=dw)
-            returns list of all records in the range [t0,t1) plus the most recent record prior 
+            returns list of all records in the range [t0,t1) plus the most recent record prior
             to time t0, if there is such a record in the time window [t0-dw,t0)
         """
         if not self._r.exists(key): raise KeyError
@@ -197,11 +201,11 @@ class TelescopeState(object):
 
         orig_st = st
         # if st and et None, and include_previous is True, return most recent value
-        if st is None and et is None and isinstance(include_previous,bool):
+        if st is None and et is None and isinstance(include_previous, bool):
             if include_previous is False:
                 ret_list = []
             elif include_previous is True:
-                ret_list = [self._strip(self._r.zrange(key,-1,-1)[0])]
+                ret_list = [self._strip(self._r.zrange(key, -1, -1)[0])]
         else:
             # if include_previous is True, search from the beginning
             # if include_previous is numeric, search prior window include_previous for key value
@@ -209,7 +213,7 @@ class TelescopeState(object):
                 st = 0
             elif include_previous is not False:
                 if et is not None:
-                    st = et - float(include_previous) if st is None else st - float(include_previous) 
+                    st = et - float(include_previous) if st is None else st - float(include_previous)
                 else:
                     et = time.time()
                     st = et - float(include_previous) if st is None else st - float(include_previous)
@@ -253,12 +257,13 @@ class TelescopeState(object):
         elif return_format == 'recarray':
             val_shape, val_type = None, None
             if ret_list != []:
-                val_shape = np.array(ret_list[0][0]).shape 
-                val_type = np.array(ret_list[0][0]).dtype 
-                if val_type.type is np.string_: val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:,0]]) 
+                val_shape = np.array(ret_list[0][0]).shape
+                val_type = np.array(ret_list[0][0]).dtype
+                if val_type.type is np.string_: val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:, 0]])
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
         else:
             raise ValueError('Unknown return_format {}'.format(return_format))
+
 
 class _HelpAction(argparse.Action):
     """Class modelled on argparse._HelpAction that prints help for the

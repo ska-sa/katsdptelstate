@@ -1,7 +1,9 @@
-#!/usr/bin/env python
+"""Tests for the Endpoint class."""
+
+from nose.tools import assert_equal, assert_raises
 
 from katsdptelstate.endpoint import Endpoint, endpoint_parser, endpoint_list_parser
-from nose.tools import *
+
 
 class TestEndpoint(object):
     def test_str(self):
@@ -29,6 +31,7 @@ class TestEndpoint(object):
     def test_iter(self):
         endpoint = Endpoint('hello', 80)
         assert_equal(('hello', 80), tuple(endpoint))
+
 
 class TestEndpointList(object):
     def test_parser(self):
