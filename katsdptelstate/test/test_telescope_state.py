@@ -2,7 +2,6 @@
 
 import unittest
 import redis
-import os, time
 import mock
 import numpy as np
 
@@ -240,7 +239,7 @@ class TestArgumentParser(unittest.TestCase):
         # expecting the function to return.
         with mock.patch.object(self.parser, 'error', autospec=True, side_effect=MockException) as mock_error:
             with self.assertRaises(MockException):
-                args = self.parser.parse_args(['--telstate=example.com', 'hello'])
+                self.parser.parse_args(['--telstate=example.com', 'hello'])
             mock_error.assert_called_once_with(mock.ANY)
 
     def test_help(self):
@@ -249,7 +248,7 @@ class TestArgumentParser(unittest.TestCase):
         # expecting the function to return.
         with mock.patch.object(self.parser, 'exit', autospec=True, side_effect=MockException) as mock_exit:
             with self.assertRaises(MockException):
-                args = self.parser.parse_args(['--telstate=example.com', '--help'])
+                self.parser.parse_args(['--telstate=example.com', '--help'])
             mock_exit.assert_called_once_with()
             # Make sure we did not try to construct a telescope state
             self.assertItemsEqual([], self.TelescopeState.call_args_list)
