@@ -45,9 +45,11 @@ class TestEndpointList(object):
             Endpoint('192.168.1.0', 1234),
             Endpoint('192.168.1.1', 1234),
             Endpoint('192.168.1.2', 1234),
+            Endpoint('192.168.1.3', 1234),
             Endpoint('10.0.255.255', 60),
             Endpoint('10.1.0.0', 60),
-            Endpoint('10.1.0.1', 60)
+            Endpoint('10.1.0.1', 60),
+            Endpoint('10.1.0.2', 60)
         ]
         assert_equal(expected, endpoints)
 
