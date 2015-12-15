@@ -93,7 +93,8 @@ def endpoint_list_parser(default_port, single_port=False):
     a comma-separated list, each element of which is of the form taken by
     :func:`endpoint_parser`. Optionally, the hostname may be followed by
     `+count`, where `count` is an integer specifying a number of sequential
-    IP addresses. This variation is only valid with IPv4 addresses.
+    IP addresses (in addition to the explicitly named one). This variation is
+    only valid with IPv4 addresses.
 
     If `single_port` is true, then it will reject any list that contains
     more than one distinct port number, as well as an empty list. This allows
@@ -109,11 +110,11 @@ def endpoint_list_parser(default_port, single_port=False):
             if pos != -1:
                 start = endpoint.host[:pos]
                 count = int(endpoint.host[pos+1:])
-                if count <= 0:
+                if count < 0:
                     raise ValueError('bad count {0}'.format(count))
                 try:
                     start_raw = struct.unpack('>I', socket.inet_aton(start))[0]
-                    for i in range(start_raw, start_raw + count):
+                    for i in range(start_raw, start_raw + count + 1):
                         host = socket.inet_ntoa(struct.pack('>I', i))
                         endpoints.append(Endpoint(host, endpoint.port))
                 except socket.error:
