@@ -5,6 +5,8 @@ setup (
     name = "katsdptelstate",
     description = "Karoo Array Telescope - Telescope State Client",
     author = "Simon Ratcliffe",
+    author_email="sratcliffe@ska.ac.za",
+    url='https://github.com/ska-sa/katsdptelstate',
     packages = find_packages(),
     package_data={'': ['conf/*']},
     include_package_data = True,
