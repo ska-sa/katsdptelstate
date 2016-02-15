@@ -3,7 +3,6 @@ from setuptools import setup, find_packages
 
 setup (
     name = "katsdptelstate",
-    version = "trunk",
     description = "Karoo Array Telescope - Telescope State Client",
     author = "Simon Ratcliffe",
     packages = find_packages(),
@@ -13,4 +12,6 @@ setup (
     tests_require = ['mock'],
     scripts = [],
     zip_safe = False,
+    setup_requires=['katversion'],
+    use_katversion=True,
 )
