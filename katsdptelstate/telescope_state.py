@@ -103,7 +103,7 @@ class TelescopeState(object):
         if ts is None and not immutable: ts = time.time()
         existing_type = self._r.type(key)
         if existing_type == 'string':
-            raise ImmutableKeyError("Attempt to overwrite immutable key.")
+            raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
         if immutable:
             return self._r.set(key, cPickle.dumps(value))
         else:
