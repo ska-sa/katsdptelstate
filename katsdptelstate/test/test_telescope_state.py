@@ -49,6 +49,10 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_immutable', 1234.5, immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_immutable', 1234.5)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_immutable', 5432.1, immutable=True)
+        # Same value may be set
+        self.ts.add('test_immutable', 1234.5, immutable=True)
 
     def test_complex_store(self):
         import numpy as np
