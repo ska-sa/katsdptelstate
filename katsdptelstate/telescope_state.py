@@ -96,13 +96,44 @@ class TelescopeState(object):
         return self._r.delete(key)
 
     def add(self, key, value, ts=None, immutable=False):
-        """Add a new key / value pair to the model."""
+        """Add a new key / value pair to the model.
+
+        If `immutable` is true, then either the key must not previously have
+        been set, or it must have been previous set immutable with exactly the
+        same value (same pickle). Thus, immutable keys only ever have one value
+        for the lifetime of the telescope state. They also have no associated
+        timestamp.
+
+        Parameters
+        ----------
+        key : str
+            Key name, which must not collide with a class attribute
+        value : object
+            Arbitrary value (must be picklable)
+        ts : float, optional
+            Timestamp associated with the update, ignored for immutables. If not
+            specified, defaults to ``time.time()``.
+        immutable : bool, optional
+            See description above.
+
+        Raises
+        ------
+        InvalidKeyError
+            if `key` collides with a class member name
+        ImmutableKeyError
+            if an attempt is made to change the value of an immutable
+        redis.ResponseError
+            if `key` already exists with a different mutability
+        """
         if self.__class__.__dict__.has_key(key):
             raise InvalidKeyError("The specified key already exists as a class method and thus cannot be used.")
          # check that we are not going to munge a class method
         if ts is None and not immutable: ts = time.time()
         existing_type = self._r.type(key)
         if existing_type == 'string':
+            if immutable and cPickle.dumps(value) == self._r.get(key):
+                logger.info('Attribute {} updated with the same value'.format(key))
+                return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
         if immutable:
             return self._r.set(key, cPickle.dumps(value))
