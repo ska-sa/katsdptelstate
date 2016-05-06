@@ -36,7 +36,7 @@ class TelescopeState(object):
     def _strip(self, str_val, return_pickle=False):
         if len(str_val) < 8: return None
         ts = struct.unpack('>d', str_val[:8])[0]
-        if return_pickle: return (str_val, ts)
+        if return_pickle: return (str_val[8:], ts)
         try:
             ret_val = cPickle.loads(str_val[8:])
         except cPickle.UnpicklingError:
@@ -165,7 +165,7 @@ class TelescopeState(object):
             Object to return if key not found
         return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
-            'True' - return values are kept in cPickle form.
+            'True' - return values are retained in pickled form.
 
         Returns
         -------
@@ -177,7 +177,7 @@ class TelescopeState(object):
         return val
 
     def get_range(self, key, st=None, et=None, return_format=None, include_previous=None, return_pickle=False):
-        """Get the range of value specified by the key and timespec from the model.
+        """Get the range of values specified by the key and timespec from the model.
 
         Parameters
         ----------
@@ -200,7 +200,7 @@ class TelescopeState(object):
                impact (it queries all values from the start).
         return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
-            'True' - return values are kept in cPickle form.
+            'True' - return values are retained in pickled form.
 
         Returns
         -------

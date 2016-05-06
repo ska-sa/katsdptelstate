@@ -44,6 +44,27 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.delete('test_key')
 
+    def test_return_pickle(self):
+        import numpy as np
+        import cPickle
+        x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
+        self.ts.add('test_key', x)
+        x_unpickled = self.ts.get('test_key')
+        self.assertTrue((x_unpickled == x).all())
+        x_pickled = self.ts.get('test_key', return_pickle=True)
+        self.assertEqual(x_pickled, cPickle.dumps(x))
+
+    def test_return_pickle_range(self):
+        import numpy as np
+        import cPickle
+        import time
+        test_values = ['Test Value: {}'.format(x) for x in range(5)]
+        for i,test_value in enumerate(test_values): self.ts.add('test_key',test_value,i)
+        stored_values = self.ts.get_range('test_key', st=0)
+        self.assertEqual(stored_values[2][0], test_values[2])
+        stored_values_pickled = self.ts.get_range('test_key', st=0, return_pickle=True)
+        self.assertEqual(stored_values_pickled[2][0], cPickle.dumps(test_values[2]))
+
     def test_immutable(self):
         self.ts.delete('test_immutable')
         self.ts.add('test_immutable', 1234.5, immutable=True)
