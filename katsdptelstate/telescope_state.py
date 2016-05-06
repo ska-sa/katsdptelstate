@@ -36,7 +36,7 @@ class TelescopeState(object):
     def _strip(self, str_val, return_pickle=False):
         if len(str_val) < 8: return None
         ts = struct.unpack('>d', str_val[:8])[0]
-        if return_pickle: return (ret_val, ts)
+        if return_pickle: return (str_val, ts)
         try:
             ret_val = cPickle.loads(str_val[8:])
         except cPickle.UnpicklingError:
