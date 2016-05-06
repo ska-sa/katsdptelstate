@@ -33,9 +33,10 @@ class TelescopeState(object):
         self._ps.subscribe(self._default_channel)
          # subscribe to the telescope model info channel
 
-    def _strip(self, str_val):
+    def _strip(self, str_val, return_pickle=False):
         if len(str_val) < 8: return None
         ts = struct.unpack('>d', str_val[:8])[0]
+        if return_pickle: return (str_val[8:], ts)
         try:
             ret_val = cPickle.loads(str_val[8:])
         except cPickle.UnpicklingError:
@@ -141,26 +142,42 @@ class TelescopeState(object):
             packed_ts = struct.pack('>d', float(ts))
             return self._r.zadd(key, 0, "{}{}".format(packed_ts, cPickle.dumps(value)))
 
-    def _get(self, key):
+    def _get(self, key, return_pickle=False):
         if self._r.exists(key):
             try:
                 str_val = self._r.get(key)
                  # assume simple string type for immutable
+                if return_pickle: return str_val
                 try:
                     return cPickle.loads(str_val)
                 except cPickle.UnpicklingError:
                     return str_val
             except redis.ResponseError:
-                return self._strip(self._r.zrange(key, -1, -1)[0])[0]
+                return self._strip(self._r.zrange(key, -1, -1)[0], return_pickle)[0]
         return None
 
-    def get(self, key, default=None):
-        val = self._get(key)
+    def get(self, key, default=None, return_pickle=False):
+        """Get a single value from the model.
+
+        Parameters
+        ----------
+        default : object, optional
+            Object to return if key not found
+        return_pickle : bool, optional
+            Default 'False' - return values are unpickled from internal storage before returning
+            'True' - return values are retained in pickled form.
+
+        Returns
+        -------
+        value - for non immutable key return the most recent value
+
+        """
+        val = self._get(key, return_pickle)
         if val is None: return default
         return val
 
-    def get_range(self, key, st=None, et=None, return_format=None, include_previous=None):
-        """Get the value specified by the key from the model.
+    def get_range(self, key, st=None, et=None, return_format=None, include_previous=None, return_pickle=False):
+        """Get the range of values specified by the key and timespec from the model.
 
         Parameters
         ----------
@@ -181,6 +198,9 @@ class TelescopeState(object):
             'True' returns [st, et) as well as the last value prior to the start time (if any),
                with unlimited search window. The current implementation has a significant performance
                impact (it queries all values from the start).
+        return_pickle : bool, optional
+            Default 'False' - return values are unpickled from internal storage before returning
+            'True' - return values are retained in pickled form.
 
         Returns
         -------
@@ -236,7 +256,7 @@ class TelescopeState(object):
             if include_previous is False:
                 ret_list = []
             elif include_previous is True:
-                ret_list = [self._strip(self._r.zrange(key, -1, -1)[0])]
+                ret_list = [self._strip(self._r.zrange(key, -1, -1)[0], return_pickle)]
         else:
             # if include_previous is True, search from the beginning
             # if include_previous is numeric, search prior window include_previous for key value
@@ -266,7 +286,7 @@ class TelescopeState(object):
                 packed_et = '(' + struct.pack('>d', float(et))
             # get values from redis, extract into (key_value, time) pairs
             ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
-            ret_list = [self._strip(str_val) for str_val in ret_vals]
+            ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
 
         if include_previous:
             if orig_st is None:
