@@ -163,7 +163,7 @@ class TelescopeState(object):
         ----------
         default : object, optional
             Object to return if key not found
-        return_pickle : boolean, optional
+        return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
             'True' - return values are kept in cPickle form.
 
@@ -198,7 +198,7 @@ class TelescopeState(object):
             'True' returns [st, et) as well as the last value prior to the start time (if any),
                with unlimited search window. The current implementation has a significant performance
                impact (it queries all values from the start).
-        return_pickle : boolean, optional
+        return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
             'True' - return values are kept in cPickle form.
 
