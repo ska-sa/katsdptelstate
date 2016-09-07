@@ -1,16 +1,17 @@
 """Tests for the sdp telescope state client."""
 
+import threading
+import time
 import unittest
 import redis
 import mock
 import numpy as np
 
-from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, ArgumentParser
+from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, TimeoutError, ArgumentParser
 
 
 class TestSDPTelescopeState(unittest.TestCase):
-    @classmethod
-    def setUpClass(self):
+    def setUp(self):
         try:
             self.ts = TelescopeState()
              # expects a reachable redis instance to be running locally
@@ -21,8 +22,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts._r.delete('test_immutable')
          # make sure we are clean
 
-    @classmethod
-    def tearDownClass(self):
+    def tearDown(self):
         self.ts._r.delete('test_key')
         self.ts._r.delete('test_immutable')
 
@@ -149,6 +149,27 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
+
+    def test_wait_key_already_done(self):
+        """Calling wait_key with a condition that is met must return."""
+        self.ts.add('test_key', 123)
+        self.ts.wait_key('test_key', lambda value: value == 123)
+
+    def test_wait_key_timeout(self):
+        """wait_key must time out in the given time if the condition is not met"""
+        with self.assertRaises(TimeoutError):
+            self.ts.wait_key('test_key', timeout=0.1)
+
+    def test_wait_key_delayed(self):
+        def set_key():
+            self.ts.add('test_key', 123)
+            time.sleep(0.1)
+            self.ts.add('test_key', 234)
+        thread = threading.Thread(target=set_key)
+        thread.start()
+        self.ts.wait_key('test_key', lambda value: value == 234, timeout=2)
+        self.assertEqual(234, self.ts.get('test_key'))
+        thread.join()
 
 
 class MockException(Exception):

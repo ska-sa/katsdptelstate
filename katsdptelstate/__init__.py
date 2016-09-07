@@ -1,4 +1,5 @@
-from .telescope_state import TelescopeState, InvalidKeyError, ImmutableKeyError, ArgumentParser
+from .telescope_state import (TelescopeState, InvalidKeyError, ImmutableKeyError,
+                              TimeoutError, ArgumentParser)
 
 # BEGIN VERSION CHECK
 # Get package version when locally imported from repo or via -e develop install
