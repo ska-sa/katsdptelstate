@@ -147,6 +147,7 @@ class TelescopeState(object):
             packed_ts = struct.pack('>d', float(ts))
             ret = self._r.zadd(key, 0, "{}{}".format(packed_ts, pickled))
         self._r.publish('update/' + key, pickled)
+        return ret
 
     def wait_key(self, key, condition=None, timeout=None):
         """Wait for a key to exist, possibly with some condition.
