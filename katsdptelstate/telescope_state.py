@@ -5,6 +5,7 @@ import cPickle
 import logging
 import argparse
 import numpy as np
+import contextlib
 
 from .endpoint import Endpoint, endpoint_parser
 
@@ -16,6 +17,9 @@ class InvalidKeyError(Exception):
     pass
 
 class ImmutableKeyError(Exception):
+    pass
+
+class TimeoutError(Exception):
     pass
 
 
@@ -136,11 +140,73 @@ class TelescopeState(object):
                 logger.info('Attribute {} updated with the same value'.format(key))
                 return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
+        pickled = cPickle.dumps(value)
         if immutable:
-            return self._r.set(key, cPickle.dumps(value))
+            ret = self._r.set(key, pickled)
         else:
             packed_ts = struct.pack('>d', float(ts))
-            return self._r.zadd(key, 0, "{}{}".format(packed_ts, cPickle.dumps(value)))
+            ret = self._r.zadd(key, 0, "{}{}".format(packed_ts, pickled))
+        self._r.publish('update/' + key, pickled)
+        return ret
+
+    def wait_key(self, key, condition=None, timeout=None):
+        """Wait for a key to exist, possibly with some condition.
+
+        Parameters
+        ----------
+        key : str
+            Key name to monitor
+        condition : callable, optional
+            If not specified, wait until the key exists. Otherwise, it must
+            take a single argument, the value of the key, and return a
+            boolean to indicate whether the condition is satisfied.
+        timeout : float, optional
+            If specified and the condition is not met within the time limit,
+            an exception is thrown.
+
+        Raises
+        ------
+        TimeoutError
+            if a timeout was specified and was exceeded
+        """
+        def check():
+            if self._r.exists(key):
+                value = self._get(key)
+                return condition(value)
+
+        if condition is None:
+            condition = lambda value: True
+        # First check if condition is already satisfied, in which case we
+        # don't need to create a pubsub connection.
+        if check():
+            return
+        p = self._r.pubsub()
+        p.subscribe('update/' + key)
+        with contextlib.closing(p):
+            start = time.time()
+            while True:
+                # redis-py automatically reconnects to the server if the connection
+                # goes down, but we might miss messages in that case. So rather
+                # than waiting an arbitrarily long time, we make sure to poll from
+                # time to time
+                get_timeout = 1.0
+                if timeout is not None:
+                    remain = (start + timeout) - time.time()
+                    if remain <= 0:
+                        raise TimeoutError()
+                    get_timeout = min(get_timeout, remain)
+                message = p.get_message(timeout=get_timeout)
+                if message is None:
+                    continue
+                if message['type'] == 'subscribe':
+                    # An update may have happened between our first check and our
+                    # subscription taking effects, so check again
+                    if check():
+                        return
+                elif message['type'] == 'message':
+                    value = cPickle.loads(message['data'])
+                    if condition(value):
+                        return
 
     def _get(self, key, return_pickle=False):
         if self._r.exists(key):
