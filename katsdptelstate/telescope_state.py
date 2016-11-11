@@ -416,10 +416,17 @@ class ArgumentParser(argparse.ArgumentParser):
     If `name` is specified, it consists of a dot-separated list of
     identifiers, specifying a path through a tree of dictionaries of config.
     For example, `foo.0` will cause configuration to be searched in
-    `config`, `config["foo"]` and `config["foo"]["0"]`. If configuration is
-    found in multiple places, the most specific location will be used first.
-    It is not an error for one of these dictionaries not to exist, but it is
-    an error if a name is found but is not a dictionary.
+    `config`, `config["foo"]`, `config["foo"]["0"]`, `config.foo` and
+    `config.foo.0`. If configuration is found in multiple places, the most
+    specific location will be used first, breaking ties to use `config.*`
+    in preference to embedded dictionaries within `config`. It is not an error
+    for one of these dictionaries not to exist, but it is an error if a name is
+    found but is not a dictionary.
+
+    New code generating config dictionaries is advised to use the `config.*`
+    form, as it is more scalable (no need to fetch unrelated config).
+    Sub-config embedded within `config` is supported for backwards
+    compatibility.
 
     A side-effect of the implementation is that calling `parse_args` or
     `parse_known_args` permanently changes the defaults. A parser should thus
@@ -460,11 +467,15 @@ class ArgumentParser(argparse.ArgumentParser):
         parts = name.split('.')
         cur = config_dict
         dicts = [cur]
+        split_name = self.config_key
         for part in parts:
-            cur = cur.get(part)
-            if cur is None:
-                break
-            dicts.append(cur)
+            if cur is not None:
+                cur = cur.get(part)
+                if cur is not None:
+                    dicts.append(cur)
+            split_name += '.'
+            split_name += part
+            dicts.append(telstate.get(split_name, {}))
 
         # Go from most specific to most general, so that specific values
         # take precedence.

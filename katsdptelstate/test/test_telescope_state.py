@@ -179,10 +179,7 @@ class MockException(Exception):
 
 class TestArgumentParser(unittest.TestCase):
     def _stub_get(self, name, default=None):
-        if name == 'config':
-            return self.config
-        else:
-            return default
+        return self.data.get(name, default)
 
     def setUp(self):
         # Set up a mock version of TelescopeState which applies for the whole test
@@ -197,18 +194,23 @@ class TestArgumentParser(unittest.TestCase):
         self.parser.add_argument('--float-arg', type=float, default=3.5)
         self.parser.add_argument('--no-default', type=str)
         self.parser.add_argument('--bool-arg', action='store_true', default=False)
-        self.config = {
-            'int_arg': 10,
-            'float_arg': 4.5,
-            'no_default': 'telstate',
-            'bool_arg': True,
-            'not_arg': 'should not be seen',
-            'telstate': 'example.org',
-            'level1': {
-                'int_arg': 11,
-                'level2': {
-                    'float_arg': 12.5
+        self.data = {
+            'config': {
+                'int_arg': 10,
+                'float_arg': 4.5,
+                'no_default': 'telstate',
+                'bool_arg': True,
+                'not_arg': 'should not be seen',
+                'telstate': 'example.org',
+                'level1': {
+                    'int_arg': 11,
+                    'level2': {
+                        'float_arg': 5.5
+                    }
                 }
+            },
+            'config.level1.level2': {
+                'float_arg': 12.5
             }
         }
 
@@ -275,17 +277,15 @@ class TestArgumentParser(unittest.TestCase):
         self.assertEqual(10, args.int_arg)
 
     def test_convert_argument(self):
-        """String argument in telescope state that cannot be converted must be
-        converted to the appropriate type.
-        """
-        self.config['int_arg'] = '50'
+        """String argument in telescope state that must be converted to the appropriate type."""
+        self.data['config']['int_arg'] = '50'
         args = self.parser.parse_args(['--telstate=example.com', 'hello'])
         self.assertEqual(50, args.int_arg)
 
     def test_bad_argument(self):
         """String argument in telescope state that cannot be converted must
         raise an error."""
-        self.config['int_arg'] = 'not an int'
+        self.data['config']['int_arg'] = 'not an int'
         # We make the mock raise an exception, since the patched code is not
         # expecting the function to return.
         with mock.patch.object(self.parser, 'error', autospec=True, side_effect=MockException) as mock_error:
