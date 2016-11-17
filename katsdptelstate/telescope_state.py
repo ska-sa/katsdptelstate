@@ -1,7 +1,11 @@
+from __future__ import print_function, division, absolute_import
 import redis
 import struct
 import time
-import cPickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import logging
 import argparse
 import numpy as np
@@ -42,8 +46,8 @@ class TelescopeState(object):
         ts = struct.unpack('>d', str_val[:8])[0]
         if return_pickle: return (str_val[8:], ts)
         try:
-            ret_val = cPickle.loads(str_val[8:])
-        except cPickle.UnpicklingError:
+            ret_val = pickle.loads(str_val[8:])
+        except pickle.UnpicklingError:
             ret_val = str_val[8:]
         return (ret_val, ts)
 
@@ -78,7 +82,7 @@ class TelescopeState(object):
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        return self._r.type(key) == 'string'
+        return self._r.type(key) == b'string'
 
     def keys(self, filter='*', show_counts=False):
         """Return a list of keys currently in the model."""
@@ -130,22 +134,22 @@ class TelescopeState(object):
         redis.ResponseError
             if `key` already exists with a different mutability
         """
-        if self.__class__.__dict__.has_key(key):
+        if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a class method and thus cannot be used.")
          # check that we are not going to munge a class method
         if ts is None and not immutable: ts = time.time()
         existing_type = self._r.type(key)
-        if existing_type == 'string':
-            if immutable and cPickle.dumps(value) == self._r.get(key):
+        if existing_type == b'string':
+            if immutable and pickle.dumps(value) == self._r.get(key):
                 logger.info('Attribute {} updated with the same value'.format(key))
                 return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
-        pickled = cPickle.dumps(value)
+        pickled = pickle.dumps(value)
         if immutable:
             ret = self._r.set(key, pickled)
         else:
             packed_ts = struct.pack('>d', float(ts))
-            ret = self._r.zadd(key, 0, "{}{}".format(packed_ts, pickled))
+            ret = self._r.zadd(key, 0, packed_ts + pickled)
         self._r.publish('update/' + key, pickled)
         return ret
 
@@ -204,7 +208,7 @@ class TelescopeState(object):
                     if check():
                         return
                 elif message['type'] == 'message':
-                    value = cPickle.loads(message['data'])
+                    value = pickle.loads(message['data'])
                     if condition(value):
                         return
 
@@ -215,8 +219,8 @@ class TelescopeState(object):
                  # assume simple string type for immutable
                 if return_pickle: return str_val
                 try:
-                    return cPickle.loads(str_val)
-                except cPickle.UnpicklingError:
+                    return pickle.loads(str_val)
+                except pickle.UnpicklingError:
                     return str_val
             except redis.ResponseError:
                 return self._strip(self._r.zrange(key, -1, -1)[0], return_pickle)[0]
@@ -309,7 +313,7 @@ class TelescopeState(object):
         """
         if not self._r.exists(key): raise KeyError
 
-        if self._r.type(key) == 'string': return self._get(key)
+        if self._r.type(key) == b'string': return self._get(key)
          # immutables return value with no timestamp information
 
         # set up include_previous default values
@@ -343,13 +347,13 @@ class TelescopeState(object):
                 # Negative values (including negative zero) don't sort properly when
                 # treated as byte strings
             else:
-                packed_st = '[' + struct.pack('>d', float(st))
+                packed_st = b'[' + struct.pack('>d', float(st))
             # if et is None, get values to the most recent
             if et is None:
-                packed_et = '+'
+                packed_et = b'+'
             else:
                 if et <= 0: et = 0.0
-                packed_et = '(' + struct.pack('>d', float(et))
+                packed_et = b'(' + struct.pack('>d', float(et))
             # get values from redis, extract into (key_value, time) pairs
             ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
             ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
@@ -376,7 +380,8 @@ class TelescopeState(object):
             if ret_list != []:
                 val_shape = np.array(ret_list[0][0]).shape
                 val_type = np.array(ret_list[0][0]).dtype
-                if val_type.type is np.string_: val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:, 0]])
+                if val_type.type is np.str_ or val_type.type is np.bytes_:
+                    val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:, 0]])
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
         else:
             raise ValueError('Unknown return_format {}'.format(return_format))
