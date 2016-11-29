@@ -1,11 +1,16 @@
 """Tests for the sdp telescope state client."""
 
+from __future__ import print_function, division, absolute_import
 import threading
 import time
 import unittest
 import redis
 import mock
 import numpy as np
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, TimeoutError, ArgumentParser
 
@@ -16,10 +21,11 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts = TelescopeState()
              # expects a reachable redis instance to be running locally
         except redis.ConnectionError:
-            print "No local redis db available. Are you sure it is running ?"
+            print("No local redis db available. Are you sure it is running ?")
             raise
         self.ts._r.delete('test_key')
         self.ts._r.delete('test_immutable')
+        self.ts._r.delete('test_key_rt')
          # make sure we are clean
 
     def tearDown(self):
@@ -46,24 +52,22 @@ class TestSDPTelescopeState(unittest.TestCase):
 
     def test_return_pickle(self):
         import numpy as np
-        import cPickle
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
         self.ts.add('test_key_rt', x, immutable=True)
         x_unpickled = self.ts.get('test_key_rt')
         self.assertTrue((x_unpickled == x).all())
         x_pickled = self.ts.get('test_key_rt', return_pickle=True)
-        self.assertEqual(x_pickled, cPickle.dumps(x))
+        self.assertEqual(x_pickled, pickle.dumps(x))
 
     def test_return_pickle_range(self):
         import numpy as np
-        import cPickle
         import time
         test_values = ['Test Value: {}'.format(x) for x in range(5)]
         for i,test_value in enumerate(test_values): self.ts.add('test_key',test_value,i)
         stored_values = self.ts.get_range('test_key', st=0)
         self.assertEqual(stored_values[2][0], test_values[2])
         stored_values_pickled = self.ts.get_range('test_key', st=0, return_pickle=True)
-        self.assertEqual(stored_values_pickled[2][0], cPickle.dumps(test_values[2]))
+        self.assertEqual(stored_values_pickled[2][0], pickle.dumps(test_values[2]))
         self.assertEqual(stored_values_pickled[2][1], 2)
          # check timestamp
 
@@ -302,4 +306,4 @@ class TestArgumentParser(unittest.TestCase):
                 self.parser.parse_args(['--telstate=example.com', '--help'])
             mock_exit.assert_called_once_with()
             # Make sure we did not try to construct a telescope state
-            self.assertItemsEqual([], self.TelescopeState.call_args_list)
+            self.assertEqual([], self.TelescopeState.call_args_list)
