@@ -1,5 +1,6 @@
 from __future__ import print_function, division, absolute_import
 import redis
+import fakeredis
 import struct
 import time
 try:
@@ -28,10 +29,12 @@ class TimeoutError(Exception):
 
 
 class TelescopeState(object):
-    def __init__(self, endpoint='localhost', db=0):
+    def __init__(self, endpoint='', db=0):
         if not isinstance(endpoint, Endpoint):
             endpoint = endpoint_parser(default_port=None)(endpoint)
-        if endpoint.port is not None:
+        if not endpoint.host:
+            self._r = fakeredis.FakeStrictRedis()
+        elif endpoint.port is not None:
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
                                         db=db, socket_timeout=5)
         else:

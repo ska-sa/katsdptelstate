@@ -4,7 +4,6 @@ from __future__ import print_function, division, absolute_import
 import threading
 import time
 import unittest
-import redis
 import mock
 import numpy as np
 try:
@@ -17,12 +16,7 @@ from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, T
 
 class TestSDPTelescopeState(unittest.TestCase):
     def setUp(self):
-        try:
-            self.ts = TelescopeState()
-             # expects a reachable redis instance to be running locally
-        except redis.ConnectionError:
-            print("No local redis db available. Are you sure it is running ?")
-            raise
+        self.ts = TelescopeState()
         self.ts._r.delete('test_key')
         self.ts._r.delete('test_immutable')
         self.ts._r.delete('test_key_rt')
