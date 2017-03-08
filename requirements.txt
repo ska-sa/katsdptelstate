@@ -1,4 +1,4 @@
-redis
 fakeredis
+redis
 netifaces
 numpy
