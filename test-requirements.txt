@@ -1,0 +1,5 @@
+coverage
+funcsigs
+mock
+pbr
+six
