@@ -151,7 +151,7 @@ class TestSDPTelescopeState(unittest.TestCase):
     def test_wait_key_already_done(self):
         """Calling wait_key with a condition that is met must return."""
         self.ts.add('test_key', 123)
-        self.ts.wait_key('test_key', lambda value: value == 123)
+        self.ts.wait_key('test_key', lambda value, ts: value == 123)
 
     def test_wait_key_timeout(self):
         """wait_key must time out in the given time if the condition is not met"""
@@ -165,7 +165,7 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts.add('test_key', 234)
         thread = threading.Thread(target=set_key)
         thread.start()
-        self.ts.wait_key('test_key', lambda value: value == 234, timeout=2)
+        self.ts.wait_key('test_key', lambda value, ts: value == 234, timeout=2)
         self.assertEqual(234, self.ts.get('test_key'))
         thread.join()
 
