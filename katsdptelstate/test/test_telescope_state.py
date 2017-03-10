@@ -151,7 +151,8 @@ class TestSDPTelescopeState(unittest.TestCase):
     def test_wait_key_already_done(self):
         """Calling wait_key with a condition that is met must return."""
         self.ts.add('test_key', 123)
-        self.ts.wait_key('test_key', lambda value, ts: value == 123)
+        value, timestamp = self.ts.get_range('test_key')[0]
+        self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
 
     def test_wait_key_timeout(self):
         """wait_key must time out in the given time if the condition is not met"""
