@@ -34,6 +34,8 @@ class TimeoutError(Exception):
 # "UnicodeDecodeError: 'ascii' codec can't decode byte 0xd6 in position 1:
 # ordinal not in range(128)". It does not affect Python 3 as the payload is
 # then already in bytes format (struct + pickle ensures that).
+# This has been reported as https://github.com/jamesls/fakeredis/issues/146
+# and once it is resolved this patch can go away.
 def _monkeypatched_fakeredis_send(self, message_type, pattern, channel, data):
     """This avoids encoding channel and data strings as they are bytes already."""
     msg = {'type': message_type, 'pattern': pattern,
