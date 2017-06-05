@@ -5,7 +5,6 @@ import threading
 import time
 import unittest
 import mock
-import concurrent.futures
 import numpy as np
 try:
     import cPickle as pickle
