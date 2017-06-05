@@ -11,7 +11,8 @@ try:
 except ImportError:
     import pickle
 
-from katsdptelstate import TelescopeState, InvalidKeyError, ImmutableKeyError, TimeoutError, ArgumentParser
+from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
+                            TimeoutError, CancelledError, ArgumentParser)
 
 
 class TestSDPTelescopeState(unittest.TestCase):
@@ -159,6 +160,7 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts.wait_key('test_key', timeout=0.1)
 
     def test_wait_key_delayed(self):
+        """wait_key must succeed when given a timeout that does not expire before the condition is met"""
         def set_key():
             self.ts.add('test_key', 123)
             time.sleep(0.1)
@@ -168,6 +170,32 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.wait_key('test_key', lambda value: value == 234, timeout=2)
         self.assertEqual(234, self.ts.get('test_key'))
         thread.join()
+
+    def test_wait_key_already_cancelled(self):
+        """wait_key must raise :exc:`CancelledError` if the provided `cancel_future` is already done."""
+        future = mock.MagicMock()
+        future.done.return_value = True
+        with self.assertRaises(CancelledError):
+            self.ts.wait_key('test_key', cancel_future=future)
+
+    def test_wait_key_already_done_and_cancelled(self):
+        """wait_key is successful if both the condition and the cancellation are done on entry"""
+        future = mock.MagicMock()
+        future.done.return_value = True
+        self.ts.add('test_key', 123)
+        self.ts.wait_key('test_key', lambda value: value == 123, cancel_future=future)
+
+    def test_wait_key_cancel(self):
+        """wait_key must return when cancelled"""
+        def cancel():
+            time.sleep(0.1)
+            future.done.return_value = True
+        future = mock.MagicMock()
+        future.done.return_value = True
+        thread = threading.Thread(target=cancel)
+        thread.start()
+        with self.assertRaises(CancelledError):
+            self.ts.wait_key('test_key', cancel_future=future)
 
 
 class MockException(Exception):

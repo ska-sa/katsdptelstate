@@ -27,6 +27,9 @@ class ImmutableKeyError(Exception):
 class TimeoutError(Exception):
     pass
 
+class CancelledError(Exception):
+    pass
+
 
 class TelescopeState(object):
     def __init__(self, endpoint='', db=0):
@@ -156,7 +159,7 @@ class TelescopeState(object):
         self._r.publish('update/' + key, pickled)
         return ret
 
-    def wait_key(self, key, condition=None, timeout=None):
+    def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
         """Wait for a key to exist, possibly with some condition.
 
         Parameters
@@ -170,16 +173,28 @@ class TelescopeState(object):
         timeout : float, optional
             If specified and the condition is not met within the time limit,
             an exception is thrown.
+        cancel_future : future, optional
+            If not ``None``, a future object (e.g.
+            :class:`concurrent.futures.Future` or :class:`trollius.Future`). If
+            ``cancel_future.done()`` is true before the timeout, raises
+            :exc:`CancelledError`. In the current implementation, it is only
+            polled once a second, rather than waited for.
 
         Raises
         ------
         TimeoutError
             if a timeout was specified and was exceeded
+        CancelledError
+            if a cancellation future was specified and done
         """
         def check():
             if self._r.exists(key):
                 value = self._get(key)
                 return condition(value)
+
+        def check_cancelled():
+            if cancel_future is not None and cancel_future.done():
+                raise CancelledError('wait for {} cancelled'.format(key))
 
         if condition is None:
             condition = lambda value: True
@@ -187,6 +202,7 @@ class TelescopeState(object):
         # don't need to create a pubsub connection.
         if check():
             return
+        check_cancelled()
         p = self._r.pubsub()
         p.subscribe('update/' + key)
         with contextlib.closing(p):
@@ -195,7 +211,9 @@ class TelescopeState(object):
                 # redis-py automatically reconnects to the server if the connection
                 # goes down, but we might miss messages in that case. So rather
                 # than waiting an arbitrarily long time, we make sure to poll from
-                # time to time
+                # time to time. This also allows the cancellation future to be
+                # polled.
+                check_cancelled()
                 get_timeout = 1.0
                 if timeout is not None:
                     remain = (start + timeout) - time.time()
@@ -207,7 +225,7 @@ class TelescopeState(object):
                     continue
                 if message['type'] == 'subscribe':
                     # An update may have happened between our first check and our
-                    # subscription taking effects, so check again
+                    # subscription taking effect, so check again.
                     if check():
                         return
                 elif message['type'] == 'message':
