@@ -59,12 +59,12 @@ class TelescopeState(object):
 
     def __getattr__(self, key):
         val = self._get(key)
-        if val is None: raise AttributeError
+        if val is None: raise AttributeError('{} not found'.format(key))
         return val
 
     def __getitem__(self, key):
         val = self._get(key)
-        if val is None: raise KeyError
+        if val is None: raise KeyError('{} not found'.format(key))
         return val
 
     def __contains__(self, x):
@@ -218,7 +218,8 @@ class TelescopeState(object):
                 if timeout is not None:
                     remain = (start + timeout) - time.time()
                     if remain <= 0:
-                        raise TimeoutError()
+                        raise TimeoutError(
+                            'Timed out waiting for {} after {}s'.format(key, timeout))
                     get_timeout = min(get_timeout, remain)
                 message = p.get_message(timeout=get_timeout)
                 if message is None:
@@ -332,7 +333,7 @@ class TelescopeState(object):
             returns list of all records in the range [t0,t1) plus the most recent record prior
             to time t0, if there is such a record in the time window [t0-dw,t0)
         """
-        if not self._r.exists(key): raise KeyError
+        if not self._r.exists(key): raise KeyError('{} not found'.format(key))
 
         if self._r.type(key) == b'string': return self._get(key)
          # immutables return value with no timestamp information
