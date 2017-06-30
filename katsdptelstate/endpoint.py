@@ -12,10 +12,13 @@ class Endpoint(object):
         self.port = port
 
     def __eq__(self, other):
-        return self.host == other.host and self.port == other.port
+        return isinstance(other, Endpoint) and self.host == other.host and self.port == other.port
 
     def __ne__(self, other):
         return not self == other
+
+    def __hash__(self):
+        return hash((self.host, self.port))
 
     def __str__(self):
         if ':' in self.host:

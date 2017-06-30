@@ -1,6 +1,6 @@
 """Tests for the Endpoint class."""
 
-from nose.tools import assert_equal, assert_raises
+from nose.tools import assert_equal, assert_not_equal, assert_raises
 
 from katsdptelstate.endpoint import Endpoint, endpoint_parser, endpoint_list_parser
 
@@ -31,6 +31,16 @@ class TestEndpoint(object):
     def test_iter(self):
         endpoint = Endpoint('hello', 80)
         assert_equal(('hello', 80), tuple(endpoint))
+
+    def test_eq(self):
+        assert_equal(Endpoint('hello', 80), Endpoint('hello', 80))
+        assert_not_equal(Endpoint('hello', 80), Endpoint('hello', 90))
+        assert_not_equal(Endpoint('hello', 80), Endpoint('world', 80))
+        assert_not_equal(Endpoint('hello', 80), 'not_an_endpoint')
+
+    def test_hash(self):
+        assert_equal(hash(Endpoint('hello', 80)), hash(Endpoint('hello', 80)))
+        assert_not_equal(hash(Endpoint('hello', 80)), hash(Endpoint('hello', 90)))
 
 
 class TestEndpointList(object):
