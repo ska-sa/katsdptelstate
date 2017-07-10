@@ -42,10 +42,10 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.delete('test_key')
 
-    def test_flush(self):
+    def test_clear(self):
         self.ts.add('test_key', 1234.5)
         self.ts.add('test_key_rt', 2345.6)
-        self.ts.flush()
+        self.ts.clear()
         self.assertEqual([], self.ts.keys())
 
     def test_return_pickle(self):

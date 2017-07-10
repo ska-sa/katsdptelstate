@@ -110,7 +110,7 @@ class TelescopeState(object):
         """Remove a key, and all values, from the model."""
         return self._r.delete(key)
 
-    def flush(self):
+    def clear(self):
         """Remove all keys."""
         return self._r.flushdb()
 
