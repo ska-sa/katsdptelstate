@@ -18,14 +18,11 @@ from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
 class TestSDPTelescopeState(unittest.TestCase):
     def setUp(self):
         self.ts = TelescopeState()
-        self.ts._r.delete('test_key')
-        self.ts._r.delete('test_immutable')
-        self.ts._r.delete('test_key_rt')
+        self.ts._r.flushdb()
          # make sure we are clean
 
     def tearDown(self):
-        self.ts._r.delete('test_key')
-        self.ts._r.delete('test_immutable')
+        self.ts._r.flushdb()
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)
@@ -44,6 +41,12 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 1234.5)
         self.ts.delete('test_key')
         self.ts.delete('test_key')
+
+    def test_flush(self):
+        self.ts.add('test_key', 1234.5)
+        self.ts.add('test_key_rt', 2345.6)
+        self.ts.flush()
+        self.assertEqual([], self.ts.keys())
 
     def test_return_pickle(self):
         import numpy as np
