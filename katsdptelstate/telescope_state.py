@@ -31,6 +31,23 @@ class CancelledError(Exception):
     pass
 
 
+# XXX This is a crude workaround for fakeredis 0.8.2 which crashes when trying
+# to send the packed timestamp as part of a pubsub message on Python 2.
+# It insists on encoding the string payload to bytes, leading to error message
+# "UnicodeDecodeError: 'ascii' codec can't decode byte 0xd6 in position 1:
+# ordinal not in range(128)". It does not affect Python 3 as the payload is
+# then already in bytes format (struct + pickle ensures that).
+# This has been reported as https://github.com/jamesls/fakeredis/issues/146
+# and once it is resolved this patch can go away.
+def _monkeypatched_fakeredis_send(self, message_type, pattern, channel, data):
+    """This avoids encoding channel and data strings as they are bytes already."""
+    msg = {'type': message_type, 'pattern': pattern,
+           'channel': channel, 'data': data}
+    self._q.put(msg)
+    return 1
+fakeredis.FakePubSub._send = _monkeypatched_fakeredis_send
+
+
 class TelescopeState(object):
     def __init__(self, endpoint='', db=0):
         if not isinstance(endpoint, Endpoint):
@@ -130,8 +147,8 @@ class TelescopeState(object):
         value : object
             Arbitrary value (must be picklable)
         ts : float, optional
-            Timestamp associated with the update, ignored for immutables. If not
-            specified, defaults to ``time.time()``.
+            Timestamp associated with the update, ignored for immutables.
+            If not specified, defaults to ``time.time()``.
         immutable : bool, optional
             See description above.
 
@@ -147,7 +164,6 @@ class TelescopeState(object):
         if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        if ts is None and not immutable: ts = time.time()
         existing_type = self._r.type(key)
         if existing_type == b'string':
             if immutable and pickle.dumps(value) == self._r.get(key):
@@ -155,12 +171,14 @@ class TelescopeState(object):
                 return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
         pickled = pickle.dumps(value)
+        if ts is None or immutable:
+            ts = time.time()
+        packed_ts = struct.pack('>d', float(ts))
         if immutable:
             ret = self._r.set(key, pickled)
         else:
-            packed_ts = struct.pack('>d', float(ts))
             ret = self._r.zadd(key, 0, packed_ts + pickled)
-        self._r.publish('update/' + key, pickled)
+        self._r.publish('update/' + key, packed_ts + pickled)
         return ret
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
@@ -170,10 +188,12 @@ class TelescopeState(object):
         ----------
         key : str
             Key name to monitor
-        condition : callable, optional
+        condition : callable, signature bool = condition(value, ts), optional
             If not specified, wait until the key exists. Otherwise, it must
-            take a single argument, the value of the key, and return a
-            boolean to indicate whether the condition is satisfied.
+            take two arguments (the value of the key and its associated
+            timestamp) and return a boolean to indicate whether the condition
+            is satisfied. If the key is immutable (and therefore without a
+            timestamp) the timestamp will default to the current time.
         timeout : float, optional
             If specified and the condition is not met within the time limit,
             an exception is thrown.
@@ -193,15 +213,15 @@ class TelescopeState(object):
         """
         def check():
             if self._r.exists(key):
-                value = self._get(key)
-                return condition(value)
+                value, ts = self.get_range(key)[0]
+                return condition(value, ts)
 
         def check_cancelled():
             if cancel_future is not None and cancel_future.done():
                 raise CancelledError('wait for {} cancelled'.format(key))
 
         if condition is None:
-            condition = lambda value: True
+            condition = lambda value, ts: True
         # First check if condition is already satisfied, in which case we
         # don't need to create a pubsub connection.
         if check():
@@ -234,8 +254,8 @@ class TelescopeState(object):
                     if check():
                         return
                 elif message['type'] == 'message':
-                    value = pickle.loads(message['data'])
-                    if condition(value):
+                    value, ts = self._strip(message['data'])
+                    if condition(value, ts):
                         return
 
     def _get(self, key, return_pickle=False):
