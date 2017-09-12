@@ -2,7 +2,8 @@
 
 from nose.tools import assert_equal, assert_not_equal, assert_raises
 
-from katsdptelstate.endpoint import Endpoint, endpoint_parser, endpoint_list_parser
+from katsdptelstate.endpoint import (
+    Endpoint, endpoint_parser, endpoint_list_parser, endpoints_to_str)
 
 
 class TestEndpoint(object):
@@ -80,3 +81,23 @@ class TestEndpointList(object):
 
     def test_parser_single_port_bad(self):
         assert_raises(ValueError, endpoint_list_parser(1234, single_port=True), 'x:123,y:456')
+
+
+def test_endpoints_to_str():
+    endpoints = [
+        Endpoint('hostname', 1234),
+        Endpoint('1.2.3.4', 7148),
+        Endpoint('1.2.3.3', 7148),
+        Endpoint('1.2.3.3', None),
+        Endpoint('1.2.3.3', 7149),
+        Endpoint('1.2.3.5', 7148),
+        Endpoint('192.168.1.255', None),
+        Endpoint('192.168.2.0', None),
+        Endpoint('::10ff', 7148),
+        Endpoint('::20ff', 7148),
+        Endpoint('::0000:2100', 7148),
+        Endpoint('hostname1', None)
+    ]
+    s = endpoints_to_str(endpoints)
+    assert_equal('1.2.3.3,192.168.1.255+1,1.2.3.3+2:7148,1.2.3.3:7149,[::10ff]:7148,'
+                 '[::20ff]+1:7148,hostname:1234,hostname1', s)
