@@ -152,11 +152,16 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
 
-    def test_wait_key_already_done(self):
-        """Calling wait_key with a condition that is met must return."""
+    def test_wait_key_already_done_sensor(self):
+        """Calling wait_key with a condition that is met must return (sensor version)."""
         self.ts.add('test_key', 123)
         value, timestamp = self.ts.get_range('test_key')[0]
         self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
+
+    def test_wait_key_already_done_attr(self):
+        """Calling wait_key with a condition that is met must return (attribute version)."""
+        self.ts.add('test_key', 123, immutable=True)
+        self.ts.wait_key('test_key', lambda v, t: v == self.ts['test_key'] and t is None)
 
     def test_wait_key_timeout(self):
         """wait_key must time out in the given time if the condition is not met"""
@@ -173,6 +178,17 @@ class TestSDPTelescopeState(unittest.TestCase):
         thread.start()
         self.ts.wait_key('test_key', lambda value, ts: value == 234, timeout=2)
         self.assertEqual(234, self.ts.get('test_key'))
+        thread.join()
+
+    def test_wait_key_delayed_unconditional(self):
+        """wait_key must succeed when given a timeout that does not expire before key appears."""
+        def set_key():
+            time.sleep(0.1)
+            self.ts.add('test_key', 123, immutable=True)
+        thread = threading.Thread(target=set_key)
+        thread.start()
+        self.ts.wait_key('test_key', timeout=2)
+        self.assertEqual(123, self.ts['test_key'])
         thread.join()
 
     def test_wait_key_already_cancelled(self):
