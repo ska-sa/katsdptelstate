@@ -200,14 +200,13 @@ class TelescopeState(object):
         if condition is None:
             return True
         if self.is_immutable(key):
-            value = self._get(key) if str_val is None else pickle.loads(str_val)
-            return condition(value)
+            value = self._get(key) if str_val is None else \
+                pickle.loads(str_val)
+            return condition(value, None)
         else:
-            value, ts = self.get_range(key)[0] if str_val is None else self._strip(str_val)
-            try:
-                return condition(value, ts)
-            except TypeError:
-                return condition(value)
+            value, ts = self.get_range(key)[0] if str_val is None else \
+                self._strip(str_val)
+            return condition(value, ts)
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
         """Wait for a key to exist, possibly with some condition.
@@ -216,13 +215,12 @@ class TelescopeState(object):
         ----------
         key : str
             Key name to monitor
-        condition : callable, optional
+        condition : callable, signature `bool = condition(value, ts)`, optional
             If not specified, wait until the key exists. Otherwise, the
-            callable should either have the signature `bool = condition(value)`
-            or `bool = condition(value, ts)` (for mutable keys only), where
-            `value` is the latest value of the key, `ts` is its associated
-            timestamp if mutable, and the return value indicates whether the
-            condition is satisfied.
+            callable should have the signature `bool = condition(value, ts)`
+            where `value` is the latest value of the key, `ts` is its
+            associated timestamp (or None if immutable), and the return value
+            indicates whether the condition is satisfied.
         timeout : float, optional
             If specified and the condition is not met within the time limit,
             an exception is thrown.

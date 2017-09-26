@@ -157,7 +157,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 123)
         value, timestamp = self.ts.get_range('test_key')[0]
         self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
-        self.ts.wait_key('test_key', lambda v: v == value)
 
     def test_wait_key_timeout(self):
         """wait_key must time out in the given time if the condition is not met"""
@@ -172,7 +171,7 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts.add('test_key', 234)
         thread = threading.Thread(target=set_key)
         thread.start()
-        self.ts.wait_key('test_key', lambda value: value == 234, timeout=2)
+        self.ts.wait_key('test_key', lambda value, ts: value == 234, timeout=2)
         self.assertEqual(234, self.ts.get('test_key'))
         thread.join()
 
@@ -188,7 +187,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         future = mock.MagicMock()
         future.done.return_value = True
         self.ts.add('test_key', 123)
-        self.ts.wait_key('test_key', lambda value: value == 123, cancel_future=future)
+        self.ts.wait_key('test_key', lambda value, ts: value == 123, cancel_future=future)
 
     def test_wait_key_cancel(self):
         """wait_key must return when cancelled"""
