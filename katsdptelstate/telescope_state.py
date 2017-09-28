@@ -325,14 +325,10 @@ class TelescopeState(object):
         return_format : string, optional
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
             'None' returns values and times as 2D list of elements format (value, time)
-        include_previous : bool or float, optional
-            Default False if st is specified, True if st is unspecified
-            Numeric value returns [st, et) as well as the last value prior to the start time (if any),
-               within a search window given by include_previous
-            'False' returns [st, et)
-            'True' returns [st, et) as well as the last value prior to the start time (if any),
-               with unlimited search window. The current implementation has a significant performance
-               impact (it queries all values from the start).
+        include_previous : bool, optional
+            If True, the method returns [st, et) as well as the last value
+            prior to the start time (if any). This defaults to False if st is
+            specified and True if st is unspecified.
         return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
             'True' - return values are retained in pickled form.
@@ -365,16 +361,6 @@ class TelescopeState(object):
 
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
-
-        Note - the above usage is inefficient, it is better to specify backward search window:
-
-        get_range('key_name',et=t1,include_previous=dw)
-            returns the most recent record prior to time t1, within the time window [t1-dw,t1)
-            or [] if no key value exists in the time window
-
-        get_range('key_name',st=t0,et=t1,include_previous=dw)
-            returns list of all records in the range [t0,t1) plus the most recent record prior
-            to time t0, if there is such a record in the time window [t0-dw,t0)
         """
         if not self._r.exists(key): raise KeyError('{} not found'.format(key))
 
@@ -385,58 +371,29 @@ class TelescopeState(object):
         if include_previous is None:
             include_previous = True if st is None else False
 
-        orig_st = st
-        # if st and et None, and include_previous is True, return most recent value
-        if st is None and et is None and isinstance(include_previous, bool):
-            if include_previous is False:
-                ret_list = []
-            elif include_previous is True:
-                ret_list = [self._strip(self._r.zrange(key, -1, -1)[0], return_pickle)]
+        if et is None:
+            # The special positively infinite string represents the end of time
+            packed_et = b'+'
+        elif et <= 0.0:
+            # The special negatively infinite string represents the dawn of time
+            packed_et = b'-'
         else:
-            # if include_previous is True, search from the beginning
-            # if include_previous is numeric, search prior window include_previous for key value
-            if include_previous is True:
-                st = 0
-            elif include_previous is not False:
-                if et is not None:
-                    st = et - float(include_previous) if st is None else st - float(include_previous)
-                else:
-                    et = time.time()
-                    st = et - float(include_previous) if st is None else st - float(include_previous)
-                    orig_st = st
+            packed_et = b'(' + struct.pack('>d', float(et))
 
-            # if st <= 0, get values from the beginning
-            # if st is None or include_previous, get values from the beginning for trimming later
-            if st <= 0.0 or st is None:
-                packed_st = '-'
-                # Negative values (including negative zero) don't sort properly when
-                # treated as byte strings
-            else:
-                packed_st = b'[' + struct.pack('>d', float(st))
-            # if et is None, get values to the most recent
-            if et is None:
-                packed_et = b'+'
-            else:
-                if et <= 0: et = 0.0
-                packed_et = b'(' + struct.pack('>d', float(et))
-            # get values from redis, extract into (key_value, time) pairs
-            ret_vals = self._r.zrangebylex(key, packed_st, packed_et)
-            ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
+        if st is None:
+            packed_st = packed_et
+        elif st <= 0.0:
+            packed_st = b'-'
+        else:
+            packed_st = b'[' + struct.pack('>d', float(st))
 
-        if include_previous:
-            if orig_st is None:
-                try:
-                    ret_list = [ret_list[-1]]
-                except IndexError:
-                    # there was no key value in the window
-                    ret_list = []
-            else:
-                # Find the last value prior to the start time
-                start_idx = 0
-                for idx, value in enumerate(ret_list):
-                    if value[1] < orig_st:
-                        start_idx = idx
-                ret_list = ret_list[start_idx:]
+        ret_vals = []
+        if include_previous and packed_st != b'-':
+            ret_vals += self._r.zrevrangebylex(key, packed_st, b'-', 0, 1)
+        # Avoid talking to redis if it is going to be futile
+        if packed_st != packed_et:
+            ret_vals += self._r.zrangebylex(key, packed_st, packed_et)
+        ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
 
         if return_format is None:
             return ret_list
