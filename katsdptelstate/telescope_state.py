@@ -18,16 +18,22 @@ from .endpoint import Endpoint, endpoint_parser
 logger = logging.getLogger(__name__)
 
 
-class InvalidKeyError(Exception):
+class TelstateError(RuntimeError):
     pass
 
-class ImmutableKeyError(Exception):
+class InvalidKeyError(TelstateError):
     pass
 
-class TimeoutError(Exception):
+class ImmutableKeyError(TelstateError):
     pass
 
-class CancelledError(Exception):
+class TimeoutError(TelstateError):
+    pass
+
+class CancelledError(TelstateError):
+    pass
+
+class NamespaceError(TelstateError):
     pass
 
 
@@ -49,20 +55,81 @@ fakeredis.FakePubSub._send = _monkeypatched_fakeredis_send
 
 
 class TelescopeState(object):
-    def __init__(self, endpoint='', db=0):
-        if not isinstance(endpoint, Endpoint):
-            endpoint = endpoint_parser(default_port=None)(endpoint)
-        if not endpoint.host:
-            self._r = fakeredis.FakeStrictRedis(db=db)
-        elif endpoint.port is not None:
-            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
-                                        db=db, socket_timeout=5)
+    """Interface to a collection of attributes and sensors stored in a redis database.
+
+    There are two types of keys permitted: single immutable values, and mutable
+    keys where the full history of values is stored with timestamps. These are
+    mapped to the redis string and zset types. A redis database used with this
+    class must *only* be used with this class, as it does not deal with other
+    types of values.
+
+    Keys are arranged into a hierarchy, separated by dots. For convenience, an
+    instance of this class can be in a "namespace", which is a position in this
+    hierarchy. Name lookups walk upwards in the hierarchy until the key is
+    found. New keys are added into the current namespace.
+
+    It is an error to add a key when it already exists in a parent's namespace,
+    because it can change the return value when another client queries an
+    immutable key. This will raise :exc:`NamespaceError`, although the check is
+    not yet atomic so it is possible for this to be violated.
+
+    Note that it is *not* an error to add a key that already exists in a child
+    namespace. This is partly because it does not violate immutability in the
+    same way, and partly because it would be prohibitively expensive to
+    check. Nevertheless, it is highly recommended that this is avoided.
+
+    Parameters
+    ----------
+    endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
+        The address of the redis server (if a string, it is passed to the
+        :class:`~katsdptelstate.endpoint.Endpoint` constructor). If empty, a
+        :class:`fakredis.FakeStrictRedis` instance is used instead.
+    db : int
+        Database number within the redis server
+    prefixes : list of str
+        Prefixes that will be tried in turn for key lookup. This should not be
+        used directly: it is intended for use by :meth:`namespace`.
+    base : :class:`~katsdptelstate.telescope_state.TelescopeState`
+        Existing telescope state instance, from which the underlying redis
+        connection will be take. This should not be used directly: it is
+        intended for use by :meth:`namespace`. If specified, `endpoint` and
+        `db` are ignored.
+    """
+    def __init__(self, endpoint='', db=0, prefixes=None, base=None):
+        if base is not None:
+            self._r = base._r
+            self._ps = base._ps
         else:
-            self._r = redis.StrictRedis(host=endpoint.host, db=db)
-        self._ps = self._r.pubsub(ignore_subscribe_messages=True)
-        self._default_channel = 'tm_info'
-        self._ps.subscribe(self._default_channel)
-         # subscribe to the telescope model info channel
+            if not isinstance(endpoint, Endpoint):
+                endpoint = endpoint_parser(default_port=None)(endpoint)
+            if not endpoint.host:
+                self._r = fakeredis.FakeStrictRedis(db=db)
+            elif endpoint.port is not None:
+                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
+                                            db=db, socket_timeout=5)
+            else:
+                self._r = redis.StrictRedis(host=endpoint.host, db=db)
+            self._ps = self._r.pubsub(ignore_subscribe_messages=True)
+            # subscribe to the telescope model info channel
+            self._default_channel = 'tm_info'
+            self._ps.subscribe(self._default_channel)
+        if not prefixes:
+            prefixes = ['']
+        self._prefixes = prefixes
+
+    @property
+    def prefixes(self):
+        return self._prefixes
+
+    def namespace(self, name):
+        """Obtain a view with a child namespace."""
+        if '.' in name:
+            # Work recursively, so that each level gets into prefixes
+            head, tail = name.split('.', 1)
+            return self.namespace(head).namespace(tail)
+        else:
+            new_prefix = self._prefixes[0] + name + '.'
+            return self.__class__(None, None, prefixes=[new_prefix] + self._prefixes, base=self)
 
     def _strip(self, str_val, return_pickle=False):
         if len(str_val) < 8: return None
@@ -101,21 +168,49 @@ class TelescopeState(object):
 
     def has_key(self, key_name):
         """Check to see if the specified key exists in the database."""
-        return self._r.exists(key_name)
+        for prefix in self._prefixes:
+            if self._r.exists(prefix + key_name):
+                return True
+        return False
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        return self._r.type(key) == b'string'
+        for prefix in self._prefixes:
+            type_ = self._r.type(prefix + key)
+            if type_ != b'none':
+                return type_ == b'string'
+        return False
 
     def keys(self, filter='*', show_counts=False):
-        """Return a list of keys currently in the model."""
+        """Return a list of keys currently in the model.
+
+        This function ignores the namespace, and returns all keys with
+        fully-qualified names.
+
+        Parameters
+        ----------
+        filter : str, optional
+            Wildcard string passed to redis to restrict keys
+        show_counts : bool, optional
+            If true, return the number of entries for each mutable key.
+
+        Returns
+        -------
+        keys : list
+            If `show_counts` is ``False``, each entry is a key name;
+            otherwise, it is a tuple of `name`, `count`, where `count` is 1 for
+            immutable keys. The keys are returned in sorted order.
+        """
         key_list = []
         if show_counts:
             keys = self._r.keys(filter)
             for k in keys:
-                try:
+                # Ideally we'd just try zcard and fall back otherwise, but
+                # fakeredis doesn't yet handle this correctly.
+                type_ = self._r.type(k)
+                if type_ == 'zset':
                     kcount = self._r.zcard(k)
-                except redis.ResponseError:
+                else:
                     kcount = 1
                 key_list.append((k, kcount))
         else:
@@ -124,11 +219,26 @@ class TelescopeState(object):
         return key_list
 
     def delete(self, key):
-        """Remove a key, and all values, from the model."""
-        return self._r.delete(key)
+        """Remove a key, and all values, from the model.
+
+        The key is deleted from the namespace and any ancestor namespace.
+
+        .. note::
+
+            This function should be used rarely, ideally only in tests, as it
+            violates the immutability of keys added with ``immutable=True``.
+        """
+        for prefix in self._prefixes:
+            self._r.delete(prefix + key)
 
     def clear(self):
-        """Remove all keys."""
+        """Remove all keys in all namespaces.
+
+        .. note::
+
+            This function should be used rarely, ideally only in tests, as it
+            violates the immutability of keys added with ``immutable=True``.
+        """
         return self._r.flushdb()
 
     def add(self, key, value, ts=None, immutable=False):
@@ -158,27 +268,35 @@ class TelescopeState(object):
             if `key` collides with a class member name
         ImmutableKeyError
             if an attempt is made to change the value of an immutable
+        NamespaceError
+            if the key exists but in an ancestor namespace
         redis.ResponseError
             if `key` already exists with a different mutability
         """
         if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        existing_type = self._r.type(key)
-        if existing_type == b'string':
-            if immutable and pickle.dumps(value) == self._r.get(key):
-                logger.info('Attribute {} updated with the same value'.format(key))
+        full_key = self._prefixes[0] + key
+        existing_type = self._r.type(full_key)
+        if existing_type == b'none':
+            # Check that we're not going to shadow an existing key
+            for prefix in self._prefixes[1:]:
+                if self._r.exists(prefix + key):
+                    raise NamespaceError('Key {} would shadow {}'.format(full_key, prefix + key))
+        elif existing_type == b'string':
+            if immutable and pickle.dumps(value) == self._r.get(full_key):
+                logger.info('Attribute {} updated with the same value'.format(full_key))
                 return True
-            raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
+            raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(full_key))
         str_val = pickle.dumps(value)
         if immutable:
-            ret = self._r.set(key, str_val)
+            ret = self._r.set(full_key, str_val)
         else:
             ts = float(ts) if ts is not None else time.time()
             packed_ts = struct.pack('>d', ts)
             str_val = packed_ts + str_val
-            ret = self._r.zadd(key, 0, str_val)
-        self._r.publish('update/' + key, str_val)
+            ret = self._r.zadd(full_key, 0, str_val)
+        self._r.publish('update/' + full_key, str_val)
         return ret
 
     def _check_condition(self, key, condition=None, str_val=None):
@@ -195,7 +313,7 @@ class TelescopeState(object):
             (if available) of the key instead of connecting to the backend.
             It has the same format as the string values stored in the backend.
         """
-        if str_val is None and not self._r.exists(key):
+        if str_val is None and key not in self:
             return False
         if condition is None:
             return True
@@ -248,7 +366,8 @@ class TelescopeState(object):
             return
         check_cancelled()
         p = self._r.pubsub()
-        p.subscribe('update/' + key)
+        for prefix in self._prefixes:
+            p.subscribe('update/' + prefix + key)
         with contextlib.closing(p):
             start = time.time()
             while True:
@@ -277,18 +396,25 @@ class TelescopeState(object):
                     if self._check_condition(key, condition, message['data']):
                         return
 
+    def _get_immutable(self, full_key, return_pickle=False):
+        """Return a fully-qualified key of string type."""
+        str_val = self._r.get(full_key)
+        if return_pickle:
+            return str_val
+        try:
+            return pickle.loads(str_val)
+        except pickle.UnpicklingError:
+            return str_val
+
     def _get(self, key, return_pickle=False):
-        if self._r.exists(key):
-            try:
-                str_val = self._r.get(key)
-                 # assume simple string type for immutable
-                if return_pickle: return str_val
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            if self._r.exists(full_key):
                 try:
-                    return pickle.loads(str_val)
-                except pickle.UnpicklingError:
-                    return str_val
-            except redis.ResponseError:
-                return self._strip(self._r.zrange(key, -1, -1)[0], return_pickle)[0]
+                    return self._get_immutable(full_key, return_pickle)
+                     # assume simple string type for immutable
+                except redis.ResponseError:
+                    return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
         return None
 
     def get(self, key, default=None, return_pickle=False):
@@ -362,10 +488,17 @@ class TelescopeState(object):
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
         """
-        if not self._r.exists(key): raise KeyError('{} not found'.format(key))
-
-        if self._r.type(key) == b'string': return self._get(key)
-         # immutables return value with no timestamp information
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            type_ = self._r.type(full_key)
+            if type_ != b'none':
+                if type_ == b'string':
+                    # immutables return value with no timestamp information
+                    return self._get_immutable(full_key, return_pickle=return_pickle)
+                else:
+                    break
+        else:
+            raise KeyError('{} not found'.format(key))
 
         # set up include_previous default values
         if include_previous is None:
@@ -389,10 +522,10 @@ class TelescopeState(object):
 
         ret_vals = []
         if include_previous and packed_st != b'-':
-            ret_vals += self._r.zrevrangebylex(key, packed_st, b'-', 0, 1)
+            ret_vals += self._r.zrevrangebylex(full_key, packed_st, b'-', 0, 1)
         # Avoid talking to redis if it is going to be futile
         if packed_st != packed_et:
-            ret_vals += self._r.zrangebylex(key, packed_st, packed_et)
+            ret_vals += self._r.zrangebylex(full_key, packed_st, packed_et)
         ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
 
         if return_format is None:
