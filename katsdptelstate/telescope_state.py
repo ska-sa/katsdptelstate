@@ -16,6 +16,7 @@ from .endpoint import Endpoint, endpoint_parser
 
 
 logger = logging.getLogger(__name__)
+PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
 
 
 class InvalidKeyError(Exception):
@@ -166,11 +167,11 @@ class TelescopeState(object):
          # check that we are not going to munge a class method
         existing_type = self._r.type(key)
         if existing_type == b'string':
-            if immutable and pickle.dumps(value) == self._r.get(key):
+            if immutable and pickle.dumps(value, protocol=PICKLE_PROTOCOL) == self._r.get(key):
                 logger.info('Attribute {} updated with the same value'.format(key))
                 return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(key))
-        str_val = pickle.dumps(value)
+        str_val = pickle.dumps(value, protocol=PICKLE_PROTOCOL)
         if immutable:
             ret = self._r.set(key, str_val)
         else:
