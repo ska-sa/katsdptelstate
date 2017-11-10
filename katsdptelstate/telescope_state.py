@@ -19,22 +19,22 @@ logger = logging.getLogger(__name__)
 
 
 class TelstateError(RuntimeError):
-    pass
+    """Base class for errors from this module"""
 
 class InvalidKeyError(TelstateError):
-    pass
+    """A key collides with a class attribute"""
 
 class ImmutableKeyError(TelstateError):
-    pass
+    """An attempt was made to modify an immutable key"""
 
 class TimeoutError(TelstateError):
-    pass
+    """A wait for a key timed out"""
 
 class CancelledError(TelstateError):
-    pass
+    """A wait for a key was cancelled"""
 
 class NamespaceError(TelstateError):
-    pass
+    """An attempt was made to add a key to a child namespace when already in the parent"""
 
 
 # XXX This is a crude workaround for fakeredis 0.8.2 which crashes when trying
@@ -83,7 +83,7 @@ class TelescopeState(object):
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor). If empty, a
-        :class:`fakredis.FakeStrictRedis` instance is used instead.
+        :class:`fakeredis.FakeStrictRedis` instance is used instead.
     db : int
         Database number within the redis server
     prefixes : list of str
@@ -91,7 +91,7 @@ class TelescopeState(object):
         used directly: it is intended for use by :meth:`namespace`.
     base : :class:`~katsdptelstate.telescope_state.TelescopeState`
         Existing telescope state instance, from which the underlying redis
-        connection will be take. This should not be used directly: it is
+        connection will be taken. This should not be used directly: it is
         intended for use by :meth:`namespace`. If specified, `endpoint` and
         `db` are ignored.
     """
