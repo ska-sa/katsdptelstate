@@ -16,6 +16,7 @@ from .endpoint import Endpoint, endpoint_parser
 
 
 logger = logging.getLogger(__name__)
+PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
 
 
 class TelstateError(RuntimeError):
@@ -284,11 +285,11 @@ class TelescopeState(object):
                 if self._r.exists(prefix + key):
                     raise NamespaceError('Key {} would shadow {}'.format(full_key, prefix + key))
         elif existing_type == b'string':
-            if immutable and pickle.dumps(value) == self._r.get(full_key):
+            if immutable and pickle.dumps(value, protocol=PICKLE_PROTOCOL) == self._r.get(full_key):
                 logger.info('Attribute {} updated with the same value'.format(full_key))
                 return True
             raise ImmutableKeyError("Attempt to overwrite immutable key {}.".format(full_key))
-        str_val = pickle.dumps(value)
+        str_val = pickle.dumps(value, protocol=PICKLE_PROTOCOL)
         if immutable:
             ret = self._r.set(full_key, str_val)
         else:

@@ -13,7 +13,7 @@ except ImportError:
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             TimeoutError, CancelledError, NamespaceError,
-                            ArgumentParser)
+                            ArgumentParser, PICKLE_PROTOCOL)
 
 
 class TestSDPTelescopeState(unittest.TestCase):
@@ -80,7 +80,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         x_unpickled = self.ts.get('test_key_rt')
         self.assertTrue((x_unpickled == x).all())
         x_pickled = self.ts.get('test_key_rt', return_pickle=True)
-        self.assertEqual(x_pickled, pickle.dumps(x))
+        self.assertEqual(x_pickled, pickle.dumps(x, protocol=PICKLE_PROTOCOL))
 
     def test_return_pickle_range(self):
         import numpy as np
@@ -90,7 +90,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         stored_values = self.ts.get_range('test_key', st=0)
         self.assertEqual(stored_values[2][0], test_values[2])
         stored_values_pickled = self.ts.get_range('test_key', st=0, return_pickle=True)
-        self.assertEqual(stored_values_pickled[2][0], pickle.dumps(test_values[2]))
+        self.assertEqual(stored_values_pickled[2][0],
+                         pickle.dumps(test_values[2], protocol=PICKLE_PROTOCOL))
         self.assertEqual(stored_values_pickled[2][1], 2)
          # check timestamp
 
