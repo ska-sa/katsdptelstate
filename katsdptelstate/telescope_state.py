@@ -1,6 +1,4 @@
 from __future__ import print_function, division, absolute_import
-import redis
-import fakeredis
 import struct
 import time
 try:
@@ -9,8 +7,11 @@ except ImportError:
     import pickle
 import logging
 import argparse
-import numpy as np
 import contextlib
+
+import numpy as np
+import redis
+import fakenewsredis as fakeredis
 
 from .endpoint import Endpoint, endpoint_parser
 
@@ -30,23 +31,6 @@ class TimeoutError(Exception):
 
 class CancelledError(Exception):
     pass
-
-
-# XXX This is a crude workaround for fakeredis 0.8.2 which crashes when trying
-# to send the packed timestamp as part of a pubsub message on Python 2.
-# It insists on encoding the string payload to bytes, leading to error message
-# "UnicodeDecodeError: 'ascii' codec can't decode byte 0xd6 in position 1:
-# ordinal not in range(128)". It does not affect Python 3 as the payload is
-# then already in bytes format (struct + pickle ensures that).
-# This has been reported as https://github.com/jamesls/fakeredis/issues/146
-# and once it is resolved this patch can go away.
-def _monkeypatched_fakeredis_send(self, message_type, pattern, channel, data):
-    """This avoids encoding channel and data strings as they are bytes already."""
-    msg = {'type': message_type, 'pattern': pattern,
-           'channel': channel, 'data': data}
-    self._q.put(msg)
-    return 1
-fakeredis.FakePubSub._send = _monkeypatched_fakeredis_send
 
 
 class TelescopeState(object):

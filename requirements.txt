@@ -1,4 +1,4 @@
-fakeredis
+fakenewsredis
 ipaddress
 netifaces
 numpy
