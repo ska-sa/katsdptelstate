@@ -209,7 +209,7 @@ class TelescopeState(object):
                 # Ideally we'd just try zcard and fall back otherwise, but
                 # fakeredis doesn't yet handle this correctly.
                 type_ = self._r.type(k)
-                if type_ == 'zset':
+                if type_ == b'zset':
                     kcount = self._r.zcard(k)
                 else:
                     kcount = 1
