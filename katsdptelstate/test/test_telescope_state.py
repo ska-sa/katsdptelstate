@@ -21,16 +21,16 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts = TelescopeState()
         self.ts._r.flushdb()
          # make sure we are clean
-        self.ns = self.ts.namespace('ns')
+        self.ns = self.ts.view('ns')
 
     def tearDown(self):
         self.ts._r.flushdb()
 
     def test_namespace(self):
-        self.assertEqual(self.ts.prefixes, [''])
-        self.assertEqual(self.ns.prefixes, ['ns.', ''])
-        ns2 = self.ts.namespace('ns.child.grandchild')
-        self.assertEqual(ns2.prefixes, ['ns.child.grandchild.', 'ns.child.', 'ns.', ''])
+        self.assertEqual(self.ts.prefixes, ('',))
+        self.assertEqual(self.ns.prefixes, ('ns.', ''))
+        ns2 = self.ns.view('ns.child.grandchild')
+        self.assertEqual(ns2.prefixes, ('ns.child.grandchild.', 'ns.', ''))
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)
