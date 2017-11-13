@@ -12,7 +12,7 @@ except ImportError:
     import pickle
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, NamespaceError,
+                            TimeoutError, CancelledError,
                             ArgumentParser, PICKLE_PROTOCOL)
 
 
@@ -103,6 +103,9 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts.add('test_immutable', 5432.1, immutable=True)
         # Same value may be set
         self.ts.add('test_immutable', 1234.5, immutable=True)
+        self.ts.add('test_mutable', 1234.5)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_mutable', 2345.6, immutable=True)
 
     def test_namespace_immutable(self):
         self.ts.add('parent_immutable', 1234.5, immutable=True)
@@ -146,11 +149,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.delete('test_key')
         self.ts.add('test_key', x)
         self.assertTrue((self.ts.test_key == x).all())
-
-    def test_namespace_conflict(self):
-        self.ts.add('parent', 1234.5)
-        with self.assertRaises(NamespaceError):
-            self.ns.add('parent', 1234.5)
 
     def test_has_key(self):
         self.ts.add('test_key', 1234.5)

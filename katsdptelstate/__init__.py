@@ -1,5 +1,5 @@
 from .telescope_state import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                              TimeoutError, CancelledError, NamespaceError,
+                              TimeoutError, CancelledError,
                               ArgumentParser, PICKLE_PROTOCOL)
 
 # BEGIN VERSION CHECK
