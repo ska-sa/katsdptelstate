@@ -51,12 +51,11 @@ class TelescopeState(object):
     dots. A :meth:`view` convenience method helps with constructing prefix
     lists by automatically adding the trailing dot to prefixes.
 
-    Care should be used when putting an attribute in multiple namespaces.
-    Adding a second attribute may shadow an existing one for some views,
-    causing the attribute to appear to have changed value. This class does not
-    prevent it, because there is no way to know which namespaces may be shared
-    in a view, and because doing it in a race-free way would be prohibitively
-    expense.
+    Care should be used when attributes share a suffix. They may shadow
+    shadow each other for some views, causing the attribute to appear to have
+    changed value. This class does not prevent it, because there is no way to
+    know which namespaces may be shared in a view, and because doing it in a
+    race-free way would be prohibitively expensive.
 
     Parameters
     ----------
@@ -275,7 +274,7 @@ class TelescopeState(object):
                         'Attempt to overwrite mutable key {} with immutable'.format(full_key))
                 if str_val != old:
                     raise ImmutableKeyError(
-                        'Attempt to overwrite immutable key {}.'.format(full_key))
+                        'Attempt to change value of immutable key {}.'.format(full_key))
                 else:
                     logger.info('Attribute {} updated with the same value'.format(full_key))
                     return True
