@@ -115,7 +115,7 @@ class TelescopeState(object):
 
     def root(self):
         """Create a view containing only the root namespace."""
-        return self.__class__(None, None, base=self)
+        return self.__class__(base=self)
 
     def _strip(self, str_val, return_pickle=False):
         if len(str_val) < 8: return None
