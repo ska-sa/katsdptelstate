@@ -12,8 +12,8 @@ except ImportError:
     import pickle
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, ArgumentParser,
-                            PICKLE_PROTOCOL)
+                            TimeoutError, CancelledError,
+                            ArgumentParser, PICKLE_PROTOCOL)
 
 
 class TestSDPTelescopeState(unittest.TestCase):
@@ -21,9 +21,17 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts = TelescopeState()
         self.ts._r.flushdb()
          # make sure we are clean
+        self.ns = self.ts.view('ns')
 
     def tearDown(self):
         self.ts._r.flushdb()
+
+    def test_namespace(self):
+        self.assertEqual(self.ts.prefixes, ('',))
+        self.assertEqual(self.ns.prefixes, ('ns.', ''))
+        ns2 = self.ns.view('ns.child.grandchild')
+        self.assertEqual(ns2.prefixes, ('ns.child.grandchild.', 'ns.', ''))
+        self.assertEqual(ns2.root().prefixes, ('',))
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)
@@ -34,14 +42,31 @@ class TestSDPTelescopeState(unittest.TestCase):
         with self.assertRaises(AttributeError):
             self.ts.test_key
 
+    def test_namespace_add(self):
+        self.ns.add('test_key', 1234.5)
+        self.assertEqual(self.ns.test_key, 1234.5)
+        self.assertEqual(self.ns['test_key'], 1234.5)
+        self.assertEqual(self.ts['ns.test_key'], 1234.5)
+        with self.assertRaises(KeyError):
+            self.ts['test_key']
+
     def test_method_protection(self):
         with self.assertRaises(InvalidKeyError):
             self.ts.add('get', 1234.5)
 
     def test_delete(self):
         self.ts.add('test_key', 1234.5)
+        self.assertIn('test_key', self.ts)
         self.ts.delete('test_key')
         self.ts.delete('test_key')
+        self.assertNotIn('test_key', self.ts)
+
+    def test_namespace_delete(self):
+        self.ts.add('parent_key', 1234.5)
+        self.ns.add('child_key', 2345.6)
+        self.ns.delete('child_key')
+        self.ns.delete('parent_key')
+        self.assertEqual(self.ts.keys(), [])
 
     def test_clear(self):
         self.ts.add('test_key', 1234.5)
@@ -72,7 +97,6 @@ class TestSDPTelescopeState(unittest.TestCase):
          # check timestamp
 
     def test_immutable(self):
-        self.ts.delete('test_immutable')
         self.ts.add('test_immutable', 1234.5, immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_immutable', 1234.5)
@@ -80,6 +104,45 @@ class TestSDPTelescopeState(unittest.TestCase):
             self.ts.add('test_immutable', 5432.1, immutable=True)
         # Same value may be set
         self.ts.add('test_immutable', 1234.5, immutable=True)
+        self.ts.add('test_mutable', 1234.5)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_mutable', 2345.6, immutable=True)
+
+    def test_namespace_immutable(self):
+        self.ts.add('parent_immutable', 1234.5, immutable=True)
+        self.ns.add('child_immutable', 2345.5, immutable=True)
+        with self.assertRaises(KeyError):
+            self.ts['child_immutable']
+        self.assertEqual(self.ns.get('child_immutable'), 2345.5)
+        self.assertEqual(self.ns.get('parent_immutable'), 1234.5)
+
+    def test_is_immutable(self):
+        self.ts.add('parent_immutable', 1, immutable=True)
+        self.ns.add('child_immutable', 2, immutable=True)
+        self.ts.add('parent', 3)
+        self.ns.add('child', 4)
+
+        self.assertTrue(self.ts.is_immutable('parent_immutable'))
+        self.assertFalse(self.ts.is_immutable('parent'))
+        self.assertFalse(self.ts.is_immutable('child_immutable'))  # Unreachable
+        self.assertFalse(self.ts.is_immutable('child'))  # Unreachable
+        self.assertFalse(self.ts.is_immutable('not_a_key'))
+
+        self.assertTrue(self.ns.is_immutable('parent_immutable'))
+        self.assertFalse(self.ns.is_immutable('parent'))
+        self.assertTrue(self.ns.is_immutable('child_immutable'))
+        self.assertFalse(self.ns.is_immutable('child'))
+        self.assertFalse(self.ns.is_immutable('not_a_key'))
+
+    def test_keys(self):
+        self.ts.add('key1', 'a')
+        self.ns.add('key2', 'b')
+        self.ns.add('key2', 'c')
+        self.ts.add('immutable', 'd', immutable=True)
+        self.assertEqual(self.ts.keys(), [b'immutable', b'key1', b'ns.key2'])
+        self.assertEqual(self.ts.keys('ns.*'), [b'ns.key2'])
+        self.assertEqual(self.ns.keys(show_counts=True),
+                         [(b'immutable', 1), (b'key1', 1), (b'ns.key2', 2)])
 
     def test_complex_store(self):
         import numpy as np
