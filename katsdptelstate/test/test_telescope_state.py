@@ -107,6 +107,12 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_mutable', 1234.5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 2345.6, immutable=True)
+        # None values work correctly
+        self.ts.add('test_none', None, immutable=True)
+        self.assertIsNone(self.ts.get('test_none'))
+        self.assertIsNone(self.ts.get('test_none', 'not_none'))
+        self.assertIsNone(self.ts.test_none)
+        self.assertIsNone(self.ts['test_none'])
 
     def test_namespace_immutable(self):
         self.ts.add('parent_immutable', 1234.5, immutable=True)

@@ -127,14 +127,13 @@ class TelescopeState(object):
         return (ret_val, ts)
 
     def __getattr__(self, key):
-        val = self._get(key)
-        if val is None: raise AttributeError('{} not found'.format(key))
-        return val
+        try:
+            return self._get(key)
+        except KeyError as error:
+            raise AttributeError(str(error))
 
     def __getitem__(self, key):
-        val = self._get(key)
-        if val is None: raise KeyError('{} not found'.format(key))
-        return val
+        return self._get(key)
 
     def __contains__(self, x):
         return self.has_key(x)
@@ -392,12 +391,11 @@ class TelescopeState(object):
     def _get_immutable(self, full_key, return_pickle=False):
         """Return a fully-qualified key of string type."""
         str_val = self._r.get(full_key)
+        if str_val is None:
+            raise KeyError
         if return_pickle:
             return str_val
-        try:
-            return pickle.loads(str_val)
-        except pickle.UnpicklingError:
-            return str_val
+        return pickle.loads(str_val)
 
     def _get(self, key, return_pickle=False):
         for prefix in self._prefixes:
@@ -406,9 +404,13 @@ class TelescopeState(object):
                 try:
                     return self._get_immutable(full_key, return_pickle)
                      # assume simple string type for immutable
-                except redis.ResponseError:
+                except KeyError:
+                    pass     # Key does not exist at all - try next prefix
+                except redis.ResponseError as error:
+                    if not error.args[0].startswith('WRONGTYPE '):
+                        raise
                     return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
-        return None
+        raise KeyError('{} not found'.format(key))
 
     def get(self, key, default=None, return_pickle=False):
         """Get a single value from the model.
@@ -426,9 +428,10 @@ class TelescopeState(object):
         value - for non immutable key return the most recent value
 
         """
-        val = self._get(key, return_pickle)
-        if val is None: return default
-        return val
+        try:
+            return self._get(key, return_pickle)
+        except KeyError:
+            return default
 
     def get_range(self, key, st=None, et=None, return_format=None, include_previous=None, return_pickle=False):
         """Get the range of values specified by the key and timespec from the model.
