@@ -165,7 +165,7 @@ class TelescopeState(object):
                 return type_ == b'string'
         return False
 
-    def keys(self, filter='*', show_counts=False):
+    def keys(self, filter='*'):
         """Return a list of keys currently in the model.
 
         This function ignores the prefix list, returns all keys with
@@ -175,32 +175,13 @@ class TelescopeState(object):
         ----------
         filter : str, optional
             Wildcard string passed to redis to restrict keys
-        show_counts : bool, optional
-            If true, return the number of entries for each mutable key.
 
         Returns
         -------
         keys : list
-            If `show_counts` is ``False``, each entry is a key name;
-            otherwise, it is a tuple of `name`, `count`, where `count` is 1 for
-            immutable keys. The keys are returned in sorted order.
+            The key names, in sorted order.
         """
-        key_list = []
-        if show_counts:
-            keys = self._r.keys(filter)
-            for k in keys:
-                # Ideally we'd just try zcard and fall back otherwise, but
-                # fakeredis doesn't yet handle this correctly.
-                type_ = self._r.type(k)
-                if type_ == b'zset':
-                    kcount = self._r.zcard(k)
-                else:
-                    kcount = 1
-                key_list.append((k, kcount))
-        else:
-            key_list = self._r.keys(filter)
-        key_list.sort()
-        return key_list
+        return sorted(self._r.keys(filter))
 
     def delete(self, key):
         """Remove a key, and all values, from the model.

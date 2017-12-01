@@ -147,8 +147,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('immutable', 'd', immutable=True)
         self.assertEqual(self.ts.keys(), [b'immutable', b'key1', b'ns.key2'])
         self.assertEqual(self.ts.keys('ns.*'), [b'ns.key2'])
-        self.assertEqual(self.ns.keys(show_counts=True),
-                         [(b'immutable', 1), (b'key1', 1), (b'ns.key2', 2)])
 
     def test_complex_store(self):
         import numpy as np
