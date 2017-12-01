@@ -206,6 +206,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 16384, 2)
         self.ts.add('test_key', 4096, 3)
         self.ts.add('test_key', 2048, 4)
+        self.ts.add('test_immutable', 12345, immutable=True)
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key'))
         self.assertEqual([(16384, 2)], self.ts.get_range('test_key', et=3))
         self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
@@ -219,6 +220,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
+        self.assertRaises(ImmutableKeyError, self.ts.get_range, 'test_immutable')
 
     def test_wait_key_already_done_sensor(self):
         """Calling wait_key with a condition that is met must return (sensor version)."""

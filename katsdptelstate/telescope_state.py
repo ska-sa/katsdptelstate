@@ -425,8 +425,8 @@ class TelescopeState(object):
 
         Returns
         -------
-        value - for non immutable key return the most recent value
-
+        value
+            for non-immutable key return the most recent value
         """
         try:
             return self._get(key, return_pickle)
@@ -457,7 +457,15 @@ class TelescopeState(object):
 
         Returns
         -------
-        list of (value, time) or value (for immutables) records between specified time range
+        list
+            list of (value, time) records in specified time range
+
+        Raises
+        ------
+        KeyError
+            if `key` does not exist (with any prefix)
+        ImmutableKeyError
+            if `key` refers to an immutable key
 
         Notes
         -----
@@ -488,9 +496,8 @@ class TelescopeState(object):
             full_key = prefix + key
             type_ = self._r.type(full_key)
             if type_ != b'none':
-                if type_ == b'string':
-                    # immutables return value with no timestamp information
-                    return self._get_immutable(full_key, return_pickle=return_pickle)
+                if type_ != b'zset':
+                    raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
                 else:
                     break
         else:
