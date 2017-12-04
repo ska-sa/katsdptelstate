@@ -28,9 +28,9 @@ class TestSDPTelescopeState(unittest.TestCase):
 
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, ('',))
-        self.assertEqual(self.ns.prefixes, ('ns.', ''))
-        ns2 = self.ns.view('ns.child.grandchild')
-        self.assertEqual(ns2.prefixes, ('ns.child.grandchild.', 'ns.', ''))
+        self.assertEqual(self.ns.prefixes, ('ns_', ''))
+        ns2 = self.ns.view('ns_child_grandchild')
+        self.assertEqual(ns2.prefixes, ('ns_child_grandchild_', 'ns_', ''))
         self.assertEqual(ns2.root().prefixes, ('',))
 
     def test_basic_add(self):
@@ -46,7 +46,7 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ns.add('test_key', 1234.5)
         self.assertEqual(self.ns.test_key, 1234.5)
         self.assertEqual(self.ns['test_key'], 1234.5)
-        self.assertEqual(self.ts['ns.test_key'], 1234.5)
+        self.assertEqual(self.ts['ns_test_key'], 1234.5)
         with self.assertRaises(KeyError):
             self.ts['test_key']
 
@@ -145,8 +145,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.ns.add('key2', 'b')
         self.ns.add('key2', 'c')
         self.ts.add('immutable', 'd', immutable=True)
-        self.assertEqual(self.ts.keys(), [b'immutable', b'key1', b'ns.key2'])
-        self.assertEqual(self.ts.keys('ns.*'), [b'ns.key2'])
+        self.assertEqual(self.ts.keys(), [b'immutable', b'key1', b'ns_key2'])
+        self.assertEqual(self.ts.keys('ns_*'), [b'ns_key2'])
 
     def test_complex_store(self):
         import numpy as np

@@ -48,8 +48,8 @@ class TelescopeState(object):
     Each instance of this class has an associated list of prefixes. Lookups
     try each key in turn until a match is found. Writes use the first prefix in
     the list. Conventionally, keys are arranged into a hierarchy, separated by
-    dots. A :meth:`view` convenience method helps with constructing prefix
-    lists by automatically adding the trailing dot to prefixes.
+    underscores. A :meth:`view` convenience method helps with constructing
+    prefix lists by automatically adding the trailing underscore to prefixes.
 
     Care should be used when attributes share a suffix. They may shadow
     shadow each other for some views, causing the attribute to appear to have
@@ -75,6 +75,8 @@ class TelescopeState(object):
         specifying `prefixes`, without creating new redis connections.
         If specified, `endpoint` and `db` are ignored.
     """
+    SEPARATOR = '_'
+
     def __init__(self, endpoint='', db=0, prefixes=('',), base=None):
         if base is not None:
             self._r = base._r
@@ -101,15 +103,15 @@ class TelescopeState(object):
     def prefixes(self):
         return self._prefixes
 
-    def view(self, name, add_dot=True):
+    def view(self, name, add_separator=True):
         """Create a view with an extra name in the list of namespaces.
 
         Returns a new view with `name` added as the first prefix. If `name`
-        is non-empty and does not end with a dot, it is added (unless `add_dot`
-        is false).
+        is non-empty and does not end with the separator, it is added (unless
+        `add_separator` is false).
         """
-        if name != '' and name[-1] != '.' and add_dot:
-            name += '.'
+        if name != '' and name[-1] != self.SEPARATOR and add_separator:
+            name += self.SEPARATOR
         return self.__class__(None, None, prefixes=(name,) + self._prefixes, base=self)
 
     def root(self):
