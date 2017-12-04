@@ -381,16 +381,15 @@ class TelescopeState(object):
     def _get(self, key, return_pickle=False):
         for prefix in self._prefixes:
             full_key = prefix + key
-            if self._r.exists(full_key):
-                try:
-                    return self._get_immutable(full_key, return_pickle)
-                     # assume simple string type for immutable
-                except KeyError:
-                    pass     # Key does not exist at all - try next prefix
-                except redis.ResponseError as error:
-                    if not error.args[0].startswith('WRONGTYPE '):
-                        raise
-                    return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
+            try:
+                return self._get_immutable(full_key, return_pickle)
+                 # assume simple string type for immutable
+            except KeyError:
+                pass     # Key does not exist at all - try next prefix
+            except redis.ResponseError as error:
+                if not error.args[0].startswith('WRONGTYPE '):
+                    raise
+                return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
         raise KeyError('{} not found'.format(key))
 
     def get(self, key, default=None, return_pickle=False):
