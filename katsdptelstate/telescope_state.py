@@ -127,14 +127,13 @@ class TelescopeState(object):
         return (ret_val, ts)
 
     def __getattr__(self, key):
-        val = self._get(key)
-        if val is None: raise AttributeError('{} not found'.format(key))
-        return val
+        try:
+            return self._get(key)
+        except KeyError as error:
+            raise AttributeError(str(error))
 
     def __getitem__(self, key):
-        val = self._get(key)
-        if val is None: raise KeyError('{} not found'.format(key))
-        return val
+        return self._get(key)
 
     def __contains__(self, x):
         return self.has_key(x)
@@ -166,7 +165,7 @@ class TelescopeState(object):
                 return type_ == b'string'
         return False
 
-    def keys(self, filter='*', show_counts=False):
+    def keys(self, filter='*'):
         """Return a list of keys currently in the model.
 
         This function ignores the prefix list, returns all keys with
@@ -176,32 +175,13 @@ class TelescopeState(object):
         ----------
         filter : str, optional
             Wildcard string passed to redis to restrict keys
-        show_counts : bool, optional
-            If true, return the number of entries for each mutable key.
 
         Returns
         -------
         keys : list
-            If `show_counts` is ``False``, each entry is a key name;
-            otherwise, it is a tuple of `name`, `count`, where `count` is 1 for
-            immutable keys. The keys are returned in sorted order.
+            The key names, in sorted order.
         """
-        key_list = []
-        if show_counts:
-            keys = self._r.keys(filter)
-            for k in keys:
-                # Ideally we'd just try zcard and fall back otherwise, but
-                # fakeredis doesn't yet handle this correctly.
-                type_ = self._r.type(k)
-                if type_ == b'zset':
-                    kcount = self._r.zcard(k)
-                else:
-                    kcount = 1
-                key_list.append((k, kcount))
-        else:
-            key_list = self._r.keys(filter)
-        key_list.sort()
-        return key_list
+        return sorted(self._r.keys(filter))
 
     def delete(self, key):
         """Remove a key, and all values, from the model.
@@ -392,23 +372,25 @@ class TelescopeState(object):
     def _get_immutable(self, full_key, return_pickle=False):
         """Return a fully-qualified key of string type."""
         str_val = self._r.get(full_key)
+        if str_val is None:
+            raise KeyError
         if return_pickle:
             return str_val
-        try:
-            return pickle.loads(str_val)
-        except pickle.UnpicklingError:
-            return str_val
+        return pickle.loads(str_val)
 
     def _get(self, key, return_pickle=False):
         for prefix in self._prefixes:
             full_key = prefix + key
-            if self._r.exists(full_key):
-                try:
-                    return self._get_immutable(full_key, return_pickle)
-                     # assume simple string type for immutable
-                except redis.ResponseError:
-                    return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
-        return None
+            try:
+                return self._get_immutable(full_key, return_pickle)
+                 # assume simple string type for immutable
+            except KeyError:
+                pass     # Key does not exist at all - try next prefix
+            except redis.ResponseError as error:
+                if not error.args[0].startswith('WRONGTYPE '):
+                    raise
+                return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
+        raise KeyError('{} not found'.format(key))
 
     def get(self, key, default=None, return_pickle=False):
         """Get a single value from the model.
@@ -423,12 +405,13 @@ class TelescopeState(object):
 
         Returns
         -------
-        value - for non immutable key return the most recent value
-
+        value
+            for non-immutable key return the most recent value
         """
-        val = self._get(key, return_pickle)
-        if val is None: return default
-        return val
+        try:
+            return self._get(key, return_pickle)
+        except KeyError:
+            return default
 
     def get_range(self, key, st=None, et=None, return_format=None, include_previous=None, return_pickle=False):
         """Get the range of values specified by the key and timespec from the model.
@@ -454,7 +437,15 @@ class TelescopeState(object):
 
         Returns
         -------
-        list of (value, time) or value (for immutables) records between specified time range
+        list
+            list of (value, time) records in specified time range
+
+        Raises
+        ------
+        KeyError
+            if `key` does not exist (with any prefix)
+        ImmutableKeyError
+            if `key` refers to an immutable key
 
         Notes
         -----
@@ -485,9 +476,8 @@ class TelescopeState(object):
             full_key = prefix + key
             type_ = self._r.type(full_key)
             if type_ != b'none':
-                if type_ == b'string':
-                    # immutables return value with no timestamp information
-                    return self._get_immutable(full_key, return_pickle=return_pickle)
+                if type_ != b'zset':
+                    raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
                 else:
                     break
         else:
@@ -555,109 +545,3 @@ class _HelpAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         self._parser.print_help()
         self._parser.exit()
-
-
-class ArgumentParser(argparse.ArgumentParser):
-    """Argument parser that can load defaults from a telescope state. It can be
-    used as a drop-in replacement for `argparse.ArgumentParser`. It adds the
-    options `--telstate` and `--name`. The first takes the hostname of a
-    telescope state repository (optionally with a port). If specified,
-    `parse_args` will first connect to this host and fetch defaults (which
-    override the defaults specified by `add_argument`). The telescope state
-    will also be available in the returned `argparse.Namespace`.
-
-    If `name` is specified, it consists of a dot-separated list of
-    identifiers, specifying a path through a tree of dictionaries of config.
-    For example, `foo.0` will cause configuration to be searched in
-    `config`, `config["foo"]`, `config["foo"]["0"]`, `config.foo` and
-    `config.foo.0`. If configuration is found in multiple places, the most
-    specific location will be used first, breaking ties to use `config.*`
-    in preference to embedded dictionaries within `config`. It is not an error
-    for one of these dictionaries not to exist, but it is an error if a name is
-    found but is not a dictionary.
-
-    New code generating config dictionaries is advised to use the `config.*`
-    form, as it is more scalable (no need to fetch unrelated config).
-    Sub-config embedded within `config` is supported for backwards
-    compatibility.
-
-    A side-effect of the implementation is that calling `parse_args` or
-    `parse_known_args` permanently changes the defaults. A parser should thus
-    only be used once and then thrown away. Also, because it changes the
-    defaults rather than injecting actual arguments, argparse features like
-    required arguments and mutually exclusive groups might not work as
-    expected.
-
-    Parameters
-    ----------
-    config_key : str, optional
-        Name of the config dictionary within the telescope state (default: `config`)
-    """
-
-    _SPECIAL_NAMES = ['telstate', 'name']
-
-    def __init__(self, *args, **kwargs):
-        self.config_key = kwargs.pop('config_key', 'config')
-        super(ArgumentParser, self).__init__(*args, **kwargs)
-        # Create a separate parser that will extract only the special args
-        self.config_parser = argparse.ArgumentParser(add_help=False)
-        self.config_parser.add_argument('-h', '--help', action=_HelpAction, default=argparse.SUPPRESS, parser=self)
-        for parser in [super(ArgumentParser, self), self.config_parser]:
-            parser.add_argument('--telstate', help='Telescope state repository from which to retrieve config', metavar='HOST[:PORT]')
-            parser.add_argument('--name', type=str, default='', help='Name of this process for telescope state configuration')
-        self.config_keys = set()
-
-    def add_argument(self, *args, **kwargs):
-        action = super(ArgumentParser, self).add_argument(*args, **kwargs)
-        # Check if we have finished initialising ourself yet
-        if hasattr(self, 'config_keys'):
-            if action.dest is not None and action.dest is not argparse.SUPPRESS:
-                self.config_keys.add(action.dest)
-        return action
-
-    def _load_defaults(self, telstate, name):
-        config_dict = telstate.get(self.config_key, {})
-        parts = name.split('.')
-        cur = config_dict
-        dicts = [cur]
-        split_name = self.config_key
-        for part in parts:
-            if cur is not None:
-                cur = cur.get(part)
-                if cur is not None:
-                    dicts.append(cur)
-            split_name += '.'
-            split_name += part
-            dicts.append(telstate.get(split_name, {}))
-
-        # Go from most specific to most general, so that specific values
-        # take precedence.
-        seen = set(self._SPECIAL_NAMES)  # Prevents these being overridden
-        for cur in reversed(dicts):
-            for key in self.config_keys:
-                if key in cur and key not in seen:
-                    super(ArgumentParser, self).set_defaults(**{key: cur[key]})
-                    seen.add(key)
-
-    def set_defaults(self, **kwargs):
-        for special in self._SPECIAL_NAMES:
-            if special in kwargs:
-                self.config_parser.set_defaults(**{special: kwargs.pop(special)})
-        super(ArgumentParser, self).set_defaults(**kwargs)
-
-    def parse_known_args(self, args=None, namespace=None):
-        if namespace is None:
-            namespace = argparse.Namespace()
-        try:
-            config_args, other = self.config_parser.parse_known_args(args)
-        except argparse.ArgumentError:
-            other = args
-        else:
-            if config_args.telstate is not None:
-                try:
-                    namespace.telstate = TelescopeState(config_args.telstate)
-                except redis.ConnectionError as e:
-                    self.error(str(e))
-                namespace.name = config_args.name
-                self._load_defaults(namespace.telstate, namespace.name)
-        return super(ArgumentParser, self).parse_known_args(other, namespace)
