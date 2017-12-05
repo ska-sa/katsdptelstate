@@ -261,7 +261,8 @@ class TelescopeState(object):
                         'Attempt to overwrite mutable key {} with immutable'.format(full_key))
                 if str_val != old:
                     raise ImmutableKeyError(
-                        'Attempt to change value of immutable key {}.'.format(full_key))
+                        'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
+                            full_key, pickle.loads(old), value))
                 else:
                     logger.info('Attribute {} updated with the same value'.format(full_key))
                     return True
