@@ -32,6 +32,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         ns2 = self.ns.view('ns_child_grandchild')
         self.assertEqual(ns2.prefixes, ('ns_child_grandchild_', 'ns_', ''))
         self.assertEqual(ns2.root().prefixes, ('',))
+        ns_excl = self.ns.view('exclusive', exclusive=True)
+        self.assertEqual(ns_excl.prefixes, ('exclusive_',))
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)

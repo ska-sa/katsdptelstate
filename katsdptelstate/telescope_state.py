@@ -103,16 +103,21 @@ class TelescopeState(object):
     def prefixes(self):
         return self._prefixes
 
-    def view(self, name, add_separator=True):
+    def view(self, name, add_separator=True, exclusive=False):
         """Create a view with an extra name in the list of namespaces.
 
-        Returns a new view with `name` added as the first prefix. If `name`
-        is non-empty and does not end with the separator, it is added (unless
-        `add_separator` is false).
+        Returns a new view with `name` added as the first prefix, or the
+        only prefix if `exclusive` is true. If `name` is non-empty and does not
+        end with the separator, it is added (unless `add_separator` is
+        false).
         """
         if name != '' and name[-1] != self.SEPARATOR and add_separator:
             name += self.SEPARATOR
-        return self.__class__(None, None, prefixes=(name,) + self._prefixes, base=self)
+        if exclusive:
+            prefixes = (name,)
+        else:
+            prefixes = (name,) + self._prefixes
+        return self.__class__(None, None, prefixes=prefixes, base=self)
 
     def root(self):
         """Create a view containing only the root namespace."""
