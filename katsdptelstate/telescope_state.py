@@ -1,6 +1,7 @@
 from __future__ import print_function, division, absolute_import
 import struct
 import time
+import os
 try:
     import cPickle as pickle
 except ImportError:
@@ -14,7 +15,7 @@ import redis
 import fakenewsredis as fakeredis
 
 from .endpoint import Endpoint, endpoint_parser
-
+from .tabloid_redis import TabloidRedis
 
 logger = logging.getLogger(__name__)
 PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
@@ -82,20 +83,25 @@ class TelescopeState(object):
             self._r = base._r
             self._ps = base._ps
         else:
+            self._r = None
             if not isinstance(endpoint, Endpoint):
-                endpoint = endpoint_parser(default_port=None)(endpoint)
-            if not endpoint.host:
-                self._r = fakeredis.FakeStrictRedis(db=db)
-            elif endpoint.port is not None:
-                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
+                if os.path.isfile(endpoint):
+                    self._r = TabloidRedis(endpoint)
+                else:
+                    endpoint = endpoint_parser(default_port=None)(endpoint)
+            if not self._r:
+                if not endpoint.host:
+                    self._r = fakeredis.FakeStrictRedis(db=db)
+                elif endpoint.port is not None:
+                    self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
                                             db=db, socket_timeout=5)
-            else:
-                self._r = redis.StrictRedis(host=endpoint.host,
+                else:
+                    self._r = redis.StrictRedis(host=endpoint.host,
                                             db=db, socket_timeout=5)
-            self._ps = self._r.pubsub(ignore_subscribe_messages=True)
-            # subscribe to the telescope model info channel
-            self._default_channel = 'tm_info'
-            self._ps.subscribe(self._default_channel)
+                self._ps = self._r.pubsub(ignore_subscribe_messages=True)
+                 # subscribe to the telescope model info channel
+                self._default_channel = 'tm_info'
+                self._ps.subscribe(self._default_channel)
         # Force to tuple, in case it is some other iterable
         self._prefixes = tuple(prefixes)
 
