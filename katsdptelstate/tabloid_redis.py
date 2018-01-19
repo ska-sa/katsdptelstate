@@ -1,15 +1,15 @@
 import os
 import bisect
 import logging
+import struct
 from redis import ResponseError
 
-try:
-    from rdbtools import RdbParser, RdbCallback
-    from rdbtools.encodehelpers import bytes_to_unicode
-except ImportError:
-    pass
+from rdbtools import RdbParser, RdbCallback
+from rdbtools.encodehelpers import bytes_to_unicode
 
 _WRONGTYPE_MSG = "WRONGTYPE Operation against a key holding the wrong kind of value"
+
+DUMP_POSTFIX = "\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 logging.basicConfig()
 
@@ -25,11 +25,13 @@ class TabloidRedis(object):
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
         self.data = {}
-         # dict of redis keys with approximate data structures within
-        self.update()
+         # dict of redis keys with appropriate data structures within
+        if os.path.exists(self.filename):
+            self.update()
+        else:
+            self.logger.warning("Initialised as empty since specified file does not exist.")
 
     def update(self):
-        self.data = {}
         try:
             callback = TStateCallback(self)
             self._parser = RdbParser(callback)
@@ -49,17 +51,99 @@ class TabloidRedis(object):
         raise NotImplementedError
 
     def delete(self, key):
-        raise NotImplementedError
+        self.data.pop(key)
 
-    def set(self, key, val):
-        raise NotImplementedError
+    def set(self, key, value, expiry=None, info=None):
+        if expiry: logger.warning("Key expiry not supported in TabloidRedis")
+        if info: logger.warning("Key information not supported in TabloidRedis")
+        self.data[key] = value
 
     def zadd(self, key, score, val):
-        raise NotImplementedError
+        if score != 0:
+            raise NotImplementedError('TabloidRedis does not support non zero scores for zset')
+        if not self.data.has_key(key): self.data[key] = []
+        self.data[key].append(val)
 
     def get(self, key):
         if self.type(key) == 'string': return self.data[key]
         raise ResponseError(_WRONGTYPE_MSG)
+
+    def encode_len(self, length):
+        """Encodes the specified length as 1,2 or 5 bytes of
+           RDB specific length encoded byte.
+           For values less than 64 (i.e two MSBs zero - encode directly in the byte)
+           For values less than 16384 use two bytes, leading MSBs are 01 followed by 14 bits encoding the value
+           For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
+        """
+        if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
+        if length < 64: return chr(length)
+        if length < 16384: return struct.pack(">h",0x4000 + length)
+        return struct.pack('>q',0x8000000000 + length)[3:]
+
+    def encode_prev_length(self, length):
+        """Special helper for zset previous entry lengths.
+           If length < 253 then use 1 byte directly, otherwise
+           set first byte to 254 and add 4 trailing bytes as an
+           unsigned integer.
+        """
+        if length < 254: return chr(length)
+        return b'\xfe' + struct.pack(">q",length)
+
+    def dump(self, key):
+        """Encode redis key value in an RDB compatible format.
+           Note: This follows the DUMP command in Redis itself which produces output
+           that is similarly encoded to an RDB, but not exactly the same.
+
+           String types are encoded simply with a length specified (as documented in encode_len) followed directly by the
+           value bytestring.
+
+           Zset types are more complex and Redis uses both LZF and Ziplist format depending on various arcane heuristics.
+           For maximum compatibility we use LZF and Ziplist as this supports really large values well, at the expense of
+           additional overhead for small values.
+
+           A zset dump thus takes the following form:
+
+                <length encoding><ziplist string envelope>
+
+           The ziplist string envelope itself is an LZF compressed string with the following form:
+           (format descriptions are provided in the description for each component)
+
+                <bytes in list '<i'><offset to tail '<i'><number of entries '<h'><entry 1><entry 2><entry 2N><terminator 0xFF>
+
+           The entries themselves are encoded as follows:
+
+                <previous entry length 1byte or 5bytes><entry length - up to 5 bytes as per length encoding><value>
+
+           The entries alternate between zset values and scores, so there should always be 2N entries in the decode.
+        """
+
+        type_specifier = b'\x00'
+        if self.type(key) == 'zset':
+            type_specifier = b'\x0c'
+            data = self.data[key]
+            entry_count = 2 * len(data)
+            raw_entries = []
+            previous_length = b'\x00'
+
+            # loop through each entry in the data interleaving encoded values and scores (all set to zero)
+            for entry in data:
+                _enc = previous_length + self.encode_len(len(entry)) + entry
+                raw_entries.append(_enc)
+                previous_length = self.encode_prev_length(len(_enc))
+                raw_entries.append(previous_length + b'\xf1')
+                 # scores are encoded using a special length schema which supports direct integer addressing
+                 # 4 MSB set implies direct unsigned integer in 4 LSB (minus 1). Hence \xf1 is integer 0
+                previous_length = b'\x02'
+            encoded_entries = "".join(raw_entries) + b'\xff'
+            zl_length = 10 + len(encoded_entries)
+             # account for the known 10 bytes worth of length descriptors when calculating envelope length
+            zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
+            return b'\x0c' + self.encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
+        else:
+            type_specifier = b'\x00'
+            val = self.get(key)
+            encoded_length = self.encode_len(len(val))
+            return type_specifier + encoded_length + val.encode('UTF-8') + DUMP_POSTFIX
 
     def type(self, key):
         if type(self.data[key]) == list: return 'zset'
