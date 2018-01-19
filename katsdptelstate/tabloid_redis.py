@@ -122,9 +122,18 @@ class TabloidRedis(object):
             type_specifier = b'\x0c'
             data = self.data[key]
             entry_count = 2 * len(data)
+
+            # The entries counter for ziplists is encoded as 2 bytes, if we exceed this limit
+            # we fall back to making a simple set
+            if entry_count > 32767:
+                _enc = b'\x03' + self.encode_len(entry_count)
+                for entry in data:
+                    _enc += self.encode_len(len(entry)) + entry + '\x010'
+                     # interleave entries and scores directly
+                return _enc + DUMP_POSTFIX
+
             raw_entries = []
             previous_length = b'\x00'
-
             # loop through each entry in the data interleaving encoded values and scores (all set to zero)
             for entry in data:
                 _enc = previous_length + self.encode_len(len(entry)) + entry
@@ -137,6 +146,7 @@ class TabloidRedis(object):
             encoded_entries = "".join(raw_entries) + b'\xff'
             zl_length = 10 + len(encoded_entries)
              # account for the known 10 bytes worth of length descriptors when calculating envelope length
+            print "{}: {}/{}".format(key, entry_count, zl_length)
             zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
             return b'\x0c' + self.encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
         else:
