@@ -124,9 +124,11 @@ class TabloidRedis(object):
             entry_count = 2 * len(data)
 
             # The entries counter for ziplists is encoded as 2 bytes, if we exceed this limit
-            # we fall back to making a simple set
-            if entry_count > 32767:
-                _enc = b'\x03' + self.encode_len(entry_count)
+            # we fall back to making a simple set. Redis of course makes the decision point using
+            # only 7 out of the 16 bits available and switches at 127 entries...
+            if entry_count > 127:
+                _enc = b'\x03' + self.encode_len(len(data))
+                 # for inscrutable reasons the length here is half the number of actual entries (i.e. scores are ignored)
                 for entry in data:
                     _enc += self.encode_len(len(entry)) + entry + '\x010'
                      # interleave entries and scores directly
