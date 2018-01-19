@@ -16,7 +16,7 @@ from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             PICKLE_PROTOCOL)
 
 
-class TestSDPTelescopeState(unittest.TestCase):
+class TestTelescopeState(unittest.TestCase):
     def setUp(self):
         self.ts = TelescopeState()
         self.ts._r.flushdb()
@@ -237,6 +237,9 @@ class TestSDPTelescopeState(unittest.TestCase):
         """wait_key must time out in the given time if the condition is not met"""
         with self.assertRaises(TimeoutError):
             self.ts.wait_key('test_key', timeout=0.1)
+        with self.assertRaises(TimeoutError):
+            # Takes a different code path, even though equivalent
+            self.ts.wait_key('test_key', lambda value, ts: True, timeout=0.1)
 
     def test_wait_key_delayed(self):
         """wait_key must succeed when given a timeout that does not expire before the condition is met"""
@@ -286,3 +289,25 @@ class TestSDPTelescopeState(unittest.TestCase):
         thread.start()
         with self.assertRaises(CancelledError):
             self.ts.wait_key('test_key', cancel_future=future)
+
+    def test_wait_key_shadow(self):
+        """updates to a shadowed qualified key must be ignored"""
+        def set_key(telstate):
+            time.sleep(0.1)
+            telstate.add('test_key', True, immutable=True)
+
+        ns2 = self.ns.view('ns2')
+        # Put a non-matching key into a mid-level namespace
+        self.ns.add('test_key', False)
+        # Put a matching key into a shadowed namespace after a delay
+        thread = threading.Thread(target=set_key, args=(self.ts,))
+        thread.start()
+        with self.assertRaises(TimeoutError):
+            ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
+        thread.join()
+
+        # Put a matching key into a non-shadowed namespace after a delay
+        thread = threading.Thread(target=set_key, args=(ns2,))
+        thread.start()
+        ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
+        thread.join()
