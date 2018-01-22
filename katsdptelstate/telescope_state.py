@@ -15,7 +15,11 @@ import redis
 import fakenewsredis as fakeredis
 
 from .endpoint import Endpoint, endpoint_parser
-from .tabloid_redis import TabloidRedis
+
+try:
+    from .tabloid_redis import TabloidRedis
+except ImportError:
+    pass # direct file import is disabled
 
 logger = logging.getLogger(__name__)
 PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
@@ -86,7 +90,10 @@ class TelescopeState(object):
             self._r = None
             if not isinstance(endpoint, Endpoint):
                 if os.path.isfile(endpoint):
-                    self._r = TabloidRedis(endpoint)
+                    try:
+                        self._r = TabloidRedis(endpoint)
+                    except NameError:
+                        raise ImportError("File based endpoints require rdbtools to be installed.")
                 else:
                     endpoint = endpoint_parser(default_port=None)(endpoint)
             if not self._r:
