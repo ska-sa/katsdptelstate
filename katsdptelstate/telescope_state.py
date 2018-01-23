@@ -309,8 +309,7 @@ class TelescopeState(object):
         for prefix in self._prefixes:
             full_key = prefix + key
             match = full_key.encode('utf-8') == message_key
-            encoded_key = full_key.encode('utf-8')
-            type_ = self._r.type(prefix + key)
+            type_ = self._r.type(full_key)
             if type_ == b'string':
                 # Immutable
                 if match:
