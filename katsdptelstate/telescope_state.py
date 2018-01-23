@@ -8,6 +8,7 @@ except ImportError:
 import logging
 import argparse
 import contextlib
+import functools
 
 import numpy as np
 import redis
@@ -280,32 +281,50 @@ class TelescopeState(object):
         self._r.publish('update/' + full_key, str_val)
         return ret
 
-    def _check_condition(self, key, condition=None, str_val=None):
-        """Check whether key exists and satisfies condition (if any).
+    def _check_condition(self, key, condition, message=None):
+        """Check whether key exists and satisfies a condition (if any).
 
         Parameters
         ----------
         key : str
-            Key name to monitor
+            Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
-        str_val : str, optional
+        message : dict, optional
+            A pubsub message of type 'message'.
             If specified, this is used to find the latest value and timestamp
-            (if available) of the key instead of connecting to the backend.
-            It has the same format as the string values stored in the backend.
+            (if available) of the key instead of retrieving it from the backend.
         """
-        if str_val is None and key not in self:
-            return False
         if condition is None:
-            return True
-        if self.is_immutable(key):
-            value = self._get(key) if str_val is None else \
-                pickle.loads(str_val)
-            return condition(value, None)
+            return message is not None or key in self
+
+        if message is not None:
+            assert message['channel'].startswith(b'update/')
+            message_key = message['channel'][7:]
+            message_value = message['data']
         else:
-            value, ts = self.get_range(key)[0] if str_val is None else \
-                self._strip(str_val)
-            return condition(value, ts)
+            message_key = None
+            message_value = None
+
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            match = full_key.encode('utf-8') == message_key
+            type_ = self._r.type(full_key)
+            if type_ == b'string':
+                # Immutable
+                if match:
+                    value = message_value
+                else:
+                    value = self._r.get(full_key)
+                return condition(pickle.loads(value), None)
+            elif type_ != b'none':
+                # Mutable
+                if match:
+                    value_ts = message_value
+                else:
+                    value_ts = self._r.zrange(full_key, -1, -1)[0]
+                return condition(*self._strip(value_ts))
+        return False    # Key does not exist
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
         """Wait for a key to exist, possibly with some condition.
@@ -374,7 +393,7 @@ class TelescopeState(object):
                     if self._check_condition(key, condition):
                         return
                 elif message['type'] == 'message':
-                    if self._check_condition(key, condition, message['data']):
+                    if self._check_condition(key, condition, message):
                         return
 
     def _get_immutable(self, full_key, return_pickle=False):
