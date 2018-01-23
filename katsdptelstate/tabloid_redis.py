@@ -50,6 +50,9 @@ class TabloidRedis(object):
     def publish(self, channel, data):
         raise NotImplementedError
 
+    def flushdb(self):
+        self.data.clear()
+
     def delete(self, key):
         self.data.pop(key)
 
@@ -60,9 +63,15 @@ class TabloidRedis(object):
 
     def zadd(self, key, score, val):
         if score != 0:
-            raise NotImplementedError('TabloidRedis does not support non zero scores for zset')
+            raise NotImplementedError("TabloidRedis does not support non zero scores for zset.")
+        if type(val) != str:
+            raise NotImplementedError("TabloidRedis zsets only support string values.")
         if not self.data.has_key(key): self.data[key] = []
         self.data[key].append(val)
+        self.data[key] = sorted(self.data[key])
+         # egregious hackery to maintain a sorted zset
+         # this method is not used in bulk loading from file
+         # so the performance penalty is probably OK
 
     def get(self, key):
         if self.type(key) == 'string': return self.data[key]
@@ -148,7 +157,6 @@ class TabloidRedis(object):
             encoded_entries = "".join(raw_entries) + b'\xff'
             zl_length = 10 + len(encoded_entries)
              # account for the known 10 bytes worth of length descriptors when calculating envelope length
-            print "{}: {}/{}".format(key, entry_count, zl_length)
             zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
             return b'\x0c' + self.encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
         else:
@@ -212,13 +220,13 @@ class TabloidRedis(object):
          # this seems to be the most efficient, rather than keeping another copy of the keys around
          # allows use of bisect for range retrieval
         st_index = 0
-        et_index = -1
+        et_index = None
          # assume complete retrieval
         if not packed_st.startswith("-"):
             st_index = bisect.bisect_left(ts_keys, packed_st[1:])
             if packed_st.startswith("("): st_index += 1
         if not packed_et.startswith("+"):
-            et_index = bisect.bisect_right(ts_keys, packed_et[1:], lo=st_index) - 1
+            et_index = bisect.bisect_right(ts_keys, packed_et[1:], lo=st_index)
             if packed_et.startswith("("): et_index -= 1
         return vals[st_index:et_index]
 
