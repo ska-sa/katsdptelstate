@@ -20,17 +20,27 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 class SimpleRDBWriter(object):
     """Very limited RDB dump utility used to dump a specified subset
     of keys from an active Redis DB to a valid RDB format file.
-       
+
+    Either an endpoint or a compatible client must be provided.
+
     Parameters
     ----------
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor). 
+    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or
+             :class:`~redis.StrictRedis`
+        A Redis compatible client instance. Must support keys() and dump()
     """
-    def __init__(self, endpoint):
-        if type(endpoint) == str:
-            endpoint = endpoint_parser(6379)(endpoint)
-        self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
+    def __init__(self, endpoint=None, client=None):
+        if not endpoint and not client:
+            raise NameError("You must specify either an endpoint or a valid client.")
+        if client:
+            self._r = client
+        else:
+            if type(endpoint) == str:
+                endpoint = endpoint_parser(6379)(endpoint)
+            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
         self.logger = logging.getLogger('simple_rdb')
 
     def save(self, filename, keys=None, overwrite=True):
