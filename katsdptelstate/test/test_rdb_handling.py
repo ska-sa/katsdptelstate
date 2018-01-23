@@ -76,6 +76,8 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.tr.set('write','some string')
         self.assertEqual(self.rdb_writer.save('/tmp/all.rdb'), 2)
         self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl']), 1)
+        self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist']), 0)
+         # dump not written
         
         with self.assertRaises(OSError):
             self.rdb_writer.save('/tmp/one.rdb', keys=['writezl'], overwrite=False)
