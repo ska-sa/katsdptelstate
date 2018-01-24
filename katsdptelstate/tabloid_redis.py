@@ -2,9 +2,9 @@ import os
 import bisect
 import logging
 import struct
-from collections import defaultdict
 
 from redis import ResponseError
+from fakenewsredis import FakeStrictRedis
 from rdbtools import RdbParser, RdbCallback
 from rdbtools.encodehelpers import bytes_to_unicode
 
@@ -14,20 +14,19 @@ DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 logging.basicConfig()
 
-class TabloidRedis(object):
+class TabloidRedis(FakeStrictRedis):
     """A Redis-like class that provides a very superficial
     simulcrum of a real Redis server. Designed specifically to 
-    support bulk loading of data from an RDB dump into structures
-    suitable for the read cases in use by katsdptelstate.
-    
-    Simple key/val and zsets are supported.
+    support the read cases in use by katsdptelstate.
+
+    The Redis-like functionality is almost entirely derived from FakeStrictRedis,
+    we only add a dump function.
     """
-    def __init__(self, filename):
+    def __init__(self, filename, **kwargs):
         self.filename = filename
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
-        self.data = {}
-         # dict of redis keys with appropriate data structures within
+        super(TabloidRedis, self).__init__(**kwargs)
         if os.path.exists(self.filename):
             self.update()
         else:
@@ -39,45 +38,9 @@ class TabloidRedis(object):
             self._parser = RdbParser(callback)
             self.logger.info("Loading data from RDB dump of {} bytes".format(os.path.getsize(self.filename)))
             self._parser.parse(self.filename)
-            self.logger.info("TabloidRedis updated with {} keys".format(len(self.data)))
+            self.logger.info("TabloidRedis updated with {} keys".format(len(self.keys())))
         except NameError:
             self.logger.error("Unable to import rdbtools. Instance will be initialised with an empty data structure...")
-
-    def exists(self, key):
-        return key in self.data
-
-    def pubsub(self, ignore_subscribe_messages=False):
-        return None
-
-    def publish(self, channel, data):
-        raise NotImplementedError
-
-    def flushdb(self):
-        self.data.clear()
-
-    def delete(self, key):
-        self.data.pop(key)
-
-    def set(self, key, value, expiry=None, info=None):
-        if expiry: logger.warning("Key expiry not supported in TabloidRedis")
-        if info: logger.warning("Key information not supported in TabloidRedis")
-        self.data[str(key)] = value
-
-    def zadd(self, key, score, val):
-        if score != 0:
-            raise NotImplementedError("TabloidRedis does not support non zero scores for zset.")
-        if not (type(val) == str or type(val) == bytes):
-            raise NotImplementedError("TabloidRedis zsets only support string values. {}".format(type(val)))
-        if not key in self.data: self.data[key] = []
-        self.data[str(key)].append(val)
-        self.data[str(key)] = sorted(self.data[key])
-         # egregious hackery to maintain a sorted zset
-         # this method is not used in bulk loading from file
-         # so the performance penalty is probably OK
-
-    def get(self, key):
-        if self.type(key) == 'string': return self.data[key]
-        raise ResponseError(_WRONGTYPE_MSG)
 
     def encode_len(self, length):
         """Encodes the specified length as 1,2 or 5 bytes of
@@ -129,9 +92,11 @@ class TabloidRedis(object):
         """
 
         type_specifier = b'\x00'
-        if self.type(key) == 'zset':
+        key_type = self.type(key)
+        if key_type == b'none': raise KeyError("Key {} not found".format(key))
+        if key_type == b'zset':
             type_specifier = b'\x0c'
-            data = self.data[key]
+            data = self.zrange(key,0,-1,withscores=True)
             entry_count = 2 * len(data)
 
             # The entries counter for ziplists is encoded as 2 bytes, if we exceed this limit
@@ -141,7 +106,7 @@ class TabloidRedis(object):
                 _enc = b'\x03' + self.encode_len(len(data))
                  # for inscrutable reasons the length here is half the number of actual entries (i.e. scores are ignored)
                 for entry in data:
-                    _enc += self.encode_len(len(entry)) + entry + '\x010'
+                    _enc += self.encode_len(len(entry[0])) + entry[0] +'\x010'
                      # interleave entries and scores directly
                 return _enc + DUMP_POSTFIX
 
@@ -149,7 +114,7 @@ class TabloidRedis(object):
             previous_length = b'\x00'
             # loop through each entry in the data interleaving encoded values and scores (all set to zero)
             for entry in data:
-                _enc = previous_length + self.encode_len(len(entry)) + entry
+                _enc = previous_length + self.encode_len(len(entry[0])) + entry[0]
                 raw_entries.append(_enc)
                 previous_length = self.encode_prev_length(len(_enc))
                 raw_entries.append(previous_length + b'\xf1')
@@ -165,94 +130,24 @@ class TabloidRedis(object):
             type_specifier = b'\x00'
             val = self.get(key)
             encoded_length = self.encode_len(len(val))
-            return type_specifier + encoded_length + val.encode('utf-8') + DUMP_POSTFIX
-
-    def type(self, key):
-        if type(self.data[key]) == list: return 'zset'
-        return 'string'
-
-    def keys(self, filter=None):
-        if filter: self.logger.warning("Filtering not supported. Returning all keys.")
-        return list(self.data.keys())
-
-    def zcard(self, key):
-        if self.type(key) == 'zset':
-            return len(self.data[key])
-        return 1
-
-    def zrange(self, key, start, end, desc=False, withscores=False):
-        """Retrieve range of contiguous data specified directly by the supplied
-        start and end indices. Fully inclusive range.
-        desc and withscores can be supplied but are ignored.
-        """
-        if end == -1: end = None
-        else: end += 1
-        return self.data[key][start:end]
-
-    def zrevrangebylex(self, key, packed_et="+", packed_st="-", offset=None, num=None):
-        """Reversed version of standard zrangebylex. Principally used to retrieve the 
-        last known value working backwards from the specified et."""
-        _vals = self.zrangebylex(key, packed_st, packed_et)
-        _vals.reverse()
-        if (offset is not None and num is not None): return _vals[offset:offset+num]
-        return _vals
-
-    def zrangebylex(self, key, packed_st="-", packed_et="+"):
-        """Allow retrieval of contiguous time ranges of data
-        specified by a packed start and end time.
-
-        Note: This is not indented to be a fully generic replacement for the Redis
-        command and as such we explicitly mention time range retrieval.
-
-        Parameters
-        ----------
-        key : string
-            Key from which to extract range
-        packed_st : Either '-' to start from the earliest possible time or
-                    (|[ (open or closed start) followed by a packed string containing a float start time in epoch seconds
-        packed_et : Either '+' to include the latest possible time or
-                    (|[ (open or closed start) followed by a packed string containing a float end time in epoch seconds
-
-        Returns
-        -------
-        list of records between specified time range
-        """
-        vals = self.data[key]
-        ts_keys = [x[:8] for x in vals]
-         # this seems to be the most efficient, rather than keeping another copy of the keys around
-         # allows use of bisect for range retrieval
-        st_index = 0
-        et_index = None
-         # assume complete retrieval
-        if type(packed_st) != bytes: packed_st = packed_st.encode('utf-8')
-        if type(packed_et) != bytes: packed_et = packed_et.encode('utf-8')
-        if not packed_st.startswith(b"-"):
-            st_index = bisect.bisect_left(ts_keys, packed_st[1:])
-            if packed_st.startswith(b"("): st_index += 1
-        if not packed_et.startswith(b"+"):
-            et_index = bisect.bisect_right(ts_keys, packed_et[1:], lo=st_index)
-            if packed_et.startswith(b"("): et_index -= 1
-        return vals[st_index:et_index]
+            return type_specifier + encoded_length + val + DUMP_POSTFIX
 
 class TStateCallback(RdbCallback):
     def __init__(self, tr):
-        self._set = {}
-        self._zadd = defaultdict(list)
         self.tr = tr
+        self._zset = {}
         super(TStateCallback, self).__init__(string_escape=None)
 
-    def end_rdb(self):
-        for k,v in self._zadd.items():
-            self.tr.data[k] = sorted(v)
-        self.tr.data.update(self._set)
-
     def set(self, key, value, expiry, info):
-        if type(key) == bytes: key = key.decode('utf-8')
-        self._set[str(key)] = value
+        self.tr.set(key, value, expiry)
+
+    def start_sorted_set(self, key, length, expiry, info):
+        self._zset = []
 
     def zadd(self, key, score, member):
-        if type(key) == bytes: key = key.decode('utf-8')
-        self._zadd[str(key)].append(member)
+        self._zset.append(score)
+        self._zset.append(member)
 
-if __name__ == '__main__':
-    tr = TabloidRedis('./dump.rdb')
+    def end_sorted_set(self, key):
+        self.tr.zadd(key, *self._zset)
+        self._zset = []
