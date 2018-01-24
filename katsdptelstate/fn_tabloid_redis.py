@@ -139,5 +139,13 @@ class TStateCallback(RdbCallback):
     def set(self, key, value, expiry, info):
         self.tr.set(key, value, expiry)
 
+    def start_sorted_set(self, key, length, expiry, info):
+        self._zset = []
+
     def zadd(self, key, score, member):
-        self.tr.zadd(key, score, member)
+        self._zset.append(score)
+        self._zset.append(member)
+
+    def end_sorted_set(self, key):
+        self.tr.zadd(key, *self._zset)
+        self._zset = []
