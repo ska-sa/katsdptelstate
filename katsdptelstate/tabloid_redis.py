@@ -10,7 +10,7 @@ from rdbtools.encodehelpers import bytes_to_unicode
 
 _WRONGTYPE_MSG = "WRONGTYPE Operation against a key holding the wrong kind of value"
 
-DUMP_POSTFIX = "\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 logging.basicConfig()
 
@@ -44,7 +44,7 @@ class TabloidRedis(object):
             self.logger.error("Unable to import rdbtools. Instance will be initialised with an empty data structure...")
 
     def exists(self, key):
-        return self.data.has_key(key)
+        return key in self.data
 
     def pubsub(self, ignore_subscribe_messages=False):
         return None
@@ -61,16 +61,16 @@ class TabloidRedis(object):
     def set(self, key, value, expiry=None, info=None):
         if expiry: logger.warning("Key expiry not supported in TabloidRedis")
         if info: logger.warning("Key information not supported in TabloidRedis")
-        self.data[key] = value
+        self.data[str(key)] = value
 
     def zadd(self, key, score, val):
         if score != 0:
             raise NotImplementedError("TabloidRedis does not support non zero scores for zset.")
-        if type(val) != str:
-            raise NotImplementedError("TabloidRedis zsets only support string values.")
-        if not self.data.has_key(key): self.data[key] = []
-        self.data[key].append(val)
-        self.data[key] = sorted(self.data[key])
+        if not (type(val) == str or type(val) == bytes):
+            raise NotImplementedError("TabloidRedis zsets only support string values. {}".format(type(val)))
+        if not key in self.data: self.data[key] = []
+        self.data[str(key)].append(val)
+        self.data[str(key)] = sorted(self.data[key])
          # egregious hackery to maintain a sorted zset
          # this method is not used in bulk loading from file
          # so the performance penalty is probably OK
@@ -87,7 +87,7 @@ class TabloidRedis(object):
            For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
         """
         if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
-        if length < 64: return chr(length)
+        if length < 64: return struct.pack('B', length)
         if length < 16384: return struct.pack(">h",0x4000 + length)
         return struct.pack('>q',0x8000000000 + length)[3:]
 
@@ -97,7 +97,7 @@ class TabloidRedis(object):
            set first byte to 254 and add 4 trailing bytes as an
            unsigned integer.
         """
-        if length < 254: return chr(length)
+        if length < 254: return struct.pack('B', length)
         return b'\xfe' + struct.pack(">q",length)
 
     def dump(self, key):
@@ -156,7 +156,7 @@ class TabloidRedis(object):
                  # scores are encoded using a special length schema which supports direct integer addressing
                  # 4 MSB set implies direct unsigned integer in 4 LSB (minus 1). Hence \xf1 is integer 0
                 previous_length = b'\x02'
-            encoded_entries = "".join(raw_entries) + b'\xff'
+            encoded_entries = b"".join(raw_entries) + b'\xff'
             zl_length = 10 + len(encoded_entries)
              # account for the known 10 bytes worth of length descriptors when calculating envelope length
             zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
@@ -165,7 +165,7 @@ class TabloidRedis(object):
             type_specifier = b'\x00'
             val = self.get(key)
             encoded_length = self.encode_len(len(val))
-            return type_specifier + encoded_length + val.encode('UTF-8') + DUMP_POSTFIX
+            return type_specifier + encoded_length + val.encode('utf-8') + DUMP_POSTFIX
 
     def type(self, key):
         if type(self.data[key]) == list: return 'zset'
@@ -173,7 +173,7 @@ class TabloidRedis(object):
 
     def keys(self, filter=None):
         if filter: self.logger.warning("Filtering not supported. Returning all keys.")
-        return self.data.keys()
+        return list(self.data.keys())
 
     def zcard(self, key):
         if self.type(key) == 'zset':
@@ -224,12 +224,14 @@ class TabloidRedis(object):
         st_index = 0
         et_index = None
          # assume complete retrieval
-        if not packed_st.startswith("-"):
+        if type(packed_st) != bytes: packed_st = packed_st.encode('utf-8')
+        if type(packed_et) != bytes: packed_et = packed_et.encode('utf-8')
+        if not packed_st.startswith(b"-"):
             st_index = bisect.bisect_left(ts_keys, packed_st[1:])
-            if packed_st.startswith("("): st_index += 1
-        if not packed_et.startswith("+"):
+            if packed_st.startswith(b"("): st_index += 1
+        if not packed_et.startswith(b"+"):
             et_index = bisect.bisect_right(ts_keys, packed_et[1:], lo=st_index)
-            if packed_et.startswith("("): et_index -= 1
+            if packed_et.startswith(b"("): et_index -= 1
         return vals[st_index:et_index]
 
 class TStateCallback(RdbCallback):
@@ -240,21 +242,17 @@ class TStateCallback(RdbCallback):
         super(TStateCallback, self).__init__(string_escape=None)
 
     def end_rdb(self):
-        for k,v in self._zadd.iteritems():
+        for k,v in self._zadd.items():
             self.tr.data[k] = sorted(v)
         self.tr.data.update(self._set)
 
-    def encode_key(self, key):
-        return bytes_to_unicode(key, self._escape, skip_printable=True)
-
-    def encode_value(self, val):
-        return bytes_to_unicode(val, self._escape)
-
     def set(self, key, value, expiry, info):
-        self._set[key] = value
+        if type(key) == bytes: key = key.decode('utf-8')
+        self._set[str(key)] = value
 
     def zadd(self, key, score, member):
-        self._zadd[key].append(member)
+        if type(key) == bytes: key = key.decode('utf-8')
+        self._zadd[str(key)].append(member)
 
 if __name__ == '__main__':
     tr = TabloidRedis('./dump.rdb')

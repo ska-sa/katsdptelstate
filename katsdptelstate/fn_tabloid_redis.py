@@ -10,7 +10,7 @@ from rdbtools.encodehelpers import bytes_to_unicode
 
 _WRONGTYPE_MSG = "WRONGTYPE Operation against a key holding the wrong kind of value"
 
-DUMP_POSTFIX = "\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 logging.basicConfig()
 
@@ -50,7 +50,7 @@ class FNTabloidRedis(FakeStrictRedis):
            For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
         """
         if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
-        if length < 64: return chr(length)
+        if length < 64: return struct.pack('B', length)
         if length < 16384: return struct.pack(">h",0x4000 + length)
         return struct.pack('>q',0x8000000000 + length)[3:]
 
@@ -60,7 +60,7 @@ class FNTabloidRedis(FakeStrictRedis):
            set first byte to 254 and add 4 trailing bytes as an
            unsigned integer.
         """
-        if length < 254: return chr(length)
+        if length < 254: return struct.pack('B', length)
         return b'\xfe' + struct.pack(">q",length)
 
     def dump(self, key):
@@ -119,7 +119,7 @@ class FNTabloidRedis(FakeStrictRedis):
                  # scores are encoded using a special length schema which supports direct integer addressing
                  # 4 MSB set implies direct unsigned integer in 4 LSB (minus 1). Hence \xf1 is integer 0
                 previous_length = b'\x02'
-            encoded_entries = "".join(raw_entries) + b'\xff'
+            encoded_entries = b"".join(raw_entries) + b'\xff'
             zl_length = 10 + len(encoded_entries)
              # account for the known 10 bytes worth of length descriptors when calculating envelope length
             zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
@@ -128,7 +128,7 @@ class FNTabloidRedis(FakeStrictRedis):
             type_specifier = b'\x00'
             val = self.get(key)
             encoded_length = self.encode_len(len(val))
-            return type_specifier + encoded_length + val.encode('UTF-8') + DUMP_POSTFIX
+            return type_specifier + encoded_length + val.encode('utf-8') + DUMP_POSTFIX
 
 class TStateCallback(RdbCallback):
     def __init__(self, tr):

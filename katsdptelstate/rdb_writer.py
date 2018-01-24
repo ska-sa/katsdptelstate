@@ -90,7 +90,7 @@ class RDBWriter(object):
            For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
         """
         if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
-        if length < 64: return chr(length)
+        if length < 64: return struct.pack('B', length)
         if length < 16384: return struct.pack(">h",0x4000 + length)
         return struct.pack('>q',0x8000000000 + length)[3:]
 
@@ -112,7 +112,7 @@ class RDBWriter(object):
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
-        if not isinstance(key, bytes): key = key.encode('utf-8')
+        #if not isinstance(key, bytes): key = key.encode('utf-8')
         try:
             key_len = self.encode_len(len(key))
         except ValueError as e:
@@ -124,7 +124,7 @@ class RDBWriter(object):
          # The DUMPed value includes a leading type descriptor, the encoded value itself (including length specifier),
          # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
          # The version specified and checksum are discarded.
-        return key_type + key_len + key + encoded_val
+        return key_type + key_len + key.encode('utf-8') + encoded_val
 
 if __name__ == '__main__':
     import argparse    

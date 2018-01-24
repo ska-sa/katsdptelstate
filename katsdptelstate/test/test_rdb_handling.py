@@ -48,32 +48,32 @@ class TestSDPTelescopeState(unittest.TestCase):
         return struct.pack('>d', ts)
 
     def _add_test_vec(self, key, ts):
-        self.tr.zadd(key,0,self._enc_ts(ts) + 'first')
-        self.tr.zadd(key,0,self._enc_ts(ts + 2) + 'third')
-        self.tr.zadd(key,0,self._enc_ts(ts + 1) + 'second')
+        self.tr.zadd(key,0,self._enc_ts(ts) + b'first')
+        self.tr.zadd(key,0,self._enc_ts(ts + 2) + b'third')
+        self.tr.zadd(key,0,self._enc_ts(ts + 1) + b'second')
         
     def test_zset_lex(self):
         base_ts = int(time.time())
         self._add_test_vec('foozl', base_ts)
         sorted_items = self.tr.zrangebylex('foozl','-','+')
         self.assertEqual(len(sorted_items), 3)
-        self.assertEqual(sorted_items[1][8:], 'second')
+        self.assertEqual(sorted_items[1][8:], b'second')
        
          # test fully open interval
         sorted_single = self.tr.zrangebylex('foozl',b'(' + self._enc_ts(base_ts), b'(' + self._enc_ts(base_ts + 2))
         self.assertEqual(len(sorted_single), 1)
-        self.assertEqual(sorted_single[0][8:], 'second')
+        self.assertEqual(sorted_single[0][8:], b'second')
 
          # reverse half open
         sorted_rev = self.tr.zrevrangebylex('foozl',b'[' + self._enc_ts(base_ts + 2), b'(' + self._enc_ts(base_ts))
         self.assertEqual(len(sorted_rev), 2)
-        self.assertEqual(sorted_rev[0][8:], 'third')
+        self.assertEqual(sorted_rev[0][8:], b'third')
         self.tr.flushdb()
 
     def test_writer_reader(self):
         base_ts = int(time.time())
         self._add_test_vec('writezl', base_ts)
-        self.tr.set('write','some string')
+        self.tr.set('write', 'some string')
         self.assertEqual(self.rdb_writer.save('/tmp/all.rdb'), 2)
         self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl']), 1)
         self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist']), 0)
@@ -81,10 +81,10 @@ class TestSDPTelescopeState(unittest.TestCase):
         
         local_tr = TabloidRedis('/tmp/all.rdb')
         self.assertEqual(len(local_tr.keys()), 2)
-        self.assertEqual(local_tr.get('write'), 'some string')
+        self.assertEqual(local_tr.get('write'), b'some string')
         
         sorted_pair = local_tr.zrangebylex('writezl',b'(' + self._enc_ts(base_ts), b'[' + self._enc_ts(base_ts + 2))
-        self.assertEqual(sorted_pair[1][8:], 'third')
+        self.assertEqual(sorted_pair[1][8:], b'third')
 
         local_tr = TabloidRedis('/tmp/one.rdb')
         self.assertEqual(len(local_tr.keys()), 1)
