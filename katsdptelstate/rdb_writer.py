@@ -43,7 +43,7 @@ class RDBWriter(object):
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
         self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=[], overwrite=True):
+    def save(self, filename, keys=[]):
         """Encodes specified keys from the RDB file into binary
         string representation and writes these to a file.
 
@@ -55,16 +55,12 @@ class RDBWriter(object):
             A list of the keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             Empty list default includes all keys.
-        overwrite : bool
-            If file exists only overwrite it if True
 
         Returns
         -------
         keys_written : integer
             Number of keys written to the file
         """
-        if not overwrite and os.path.exists(filename):
-            raise OSError("Specified filename ({}) already exists, and user has disabled overwriting.".format(filename))
         if not keys:
             self.logger.warning("No keys specified - dumping entire database")
             keys = self._r.keys()

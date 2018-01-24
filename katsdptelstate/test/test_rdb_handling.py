@@ -79,10 +79,6 @@ class TestSDPTelescopeState(unittest.TestCase):
         self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist']), 0)
          # dump not written
         
-        with self.assertRaises(OSError):
-            self.rdb_writer.save('/tmp/one.rdb', keys=['writezl'], overwrite=False)
-        self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl']), 1)
-
         local_tr = TabloidRedis('/tmp/all.rdb')
         self.assertEqual(len(local_tr.keys()), 2)
         self.assertEqual(local_tr.get('write'), 'some string')
