@@ -6,14 +6,14 @@ import unittest
 import struct
 import os
 
-from katsdptelstate.rdb_writer import SimpleRDBWriter
+from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.tabloid_redis import TabloidRedis
 
 class TestSDPTelescopeState(unittest.TestCase):
     def setUp(self):
         self.tr = TabloidRedis('')
          # an empty tabloid redis instance
-        self.rdb_writer = SimpleRDBWriter(client=self.tr)
+        self.rdb_writer = RDBWriter(client=self.tr)
 
     def tearDown(self):
         self.tr.flushdb()
