@@ -2,8 +2,9 @@ import os
 import bisect
 import logging
 import struct
-from redis import ResponseError
+from collections import defaultdict
 
+from redis import ResponseError
 from rdbtools import RdbParser, RdbCallback
 from rdbtools.encodehelpers import bytes_to_unicode
 
@@ -14,9 +15,10 @@ DUMP_POSTFIX = "\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 logging.basicConfig()
 
 class TabloidRedis(object):
-    """A Redis like class that provides a very superficial
+    """A Redis-like class that provides a very superficial
     simulcrum of a real Redis server. Designed specifically to 
-    support the read cases in use by katsdptelstate.
+    support bulk loading of data from an RDB dump into structures
+    suitable for the read cases in use by katsdptelstate.
     
     Simple key/val and zsets are supported.
     """
@@ -233,7 +235,7 @@ class TabloidRedis(object):
 class TStateCallback(RdbCallback):
     def __init__(self, tr):
         self._set = {}
-        self._zadd = {}
+        self._zadd = defaultdict(list)
         self.tr = tr
         super(TStateCallback, self).__init__(string_escape=None)
 
@@ -249,11 +251,9 @@ class TStateCallback(RdbCallback):
         return bytes_to_unicode(val, self._escape)
 
     def set(self, key, value, expiry, info):
-        #self._set[self.encode_key(key)] = self.encode_value(value)
         self._set[key] = value
 
     def zadd(self, key, score, member):
-        if not self._zadd.has_key(key): self._zadd[key] = []
         self._zadd[key].append(member)
 
 if __name__ == '__main__':
