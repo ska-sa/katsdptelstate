@@ -17,7 +17,7 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
  # RDB is happy with zero checksum - we will protect the RDB
  # dump in other ways
 
-class SimpleRDBWriter(object):
+class RDBWriter(object):
     """Very limited RDB dump utility used to dump a specified subset
     of keys from an active Redis DB to a valid RDB format file.
 
@@ -41,9 +41,9 @@ class SimpleRDBWriter(object):
             if type(endpoint) == str:
                 endpoint = endpoint_parser(6379)(endpoint)
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
-        self.logger = logging.getLogger('simple_rdb')
+        self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=None, overwrite=True):
+    def save(self, filename, keys=[], overwrite=True):
         """Encodes specified keys from the RDB file into binary
         string representation and writes these to a file.
 
@@ -54,7 +54,7 @@ class SimpleRDBWriter(object):
         keys : list
             A list of the keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
-            Empoty list default includes all keys.
+            Empty list default includes all keys.
         overwrite : bool
             If file exists only overwrite it if True
 
@@ -65,36 +65,42 @@ class SimpleRDBWriter(object):
         """
         if not overwrite and os.path.exists(filename):
             raise OSError("Specified filename ({}) already exists, and user has disabled overwriting.".format(filename))
-        if not keys or keys == ['']:
+        if not keys:
             self.logger.warning("No keys specified - dumping entire database")
             keys = self._r.keys()
-        f = open(filename, 'wb')
-        f.write(RDB_HEADER)
-        keys_written = 0
-        for key in keys:
-            try:
-                enc_str = self.encode_key(key)
-            except (ValueError, KeyError) as e:
-                self.logger.error("Failed to save key: {}".format(key, e))
-                continue
-            f.write(enc_str)
-            keys_written += 1
-        f.write(RDB_TERMINATOR + RDB_CHECKSUM)
-        f.close()
+
+        with open(filename, 'wb') as f:
+            f.write(RDB_HEADER)
+            keys_written = 0
+            for key in keys:
+                try:
+                    enc_str = self.encode_item(key)
+                except (ValueError, KeyError) as e:
+                    self.logger.error("Failed to save key: {}".format(e))
+                    continue
+                f.write(enc_str)
+                keys_written += 1
+            f.write(RDB_TERMINATOR + RDB_CHECKSUM)
         if not keys_written:
             self.logger.error("No valid keys found - removing empty file")
             os.remove(filename)
         return keys_written
 
     def encode_len(self, length):
-        """Encodes the specified length as 1 or 2 bytes of 
-        RDB specific length encoded bytes"""
+        """Encodes the specified length as 1,2 or 5 bytes of
+           RDB specific length encoded byte.
+           For values less than 64 (i.e two MSBs zero - encode directly in the byte)
+           For values less than 16384 use two bytes, leading MSBs are 01 followed by 14 bits encoding the value
+           For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
+        """
+        if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
         if length < 64: return chr(length)
-        if length > 16383: raise ValueError("Cannot encode string of length > 16383")
-        return struct.pack(">h",0x4000 + length)
+        if length < 16384: return struct.pack(">h",0x4000 + length)
+        return struct.pack('>q',0x8000000000 + length)[3:]
 
-    def encode_key(self, key):
-        """Returns a binary string containing an RBD encoded key and value.
+
+    def encode_item(self, key):
+        """Returns a binary string containing an RDB encoded key and value.
 
         First byte is used to indicate the encoding used for the value of this key.
         This is essentially just the Redis type.
@@ -105,20 +111,20 @@ class SimpleRDBWriter(object):
              String length up to 63 - single byte, 6 LSB encode number directly
              String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
 
-        Thereafter the value, encoding according to it's appropriate schema is appended. As a shortcut,
+        Thereafter the value, encoding according to its appropriate schema is appended. As a shortcut,
         the Redis DUMP command is used to generate the encoded value string.
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
-        if not isinstance(key, bytes): key = key.encode('UTF-8')
+        if not isinstance(key, bytes): key = key.encode('utf-8')
         try:
             key_len = self.encode_len(len(key))
         except ValueError as e:
             raise ValueError('Failed to encode key length: {}'.format(e))
-        _key_dump = self._r.dump(key)
-        if not _key_dump: raise KeyError('Key {} not found in Redis'.format(key))
-        key_type = _key_dump[:1]
-        encoded_val = _key_dump[1:-10]
+        key_dump = self._r.dump(key)
+        if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
+        key_type = key_dump[:1]
+        encoded_val = key_dump[1:-10]
          # The DUMPed value includes a leading type descriptor, the encoded value itself (including length specifier),
          # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
          # The version specified and checksum are discarded.
@@ -133,16 +139,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--outfile', default='simple_out.rdb', metavar='FILENAME',
-                        help='Ouput RDB filename [default=%(default)s]')
-    parser.add_argument('--keys', default='', metavar='FILENAME',
-                        help='Redis keys to write to RDB. [default=all]')
+                        help='Output RDB filename [default=%(default)s]')
+    parser.add_argument('--keys', default=None, metavar='FILENAME',
+                        help='Comma seperated list of Redis keys to write to RDB. [default=all]')
     parser.add_argument('--redis', type=endpoint_parser(6379), default=endpoint_parser(6379)('localhost'),
                         help='host[:port] of the Redis instance to connect to. [default=localhost:6379]')
     args = parser.parse_args()
    
     logger.info("Connecting to Redis instance at {}".format(args.redis)) 
-    rbd_writer = SimpleRDB(args.redis)
-    logger.info("Saving keys to RBD file {}".format(args.outfile))
-    keys_written = rbd_writer.save(args.outfile, args.keys.split(","))
-    logger.info("Done - {} keys written".format(keys_written))
+    rbd_writer = RDBWriter(args.redis)
+    logger.info("Saving keys to RDB file {}".format(args.outfile))
+    if args.keys: keys = args.keys.split(",")
+    else: keys = []
+    keys_written = rbd_writer.save(args.outfile, keys)
+    if keys and keys_written < len(keys):
+        logger.warning("Done - Warning only {} of {} requested keys writtent".format(keys_written, len(keys)))
+    else:
+        logger.info("Done - {} keys written".format(keys_written))
 
