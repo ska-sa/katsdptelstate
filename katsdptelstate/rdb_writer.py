@@ -5,6 +5,8 @@ import os
 
 from katsdptelstate.endpoint import endpoint_parser
 
+from .rdb_utility import encode_len
+
 RDB_HEADER = b'REDIS0006\xfe\x00'
  # Basic RDB header. First 5 bytes are the standard REDIS magic
  # Next 4 bytes store the RDB format version number (6 in this case)
@@ -86,18 +88,6 @@ class RDBWriter(object):
             os.remove(filename)
         return (keys_written, keys_failed)
 
-    def encode_len(self, length):
-        """Encodes the specified length as 1,2 or 5 bytes of
-           RDB specific length encoded byte.
-           For values less than 64 (i.e two MSBs zero - encode directly in the byte)
-           For values less than 16384 use two bytes, leading MSBs are 01 followed by 14 bits encoding the value
-           For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
-        """
-        if length > (2**32 - 1): raise ValueError("Cannot encode item of length {} as it is greater than the max of 2^32 -1".format(length))
-        if length < 64: return struct.pack('B', length)
-        if length < 16384: return struct.pack(">h",0x4000 + length)
-        return struct.pack('>q', 0x8000000000 + length)[3:]
-
     def encode_item(self, key):
         """Returns a binary string containing an RDB encoded key and value.
 
@@ -119,7 +109,7 @@ class RDBWriter(object):
         if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
         if not isinstance(key, bytes): key = key.encode('utf-8')
         try:
-            key_len = self.encode_len(len(key))
+            key_len = encode_len(len(key))
         except ValueError as e:
             raise ValueError('Failed to encode key length: {}'.format(e))
         key_type = key_dump[:1]
