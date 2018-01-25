@@ -1,8 +1,6 @@
 coverage
-fakenewsredis
 funcsigs
 mock
-netifaces
 nose
 pbr
 python-lzf==0.2.4
