@@ -5,23 +5,27 @@ import time
 import unittest
 import struct
 import os
+import tempfile
 
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.tabloid_redis import TabloidRedis
+from katsdptelstate import TelescopeState
 
-class TestSDPTelescopeState(unittest.TestCase):
+class TestRDBHandling(unittest.TestCase):
     def setUp(self):
-        self.tr = TabloidRedis('')
+        self.tr = TabloidRedis()
          # an empty tabloid redis instance
+        self.ts = TelescopeState()
         self.rdb_writer = RDBWriter(client=self.tr)
+        self.base_dir = tempfile.mkdtemp()
+
+    def base(self, filename):
+        return "{}/{}".format(self.base_dir, filename)
 
     def tearDown(self):
         self.tr.flushdb()
         try:
-            os.remove('/tmp/all.rdb')
-        except OSError: pass
-        try:
-            os.remove('/tmp/one.rdb')
+            os.remove(self.base_dir)
         except OSError: pass
 
     def test_basic_operations(self):
@@ -68,25 +72,26 @@ class TestSDPTelescopeState(unittest.TestCase):
     def test_writer_reader(self):
         base_ts = int(time.time())
         self._add_test_vec('writezl', base_ts)
-        self.tr.set('write', 'some string')
-        self.assertEqual(self.rdb_writer.save('/tmp/all.rdb')[0], 2)
-        self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl'])[0], 1)
-        self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist'])[0], 0)
-         # dump not written
-
+        test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
+        self.tr.set('write', test_str)
+        self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
+        self.assertEqual(self.rdb_writer.save(self.base('one.rdb'),keys=['writezl'])[0], 1)
+        self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'),keys=['does_not_exist'])[0], 0)
         self.tr.flushall()
 
-        local_tr = TabloidRedis('/tmp/all.rdb')
-        self.assertEqual(len(local_tr.keys()), 2)
-        self.assertEqual(local_tr.get('write'), b'some string')
-        
+        local_tr = TabloidRedis()
+        local_tr.load_from_file(self.base('all.rdb'))
+        self.assertEqual(local_tr.load_from_file(self.base('all.rdb')), 2)
+        self.assertEqual(local_tr.get('write'), test_str)
         sorted_pair = local_tr.zrangebylex('writezl',b'(' + self._enc_ts(base_ts + 0.001), b'[' + self._enc_ts(base_ts + 2.001))
         self.assertEqual(sorted_pair[1][8:], b'third')
-
         self.tr.flushall()
 
-        local_tr = TabloidRedis('/tmp/one.rdb')
+        local_tr = TabloidRedis()
+        local_tr.load_from_file(self.base('one.rdb'))
         self.assertEqual(len(local_tr.keys()), 1)
         self.assertEqual(local_tr.zcard('writezl'), 3)
-       
-        self.tr.flushdb() 
+        self.tr.flushall()
+
+        self.assertEqual(self.ts.load_from_file(self.base('all.rdb')), 2)
+        self.tr.flushall()
