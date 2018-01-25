@@ -46,8 +46,7 @@ class TabloidRedis(FakeStrictRedis):
             self.logger.debug("Loading data from RDB dump of {} bytes".format(os.path.getsize(filename)))
             self._parser.parse(filename)
         except NameError:
-            self.logger.error("Unable to import rdbtools. Instance will be initialised with an empty data structure...")
-            return 0
+            raise NameError("Unable to load RDB parser. Please check that rdbtools is installed.")
         return len(self.keys())
 
     def dump(self, key):

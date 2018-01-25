@@ -86,13 +86,11 @@ class TelescopeState(object):
             if not isinstance(endpoint, Endpoint):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
             if not endpoint.host:
-                self._r = TabloidRedis()
+                self._r = TabloidRedis(db=db)
             elif endpoint.port is not None:
-                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
-                                        db=db, socket_timeout=5)
+                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port, db=db, socket_timeout=5)
             else:
-                self._r = redis.StrictRedis(host=endpoint.host,
-                                        db=db, socket_timeout=5)
+                self._r = redis.StrictRedis(host=endpoint.host, db=db, socket_timeout=5)
             self._ps = self._r.pubsub(ignore_subscribe_messages=True)
              # subscribe to the telescope model info channel
             self._default_channel = 'tm_info'
@@ -105,10 +103,12 @@ class TelescopeState(object):
         return self._prefixes
 
     def load_from_file(self, filename):
-        """Load keys from a Redis compatible RDB file.
+        """Load keys from a Redis-compatible RDB file.
 
         Telstate must be using a :class:`~katsdptelstate.tabloid_redis.TabloidRedis`
         backend for this load to succeed, otherwise NotImplementedError is raised.
+
+        Will raise NameError if the rdbtools package is not installed.
         """
         if not isinstance(self._r, TabloidRedis):
             raise NotImplementedError(

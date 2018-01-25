@@ -4,6 +4,7 @@ from __future__ import print_function, division, absolute_import
 import time
 import unittest
 import struct
+import shutil
 import os
 import tempfile
 
@@ -20,21 +21,21 @@ class TestRDBHandling(unittest.TestCase):
         self.base_dir = tempfile.mkdtemp()
 
     def base(self, filename):
-        return "{}/{}".format(self.base_dir, filename)
+        return os.path.join(self.base_dir, filename)
 
     def tearDown(self):
         self.tr.flushdb()
         try:
-            os.remove(self.base_dir)
+            shutil.rmtree(self.base_dir)
         except OSError: pass
 
     def _enc_ts(self, ts):
         return struct.pack('>d', ts)
 
     def _add_test_vec(self, key, ts):
-        self.tr.zadd(key,0,self._enc_ts(ts) + b'first')
-        self.tr.zadd(key,0,self._enc_ts(ts + 2) + b'third')
-        self.tr.zadd(key,0,self._enc_ts(ts + 1) + b'second')
+        self.tr.zadd(key, 0, self._enc_ts(ts) + b'first')
+        self.tr.zadd(key, 0, self._enc_ts(ts + 2) + b'third')
+        self.tr.zadd(key, 0, self._enc_ts(ts + 1) + b'second')
         
     def test_writer_reader(self):
         base_ts = int(time.time())

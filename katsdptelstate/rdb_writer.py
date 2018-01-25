@@ -62,10 +62,10 @@ class RDBWriter(object):
 
         Returns
         -------
-        keys_written : integer
-            Number of keys written to the file
+        (keys_written, keys_failed) : (integer, integer)
+            Number of keys written to the file and number of keys that failed to be written.
         """
-        if not keys:
+        if keys is None:
             self.logger.warning("No keys specified - dumping entire database")
             keys = self._r.keys()
 
@@ -138,9 +138,10 @@ if __name__ == '__main__':
     logger.info("Connecting to Redis instance at {}".format(args.redis)) 
     rbd_writer = RDBWriter(args.redis)
     logger.info("Saving keys to RDB file {}".format(args.outfile))
-    if args.keys: keys = args.keys.split(",")
-    keys_written = rbd_writer.save(args.outfile, keys)
-    if keys and keys_written < len(keys):
-        logger.warning("Done - Warning only {} of {} requested keys written".format(keys_written, len(keys)))
+    keys = args.keys
+    if keys is not None: keys = args.keys.split(",")
+    (keys_written, keys_failed) = rbd_writer.save(args.outfile, keys)
+    if keys_failed > 0:
+        logger.warning("Done - Warning {} keys failed to be written ({} succeeded)".format(keys_failed, keys_written))
     else:
         logger.info("Done - {} keys written".format(keys_written))

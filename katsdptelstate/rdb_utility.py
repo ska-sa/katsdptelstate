@@ -7,10 +7,10 @@ def encode_len(length):
        For values less than 16384 use two bytes, leading MSBs are 01 followed by 14 bits encoding the value
        For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
     """
-    if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
+    if length > (2**32 - 1): raise ValueError("Cannot encode item of length {} as it is greater than 2^32 -1".format(length))
     if length < 64: return struct.pack('B', length)
-    if length < 16384: return struct.pack(">h",0x4000 + length)
-    return struct.pack('>q',0x8000000000 + length)[3:]
+    if length < 16384: return struct.pack(">h", 0x4000 + length)
+    return struct.pack('>q', 0x8000000000 + length)[3:]
 
 def encode_prev_length(length):
     """Special helper for zset previous entry lengths.
