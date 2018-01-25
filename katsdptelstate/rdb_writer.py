@@ -17,6 +17,9 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
  # RDB is happy with zero checksum - we will protect the RDB
  # dump in other ways
 
+DEFAULT_PORT = 6379
+ # Default Redis port for use in endpoint constructors
+
 class RDBWriter(object):
     """Very limited RDB dump utility used to dump a specified subset
     of keys from an active Redis DB to a valid RDB format file.
@@ -28,22 +31,21 @@ class RDBWriter(object):
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor). 
-    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or
-             :class:`~redis.StrictRedis`
+    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis`
         A Redis compatible client instance. Must support keys() and dump()
     """
     def __init__(self, endpoint=None, client=None):
         if not endpoint and not client:
-            raise NameError("You must specify either an endpoint or a valid client.")
+            raise ValueError("You must specify either an endpoint or a valid client.")
         if client:
             self._r = client
         else:
-            if type(endpoint) == str:
-                endpoint = endpoint_parser(6379)(endpoint)
+            if isinstance(endpoint, str):
+                endpoint = endpoint_parser(DEFAULT_PORT)(endpoint)
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
         self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=[]):
+    def save(self, filename, keys=None):
         """Encodes specified keys from the RDB file into binary
         string representation and writes these to a file.
 
@@ -54,7 +56,7 @@ class RDBWriter(object):
         keys : list
             A list of the keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
-            Empty list default includes all keys.
+            None (default) includes all keys.
 
         Returns
         -------
@@ -68,10 +70,12 @@ class RDBWriter(object):
         with open(filename, 'wb') as f:
             f.write(RDB_HEADER)
             keys_written = 0
+            keys_failed = 0
             for key in keys:
                 try:
                     enc_str = self.encode_item(key)
                 except (ValueError, KeyError) as e:
+                    keys_failed += 1
                     self.logger.error("Failed to save key: {}".format(e))
                     continue
                 f.write(enc_str)
@@ -80,7 +84,7 @@ class RDBWriter(object):
         if not keys_written:
             self.logger.error("No valid keys found - removing empty file")
             os.remove(filename)
-        return keys_written
+        return (keys_written, keys_failed)
 
     def encode_len(self, length):
         """Encodes the specified length as 1,2 or 5 bytes of
@@ -89,11 +93,10 @@ class RDBWriter(object):
            For values less than 16384 use two bytes, leading MSBs are 01 followed by 14 bits encoding the value
            For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
         """
-        if length > (2**32 -1): raise ValueError("Cannot encode item of length greater than 2^32 -1")
+        if length > (2**32 - 1): raise ValueError("Cannot encode item of length {} as it is greater than the max of 2^32 -1".format(length))
         if length < 64: return struct.pack('B', length)
         if length < 16384: return struct.pack(">h",0x4000 + length)
-        return struct.pack('>q',0x8000000000 + length)[3:]
-
+        return struct.pack('>q', 0x8000000000 + length)[3:]
 
     def encode_item(self, key):
         """Returns a binary string containing an RDB encoded key and value.
@@ -112,13 +115,13 @@ class RDBWriter(object):
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
+        key_dump = self._r.dump(key)
+        if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
+        if not isinstance(key, bytes): key = key.encode('utf-8')
         try:
             key_len = self.encode_len(len(key))
         except ValueError as e:
             raise ValueError('Failed to encode key length: {}'.format(e))
-        key_dump = self._r.dump(key)
-        if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
-        if not isinstance(key, bytes): key = key.encode('utf-8')
         key_type = key_dump[:1]
         encoded_val = key_dump[1:-10]
          # The DUMPed value includes a leading type descriptor, the encoded value itself (including length specifier),
@@ -136,20 +139,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--outfile', default='simple_out.rdb', metavar='FILENAME',
                         help='Output RDB filename [default=%(default)s]')
-    parser.add_argument('--keys', default=None, metavar='FILENAME',
-                        help='Comma seperated list of Redis keys to write to RDB. [default=all]')
-    parser.add_argument('--redis', type=endpoint_parser(6379), default=endpoint_parser(6379)('localhost'),
-                        help='host[:port] of the Redis instance to connect to. [default=localhost:6379]')
+    parser.add_argument('--keys', default=None, metavar='KEYS',
+                        help='Comma-separated list of Redis keys to write to RDB. [default=all]')
+    parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT), default=endpoint_parser(DEFAULT_PORT)('localhost'),
+                        help='host[:port] of the Redis instance to connect to. [default=localhost:{}]'.format(DEFAULT_PORT))
     args = parser.parse_args()
    
     logger.info("Connecting to Redis instance at {}".format(args.redis)) 
     rbd_writer = RDBWriter(args.redis)
     logger.info("Saving keys to RDB file {}".format(args.outfile))
     if args.keys: keys = args.keys.split(",")
-    else: keys = []
     keys_written = rbd_writer.save(args.outfile, keys)
     if keys and keys_written < len(keys):
-        logger.warning("Done - Warning only {} of {} requested keys writtent".format(keys_written, len(keys)))
+        logger.warning("Done - Warning only {} of {} requested keys written".format(keys_written, len(keys)))
     else:
         logger.info("Done - {} keys written".format(keys_written))
-

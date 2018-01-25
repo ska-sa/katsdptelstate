@@ -69,9 +69,9 @@ class TestSDPTelescopeState(unittest.TestCase):
         base_ts = int(time.time())
         self._add_test_vec('writezl', base_ts)
         self.tr.set('write', 'some string')
-        self.assertEqual(self.rdb_writer.save('/tmp/all.rdb'), 2)
-        self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl']), 1)
-        self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist']), 0)
+        self.assertEqual(self.rdb_writer.save('/tmp/all.rdb')[0], 2)
+        self.assertEqual(self.rdb_writer.save('/tmp/one.rdb',keys=['writezl'])[0], 1)
+        self.assertEqual(self.rdb_writer.save('/tmp/broken.rdb',keys=['does_not_exist'])[0], 0)
          # dump not written
 
         self.tr.flushall()
