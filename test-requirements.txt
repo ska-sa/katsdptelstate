@@ -1,4 +1,5 @@
 coverage
+fakenewsredis
 funcsigs
 mock
 nose
