@@ -12,14 +12,9 @@ import contextlib
 
 import numpy as np
 import redis
-import fakenewsredis as fakeredis
 
 from .endpoint import Endpoint, endpoint_parser
-
-try:
-    from .tabloid_redis import TabloidRedis
-except ImportError:
-    pass # direct file import is disabled
+from .tabloid_redis import TabloidRedis
 
 logger = logging.getLogger(__name__)
 PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
@@ -67,7 +62,7 @@ class TelescopeState(object):
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor). If empty, a
-        :class:`fakeredis.FakeStrictRedis` instance is used instead.
+        :class:`tabloid_redis.TabloidRedis` instance is used instead.
     db : int
         Database number within the redis server
     prefixes : tuple of str
@@ -89,32 +84,38 @@ class TelescopeState(object):
         else:
             self._r = None
             if not isinstance(endpoint, Endpoint):
-                if os.path.isfile(endpoint):
-                    try:
-                        self._r = TabloidRedis(endpoint)
-                    except NameError:
-                        raise ImportError("File based endpoints require rdbtools to be installed.")
-                else:
-                    endpoint = endpoint_parser(default_port=None)(endpoint)
-            if not self._r:
-                if not endpoint.host:
-                    self._r = fakeredis.FakeStrictRedis(db=db)
-                elif endpoint.port is not None:
-                    self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
-                                            db=db, socket_timeout=5)
-                else:
-                    self._r = redis.StrictRedis(host=endpoint.host,
-                                            db=db, socket_timeout=5)
-                self._ps = self._r.pubsub(ignore_subscribe_messages=True)
-                 # subscribe to the telescope model info channel
-                self._default_channel = 'tm_info'
-                self._ps.subscribe(self._default_channel)
+                endpoint = endpoint_parser(default_port=None)(endpoint)
+            if not endpoint.host:
+                self._r = TabloidRedis()
+            elif endpoint.port is not None:
+                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
+                                        db=db, socket_timeout=5)
+            else:
+                self._r = redis.StrictRedis(host=endpoint.host,
+                                        db=db, socket_timeout=5)
+            self._ps = self._r.pubsub(ignore_subscribe_messages=True)
+             # subscribe to the telescope model info channel
+            self._default_channel = 'tm_info'
+            self._ps.subscribe(self._default_channel)
         # Force to tuple, in case it is some other iterable
         self._prefixes = tuple(prefixes)
 
     @property
     def prefixes(self):
         return self._prefixes
+
+    def load_from_file(self, filename):
+        """Load keys from a Redis compatible RDB file.
+
+        Telstate must be using a :class:`~katsdptelstate.tabloid_redis.TabloidRedis`
+        backend for this load to succeed, otherwise NotImplementedError is raised.
+        """
+        if not isinstance(self._r, TabloidRedis):
+            raise NotImplementedError(
+                "Load from file can only be used with a TabloidRedis backend. Please build telstate with an empty endpoint.")
+        keys_loaded = self._r.load_from_file(filename)
+        logger.info("Loading {} keys from {}".format(keys_loaded, filename))
+        return keys_loaded
 
     def view(self, name, add_separator=True, exclusive=False):
         """Create a view with an extra name in the list of namespaces.

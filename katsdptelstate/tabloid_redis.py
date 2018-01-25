@@ -33,22 +33,22 @@ class TabloidRedis(FakeStrictRedis):
     The Redis-like functionality is almost entirely derived from FakeStrictRedis,
     we only add a dump function.
     """
-    def __init__(self, filename=None, **kwargs):
-        self.filename = filename
+    def __init__(self, **kwargs):
         self.logger = logging.getLogger(__name__)
         super(TabloidRedis, self).__init__(**kwargs)
-        if self.filename:
-            self.update()
 
-    def update(self):
+    def load_from_file(self, filename):
+        """Load keys from the specified RDB compatible dump file.
+        """
         try:
             callback = TStateCallback(self)
             self._parser = RdbParser(callback)
-            self.logger.info("Loading data from RDB dump of {} bytes".format(os.path.getsize(self.filename)))
-            self._parser.parse(self.filename)
-            self.logger.info("TabloidRedis updated with {} keys".format(len(self.keys())))
+            self.logger.debug("Loading data from RDB dump of {} bytes".format(os.path.getsize(filename)))
+            self._parser.parse(filename)
         except NameError:
             self.logger.error("Unable to import rdbtools. Instance will be initialised with an empty data structure...")
+            return 0
+        return len(self.keys())
 
     def dump(self, key):
         """Encode redis key value in an RDB compatible format.
