@@ -62,8 +62,10 @@ class RDBWriter(object):
 
         Returns
         -------
-        (keys_written, keys_failed) : (integer, integer)
-            Number of keys written to the file and number of keys that failed to be written.
+        keys_written : int
+            Number of keys written to the file.
+        keys_failed : int
+            Number of keys that failed to be written.
         """
         if keys is None:
             self.logger.warning("No keys specified - dumping entire database")

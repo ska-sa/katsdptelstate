@@ -46,7 +46,7 @@ class TabloidRedis(FakeStrictRedis):
             self.logger.debug("Loading data from RDB dump of {} bytes".format(os.path.getsize(filename)))
             self._parser.parse(filename)
         except NameError:
-            raise NameError("Unable to load RDB parser. Please check that rdbtools is installed.")
+            raise ImportError("Unable to load RDB parser. Please check that rdbtools is installed.")
         return len(self.keys())
 
     def dump(self, key):
