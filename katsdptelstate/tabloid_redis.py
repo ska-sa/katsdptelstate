@@ -19,11 +19,9 @@ except ImportError:
         def __init__(self, *args, **kwargs):
             pass
 
-_WRONGTYPE_MSG = "WRONGTYPE Operation against a key holding the wrong kind of value"
 
 DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
-logging.basicConfig()
 
 class TabloidRedis(FakeStrictRedis):
     """A Redis-like class that provides a very superficial
