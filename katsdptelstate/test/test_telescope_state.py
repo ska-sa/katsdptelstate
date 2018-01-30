@@ -1,3 +1,4 @@
+# coding: utf-8
 """Tests for the sdp telescope state client."""
 
 from __future__ import print_function, division, absolute_import
@@ -104,12 +105,38 @@ class TestTelescopeState(unittest.TestCase):
             self.ts.add('test_immutable', 1234.5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_immutable', 5432.1, immutable=True)
-        # Same value may be set
+
+    def test_immutable_same_value(self):
         self.ts.add('test_immutable', 1234.5, immutable=True)
         self.ts.add('test_mutable', 1234.5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 2345.6, immutable=True)
-        # None values work correctly
+
+    def test_immutable_same_value_str(self):
+        self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
+        self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
+        self.ts.add('test_bytes', u'café', immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_bytes', b'cafe', immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_bytes', u'cafe', immutable=True)
+        self.ts.add('test_unicode', u'ümlaut', immutable=True)
+        self.ts.add('test_unicode', u'ümlaut', immutable=True)
+        self.ts.add('test_unicode', b'\xc3\xbcmlaut', immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_unicode', b'umlaut', immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_unicode', u'umlaut', immutable=True)
+        # Test with a binary string that isn't value UTF-8
+        self.ts.add('test_binary', b'\x00\xff', immutable=True)
+        self.ts.add('test_binary', b'\x00\xff', immutable=True)
+        # Test Python 2/3 interop by directly injecting the pickled values
+        self.ts._r.set(b'test_2', b"S'hello'\np1\n.")
+        self.ts._r.set(b'test_3', b'Vhello\np0\n.')
+        self.ts.add('test_2', 'hello', immutable=True)
+        self.ts.add('test_3', 'hello', immutable=True)
+
+    def test_immutable_none(self):
         self.ts.add('test_none', None, immutable=True)
         self.assertIsNone(self.ts.get('test_none'))
         self.assertIsNone(self.ts.get('test_none', 'not_none'))

@@ -10,6 +10,7 @@ import logging
 import argparse
 import contextlib
 import functools
+import sys
 
 import numpy as np
 import redis
@@ -35,6 +36,40 @@ class TimeoutError(TelstateError):
 
 class CancelledError(TelstateError):
     """A wait for a key was cancelled"""
+
+
+def equal_pickles(a, b):
+    """Test whether two pickles represent the same/equivalent objects.
+
+    This is not a complete implementation. Mostly, it just checks that the
+    pickled representation is the same, but to ease the transition to Python 3,
+    it will also compare the values if both arguments unpickle to either
+    ``bytes`` or ``str`` (and allows bytes and strings to be equal assuming
+    UTF-8 encoding). However, it will not do this recursively in structured
+    data.
+    """
+    if a == b:
+        return True
+    if sys.version_info.major >= 3:
+        # Python 3. Treat Python 2 strings as bytes, to avoid decoding errors
+        a = pickle.loads(a, encoding='bytes')
+        b = pickle.loads(b, encoding='bytes')
+        str_type = str
+    else:
+        # Python 2
+        a = pickle.loads(a)
+        b = pickle.loads(b)
+        str_type = unicode
+    if isinstance(a, str_type) and isinstance(b, str_type):
+        return a == b      # Avoid cost of encoding both to bytes
+    elif isinstance(a, (bytes, str_type)) and isinstance(b, (bytes, str_type)):
+        if isinstance(a, str_type):
+            a = a.encode('utf-8')
+        if isinstance(b, str_type):
+            b = b.encode('utf-8')
+        return a == b
+    else:
+        return False
 
 
 class TelescopeState(object):
@@ -274,7 +309,7 @@ class TelescopeState(object):
                         raise
                     raise ImmutableKeyError(
                         'Attempt to overwrite mutable key {} with immutable'.format(full_key))
-                if str_val != old:
+                if not equal_pickles(str_val, old):
                     raise ImmutableKeyError(
                         'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
                             full_key, pickle.loads(old), value))
