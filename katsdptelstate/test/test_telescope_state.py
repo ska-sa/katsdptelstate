@@ -246,8 +246,29 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual([], self.ts.get_range('test_key', et=-0.))
         self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
         self.assertRaises(ImmutableKeyError, self.ts.get_range, 'test_immutable')
+
+    def test_time_range_include_end(self):
+        self.ts.add('test_key', 1234, 0)
+        self.ts.add('test_key', 8192, 1)
+        self.ts.add('test_key', 16384, 2)
+        self.ts.add('test_key', 4096, 3)
+        self.ts.add('test_key', 2048, 4)
+        self.assertEqual([], self.ts.get_range('test_key', st=1.5, et=1.5, include_end=True))
+        self.assertEqual([(1234, 0)],
+                         self.ts.get_range('test_key', st=0.0, et=0.0, include_end=True))
+        self.assertEqual([(1234, 0)],
+                         self.ts.get_range('test_key', st=0.0, et=-0.0, include_end=True))
+        self.assertEqual([(4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=3, et=4, include_end=True))
+        # include_previous tests
+        self.assertEqual([(8192, 1), (16384, 2)],
+                         self.ts.get_range('test_key', et=2, include_end=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=2, et=3,
+                                           include_previous=True, include_end=True))
 
     def test_wait_key_already_done_sensor(self):
         """Calling wait_key with a condition that is met must return (sensor version)."""
