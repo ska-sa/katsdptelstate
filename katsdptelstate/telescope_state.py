@@ -489,7 +489,35 @@ class TelescopeState(object):
         except KeyError:
             return default
 
-    def get_range(self, key, st=None, et=None, return_format=None, include_previous=None, return_pickle=False):
+    @classmethod
+    def _pack_query_time(cls, time, include_end):
+        """Create a query value for a ZRANGEBYLEX query.
+
+        If include_end is true, the time is incremented by the smallest possible
+        amount, so that when used as an end it will be inclusive rather than
+        exclusive.
+
+        A time of None indicates +infinity, while any negative value is
+        equivalent to -infinity (since all actual timestamps are non-negative).
+        """
+        if time is None:
+            # The special positively infinite string represents the end of time
+            return b'+'
+        elif time < 0.0 or (time == 0.0 and not include_end):
+            # The special negatively infinite string represents the dawn of time
+            return b'-'
+        else:
+            # abs ensures that -0.0 becomes +0.0, which encodes differently
+            packed_time = struct.pack('>d', abs(float(time)))
+            if include_end:
+                # Increment to the next possible encoded value. Note that this
+                # cannot overflow because the sign bit is initially clear.
+                packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
+            # Values are pickled and hence always non-empty, so [ vs ( is irrelevant
+            return '[' + packed_time
+
+    def get_range(self, key, st=None, et=None, return_format=None,
+                  include_previous=None, include_end=False, return_pickle=False):
         """Get the range of values specified by the key and timespec from the model.
 
         Parameters
@@ -504,9 +532,12 @@ class TelescopeState(object):
             'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
             'None' returns values and times as 2D list of elements format (value, time)
         include_previous : bool, optional
-            If True, the method returns [st, et) as well as the last value
+            If True, the method also returns the last value
             prior to the start time (if any). This defaults to False if st is
             specified and True if st is unspecified.
+        include_end : bool, optional
+            If True, the end time is included, otherwise it is excluded (the start time is always
+            included).
         return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
             'True' - return values are retained in pickled form.
@@ -525,8 +556,8 @@ class TelescopeState(object):
 
         Notes
         -----
-        Timestamps exactly equal to the start time are included, while those equal to the
-        end time are excluded.
+        By default, timestamps exactly equal to the start time are included,
+        while those equal to the end time are excluded.
 
         Usage examples:
 
@@ -559,29 +590,18 @@ class TelescopeState(object):
         else:
             raise KeyError('{} not found'.format(key))
 
-        # set up include_previous default values
+        # set up include_previous and st default values
         if include_previous is None:
             include_previous = True if st is None else False
-
-        if et is None:
-            # The special positively infinite string represents the end of time
-            packed_et = b'+'
-        elif et <= 0.0:
-            # The special negatively infinite string represents the dawn of time
-            packed_et = b'-'
-        else:
-            packed_et = b'(' + struct.pack('>d', float(et))
-
         if st is None:
-            packed_st = packed_et
-        elif st <= 0.0:
-            packed_st = b'-'
-        else:
-            packed_st = b'[' + struct.pack('>d', float(st))
+            st = et
 
+        packed_st = self._pack_query_time(st, False)
+        packed_et = self._pack_query_time(et, include_end)
         ret_vals = []
         if include_previous and packed_st != b'-':
             ret_vals += self._r.zrevrangebylex(full_key, packed_st, b'-', 0, 1)
+
         # Avoid talking to redis if it is going to be futile
         if packed_st != packed_et:
             ret_vals += self._r.zrangebylex(full_key, packed_st, packed_et)
