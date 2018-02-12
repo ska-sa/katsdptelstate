@@ -599,25 +599,3 @@ class TelescopeState(object):
             return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
         else:
             raise ValueError('Unknown return_format {}'.format(return_format))
-
-
-class _HelpAction(argparse.Action):
-    """Class modelled on argparse._HelpAction that prints help for the
-    main parser."""
-    def __init__(self,
-                 option_strings,
-                 parser,
-                 dest=argparse.SUPPRESS,
-                 default=argparse.SUPPRESS,
-                 help=None):
-        super(_HelpAction, self).__init__(
-            option_strings=option_strings,
-            dest=dest,
-            default=default,
-            nargs=0,
-            help=help)
-        self._parser = parser
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        self._parser.print_help()
-        self._parser.exit()
