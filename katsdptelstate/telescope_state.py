@@ -490,7 +490,7 @@ class TelescopeState(object):
             return default
 
     @classmethod
-    def _pack_query_time(cls, time, include_end):
+    def _pack_query_time(cls, time, include_end=False):
         """Create a query value for a ZRANGEBYLEX query.
 
         If include_end is true, the time is incremented by the smallest possible
@@ -514,7 +514,7 @@ class TelescopeState(object):
                 # cannot overflow because the sign bit is initially clear.
                 packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
             # Values are pickled and hence always non-empty, so [ vs ( is irrelevant
-            return '[' + packed_time
+            return b'[' + packed_time
 
     def get_range(self, key, st=None, et=None, return_format=None,
                   include_previous=None, include_end=False, return_pickle=False):
@@ -536,8 +536,7 @@ class TelescopeState(object):
             prior to the start time (if any). This defaults to False if st is
             specified and True if st is unspecified.
         include_end : bool, optional
-            If True, the end time is included, otherwise it is excluded (the start time is always
-            included).
+            If False (default), returns values in [st, et), otherwise [st, et].
         return_pickle : bool, optional
             Default 'False' - return values are unpickled from internal storage before returning
             'True' - return values are retained in pickled form.
@@ -596,7 +595,7 @@ class TelescopeState(object):
         if st is None:
             st = et
 
-        packed_st = self._pack_query_time(st, False)
+        packed_st = self._pack_query_time(st)
         packed_et = self._pack_query_time(et, include_end)
         ret_vals = []
         if include_previous and packed_st != b'-':
