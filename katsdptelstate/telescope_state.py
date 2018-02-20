@@ -122,7 +122,7 @@ class TelescopeState(object):
             if not isinstance(endpoint, Endpoint):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
             if not endpoint.host:
-                self._r = TabloidRedis(db=db)
+                self._r = TabloidRedis(db=db, singleton=False)
             elif endpoint.port is not None:
                 self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port, db=db, socket_timeout=5)
             else:
