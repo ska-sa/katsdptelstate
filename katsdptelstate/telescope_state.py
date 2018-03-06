@@ -38,6 +38,13 @@ class CancelledError(TelstateError):
     """A wait for a key was cancelled"""
 
 
+if sys.version_info.major >= 3:
+    # See https://stackoverflow.com/questions/11305790
+    _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
+else:
+    _pickle_loads = pickle.loads
+
+
 def equal_pickles(a, b):
     """Test whether two pickles represent the same/equivalent objects.
 
@@ -178,7 +185,7 @@ class TelescopeState(object):
         ts = struct.unpack('>d', str_val[:8])[0]
         if return_pickle: return (str_val[8:], ts)
         try:
-            ret_val = pickle.loads(str_val[8:])
+            ret_val = _pickle_loads(str_val[8:])
         except pickle.UnpicklingError:
             ret_val = str_val[8:]
         return (ret_val, ts)
@@ -312,7 +319,7 @@ class TelescopeState(object):
                 if not equal_pickles(str_val, old):
                     raise ImmutableKeyError(
                         'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
-                            full_key, pickle.loads(old), value))
+                            full_key, _pickle_loads(old), value))
                 else:
                     logger.info('Attribute {} updated with the same value'.format(full_key))
                     return True
@@ -365,7 +372,7 @@ class TelescopeState(object):
                     value = message_value
                 else:
                     value = self._r.get(full_key)
-                return condition(pickle.loads(value), None)
+                return condition(_pickle_loads(value), None)
             elif type_ != b'none':
                 # Mutable
                 if match:
@@ -452,7 +459,7 @@ class TelescopeState(object):
             raise KeyError
         if return_pickle:
             return str_val
-        return pickle.loads(str_val)
+        return _pickle_loads(str_val)
 
     def _get(self, key, return_pickle=False):
         for prefix in self._prefixes:
