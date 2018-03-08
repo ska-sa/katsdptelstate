@@ -47,7 +47,7 @@ class RDBWriter(object):
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
         self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=None):
+    def save(self, filename, keys=None, supplemental_dumps=None):
         """Encodes specified keys from the RDB file into binary
         string representation and writes these to a file.
 
@@ -59,6 +59,9 @@ class RDBWriter(object):
             A list of the keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
+        supplemental_dumps : list
+            A list of encoded supplemental key/values in string form to be included
+            in the RDB dump.
 
         Returns
         -------
@@ -84,13 +87,23 @@ class RDBWriter(object):
                     continue
                 f.write(enc_str)
                 keys_written += 1
+            for dump in supplemental_dumps:
+                f.write(dump)
             f.write(RDB_TERMINATOR + RDB_CHECKSUM)
         if not keys_written:
             self.logger.error("No valid keys found - removing empty file")
             os.remove(filename)
         return (keys_written, keys_failed)
 
+    def encode_supplemental_keys(self, client, keys):
+        """Helper class to encode a specific set of keys on a non-prime Redis like client.
+        """
+        return [self._encode_item(key, client.dump(key)) for key in keys]
+
     def encode_item(self, key):
+        return self._encode_item(key, self._r.dump(key))
+
+    def _encode_item(self, key, key_dump):
         """Returns a binary string containing an RDB encoded key and value.
 
         First byte is used to indicate the encoding used for the value of this key.
@@ -107,7 +120,6 @@ class RDBWriter(object):
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
-        key_dump = self._r.dump(key)
         if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
         if not isinstance(key, bytes): key = key.encode('utf-8')
         try:
