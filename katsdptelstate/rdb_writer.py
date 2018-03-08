@@ -47,7 +47,7 @@ class RDBWriter(object):
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
         self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=None, supplemental_dumps=None):
+    def save(self, filename, keys=None, supplemental_dumps=[]):
         """Encodes specified keys from the RDB file into binary
         string representation and writes these to a file.
 
