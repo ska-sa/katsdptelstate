@@ -7,18 +7,6 @@ from redis import ResponseError
 from fakenewsredis import FakeStrictRedis
 from .rdb_utility import encode_len, encode_prev_length
 
-try:
-    from rdbtools import RdbParser, RdbCallback
-    from rdbtools.encodehelpers import bytes_to_unicode
-except ImportError:
-    class RdbCallback(object):
-        """A simple stub for this class so that we can use TabloidRedis
-        as a backing store for Telstate without having rdbtools installed.
-        This stub is needed, rather than a simple `RdbCallback = object` since it is
-        subclassed by TStateCallback which has a named parameter."""
-        def __init__(self, *args, **kwargs):
-            pass
-
 
 DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
@@ -34,18 +22,6 @@ class TabloidRedis(FakeStrictRedis):
     def __init__(self, **kwargs):
         self.logger = logging.getLogger(__name__)
         super(TabloidRedis, self).__init__(**kwargs)
-
-    def load_from_file(self, filename):
-        """Load keys from the specified RDB compatible dump file.
-        """
-        try:
-            callback = TStateCallback(self)
-            self._parser = RdbParser(callback)
-            self.logger.debug("Loading data from RDB dump of {} bytes".format(os.path.getsize(filename)))
-            self._parser.parse(filename)
-        except NameError:
-            raise ImportError("Unable to load RDB parser. Please check that rdbtools is installed.")
-        return len(self.keys())
 
     def dump(self, key):
         """Encode redis key value in an RDB compatible format.
@@ -121,23 +97,3 @@ class TabloidRedis(FakeStrictRedis):
             encoded_length = encode_len(len(val))
             return type_specifier + encoded_length + val + DUMP_POSTFIX
         raise NotImplementedError("Unsupported key type {}. Must be either string or zset".format(key_type))
-
-class TStateCallback(RdbCallback):
-    def __init__(self, tr):
-        self.tr = tr
-        self._zset = {}
-        super(TStateCallback, self).__init__(string_escape=None)
-
-    def set(self, key, value, expiry, info):
-        self.tr.set(key, value, expiry)
-
-    def start_sorted_set(self, key, length, expiry, info):
-        self._zset = []
-
-    def zadd(self, key, score, member):
-        self._zset.append(score)
-        self._zset.append(member)
-
-    def end_sorted_set(self, key):
-        self.tr.zadd(key, *self._zset)
-        self._zset = []
