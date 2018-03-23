@@ -4,7 +4,7 @@ import logging
 import struct
 
 from redis import ResponseError
-from fakenewsredis import FakeStrictRedis
+from fakeredis import FakeStrictRedis
 from .rdb_utility import encode_len, encode_prev_length
 
 try:
