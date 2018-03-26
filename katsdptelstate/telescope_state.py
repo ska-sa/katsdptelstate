@@ -17,6 +17,11 @@ import redis
 
 from .endpoint import Endpoint, endpoint_parser
 from .tabloid_redis import TabloidRedis
+try:
+    from . import rdb_reader
+except ImportError as _rdb_reader_import_error:
+    rdb_reader = None
+
 
 logger = logging.getLogger(__name__)
 PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
@@ -148,15 +153,11 @@ class TelescopeState(object):
     def load_from_file(self, filename):
         """Load keys from a Redis-compatible RDB file.
 
-        Telstate must be using a :class:`~katsdptelstate.tabloid_redis.TabloidRedis`
-        backend for this load to succeed, otherwise NotImplementedError is raised.
-
-        Will raise NameError if the rdbtools package is not installed.
+        Will raise ImportError if the rdbtools package is not installed.
         """
-        if not isinstance(self._r, TabloidRedis):
-            raise NotImplementedError(
-                "Load from file can only be used with a TabloidRedis backend. Please build telstate with an empty endpoint.")
-        keys_loaded = self._r.load_from_file(filename)
+        if rdb_reader is None:
+            raise _rdb_reader_import_error
+        keys_loaded = rdb_reader.load_from_file(self._r, filename)
         logger.info("Loading {} keys from {}".format(keys_loaded, filename))
         return keys_loaded
 

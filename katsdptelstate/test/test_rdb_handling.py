@@ -9,6 +9,7 @@ import os
 import tempfile
 
 from katsdptelstate.rdb_writer import RDBWriter
+from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate import TelescopeState
 
@@ -36,7 +37,7 @@ class TestRDBHandling(unittest.TestCase):
         self.tr.zadd(key, 0, self._enc_ts(ts) + b'first')
         self.tr.zadd(key, 0, self._enc_ts(ts + 2) + b'third')
         self.tr.zadd(key, 0, self._enc_ts(ts + 1) + b'second')
-        
+
     def test_writer_reader(self):
         base_ts = int(time.time())
         self._add_test_vec('writezl', base_ts)
@@ -48,15 +49,15 @@ class TestRDBHandling(unittest.TestCase):
         self.tr.flushall()
 
         local_tr = TabloidRedis()
-        local_tr.load_from_file(self.base('all.rdb'))
-        self.assertEqual(local_tr.load_from_file(self.base('all.rdb')), 2)
+        load_from_file(local_tr, self.base('all.rdb'))
+        self.assertEqual(load_from_file(local_tr, self.base('all.rdb')), 2)
         self.assertEqual(local_tr.get('write'), test_str)
         sorted_pair = local_tr.zrangebylex('writezl',b'(' + self._enc_ts(base_ts + 0.001), b'[' + self._enc_ts(base_ts + 2.001))
         self.assertEqual(sorted_pair[1][8:], b'third')
         self.tr.flushall()
 
         local_tr = TabloidRedis()
-        local_tr.load_from_file(self.base('one.rdb'))
+        load_from_file(local_tr, self.base('one.rdb'))
         self.assertEqual(len(local_tr.keys()), 1)
         self.assertEqual(local_tr.zcard('writezl'), 3)
         self.tr.flushall()
