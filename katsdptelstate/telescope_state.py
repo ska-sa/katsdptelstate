@@ -24,7 +24,7 @@ except ImportError as _rdb_reader_import_error:
 
 
 logger = logging.getLogger(__name__)
-PICKLE_PROTOCOL = 0         #: Version of pickle protocol to use
+PICKLE_PROTOCOL = 2         #: Version of pickle protocol to use
 
 
 class TelstateError(RuntimeError):
