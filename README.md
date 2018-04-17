@@ -1,58 +1,67 @@
 SDP Telescope State
 ===================
 
-A client package to allow connection to the redis db that stores telescope state information.
+This is a client package that allows connection to the redis database that
+stores telescope state information for the Science Data Processor.
 
-Operates as a key/value store which timestamps incoming values and inserts them into an ordered set (non-exclusive).
+It operates as a key/value store that timestamps incoming values and inserts
+them into an ordered set (non-exclusive).
 
-Immutables can be declared which function as strict one time set attributes.
+Keys are strings and values are arbitrary Python objects stored as pickles.
 
-Keys can be access via attribute or dict syntax.
+Keys can be declared as immutable, which turns them into attributes without
+timestamps and with values that cannot be changed.
+
+Keys can be accessed using attribute syntax or dict syntax.
 
 Getting Started
 ---------------
 
 You will need a recent version of redis installed (2.8.9 or newer).
 
-OSX: `brew install redis`
+macOS: ``brew install redis``
 Ubuntu: source download and install is best
 
-Then `pip install redis`
+Then ``pip install redis``
 
-Then run a local `redis-server`
+Then run a local ``redis-server``
 
-Simple Example
---------------
+A Simple Example
+----------------
 
-```python
-import time
-import telescope_model
-tm = telescope_model.TelescopeModel()
- # connect to a local redis instance
+.. code:: python
 
-tm.add('n_chans',32768)
-tm.list_keys()
-print tm.n_chans
- # keys work as attributes and return latest values
-print tm['n_chans']
+  import time
+  import katsdptelstate
 
-st = time.time()
-tm.add('n_chans',4096)
-et = time.time()
-tm.add('n_chans',16384)
-tm.get('n_chans')
- # everything is actually timestamped underneath
+  # Connect to an actual redis server
+  telstate = katsdptelstate.TelescopeState('localhost:6379')
+  # Or use a fake redis instance (key/values stored in memory, useful for testing)
+  telstate = katsdptelstate.TelescopeState()
+  # Load dump file into redis if katsdptelstate is installed with [rdb] option
+  telstate.load_from_file('dump.rdb')
 
-tm.get_range('n_chans',st=st,et=et)
- # time ranges can be used and are really fast
+  # Attribute / dict access returns the latest value
+  telstate.add('n_chans', 32768)
+  print(telstate.n_chans)
+  print(telstate['n_chans'])
 
-tm.add('n_chans',1024,ts=time.time()-10)
- # add an item 10 seconds back
+  # List all keys (attributes and sensors)
+  telstate.keys()
 
-tm.add('no_change',1234,immutable=True)
- # this cannot be changed, only deleted
+  # Everything is actually timestamped underneath
+  st = time.time()
+  telstate.add('n_chans', 4096)
+  et = time.time()
+  telstate.add('n_chans', 16384)
+  # Time ranges can be used and are really fast
+  telstate.get_range('n_chans', st=st, et=et)
+  # Add an item 10 seconds back
+  telstate.add('n_chans', 1024, ts=time.time() - 10)
 
-tm.add('no_change',456)
- # will raise katsdptelstate.ImmutableKeyError
-
-```
+  # This attribute cannot be changed, only deleted
+  telstate.add('no_change', 1234, immutable=True)
+  # Adding it again is OK as long as the value doesn't change
+  telstate.add('no_change', 1234, immutable=True)
+  # Will raise katsdptelstate.ImmutableKeyError
+  telstate.add('no_change', 456)
