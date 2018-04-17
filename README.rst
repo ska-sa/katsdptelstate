@@ -15,9 +15,9 @@ Keys can be accessed using attribute syntax or dict syntax.
 
 .. warning::
 
-  The standard warning about Python pickles apply. The pickle module is not
-  secure against erroneous or maliciously constructed data. Never unpickle data
-  received from an untrusted or unauthenticated source.
+  **WARNING**: The standard warning about Python pickles applies. The pickle
+  module is not secure against erroneous or maliciously constructed data. Never
+  unpickle data received from an untrusted or unauthenticated source.
 
 Getting Started
 ---------------
