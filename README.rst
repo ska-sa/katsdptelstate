@@ -21,7 +21,7 @@ Keys can be accessed using attribute syntax or dict syntax.
 Getting Started
 ---------------
 
-You will need a relatively recent version of redis installed (2.8.9 or newer).
+You will need a relatively recent version of Redis installed (2.8.9 or newer).
 
 macOS: ``brew install redis``
 Ubuntu: ``apt-get install redis-server``
