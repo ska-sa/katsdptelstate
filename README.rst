@@ -13,10 +13,11 @@ timestamp that is not allowed to change.
 The keys are strings and values are arbitrary Python objects stored as pickles.
 Keys can be accessed using attribute syntax or dict syntax.
 
-.. warning:: The standard warning about Python pickles apply.
-   The pickle module is not secure against erroneous or maliciously constructed
-   data. Never unpickle data received from an untrusted or unauthenticated
-   source.
+.. warning::
+
+  The standard warning about Python pickles apply. The pickle module is not
+  secure against erroneous or maliciously constructed data. Never unpickle data
+  received from an untrusted or unauthenticated source.
 
 Getting Started
 ---------------
