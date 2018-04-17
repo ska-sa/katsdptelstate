@@ -2,17 +2,14 @@ SDP Telescope State
 ===================
 
 This is a client package that allows connection to the redis database that
-stores telescope state information for the Science Data Processor.
-
-It operates as a key/value store that timestamps incoming values and inserts
-them into an ordered set (non-exclusive).
+stores telescope state information for the Science Data Processor. It operates
+as a key/value store that timestamps incoming values and inserts them into an
+ordered set (non-exclusive).
 
 Keys are strings and values are arbitrary Python objects stored as pickles.
-
 Keys can be declared as immutable, which turns them into attributes without
-timestamps and with values that cannot be changed.
-
-Keys can be accessed using attribute syntax or dict syntax.
+timestamps and with values that cannot be changed. Keys can be accessed using
+attribute syntax or dict syntax.
 
 Getting Started
 ---------------
@@ -22,9 +19,7 @@ You will need a recent version of redis installed (2.8.9 or newer).
 macOS: ``brew install redis``
 Ubuntu: source download and install is best
 
-Then ``pip install redis``
-
-Then run a local ``redis-server``
+Then ``pip install redis`` and run a local ``redis-server``.
 
 A Simple Example
 ----------------
