@@ -15,9 +15,9 @@ Keys can be accessed using attribute syntax or dict syntax.
 
 .. warning::
 
-  **WARNING**: The standard warning about Python pickles applies. The pickle
-  module is not secure against erroneous or maliciously constructed data. Never
-  unpickle data received from an untrusted or unauthenticated source.
+  **WARNING**: The standard warning about Python pickles applies. Never
+  retrieve data from an untrusted telescope state or connect to one over an
+  untrusted network.
 
 Getting Started
 ---------------
@@ -50,7 +50,7 @@ A Simple Example
   print(telstate['n_chans'])
 
   # List all keys (attributes and sensors)
-  telstate.keys()
+  print(telstate.keys())
 
   # Sensors are timestamped underneath
   st = time.time()
