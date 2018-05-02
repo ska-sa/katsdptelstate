@@ -34,4 +34,4 @@ setup(name='katsdptelstate',
       install_requires=['redis>=2.10.5', 'fakeredis>=0.10.1', 'netifaces',
                         'ipaddress', 'numpy'],
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
-      tests_require=['mock'])
+      tests_require=['mock', 'rdbtools'])
