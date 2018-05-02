@@ -78,7 +78,6 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual([], self.ts.keys())
 
     def test_return_pickle(self):
-        import numpy as np
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
         self.ts.add('test_key_rt', x, immutable=True)
         x_unpickled = self.ts.get('test_key_rt')
@@ -87,8 +86,6 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(x_pickled, pickle.dumps(x, protocol=PICKLE_PROTOCOL))
 
     def test_return_pickle_range(self):
-        import numpy as np
-        import time
         test_values = ['Test Value: {}'.format(x) for x in range(5)]
         for i,test_value in enumerate(test_values): self.ts.add('test_key',test_value,i)
         stored_values = self.ts.get_range('test_key', st=0)
@@ -178,7 +175,6 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ts.keys('ns_*'), [b'ns_key2'])
 
     def test_complex_store(self):
-        import numpy as np
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
         self.ts.delete('test_key')
         self.ts.add('test_key', x)
@@ -193,39 +189,6 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 1234.5)
         self.assertTrue('test_key' in self.ts)
         self.assertFalse('nonexistent_test_key' in self.ts)
-
-    def test_return_format(self):
-        """Test recarray return format of get_range method:
-              Tests that values returned by db are identical to the input values."""
-        arr = [[1., 2., 3.], [0., 4., 0.], [10., 9., 7.]]
-        self.ts.delete('test_x')
-        self.ts.add('test_x', arr[0])
-        self.ts.add('test_x', arr[1])
-        self.ts.add('test_x', arr[2])
-        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
-        self.assertTrue((val == arr).all())
-
-    def test_return_format_type(self):
-        """Test recarray return format of get_range method:
-              Tests that values returned by db have identical types to the input values."""
-        arr = [[1., 2., 3.], [0., 4., 0.]]
-        arr_type = type(arr[0][0])
-        self.ts.delete('test_x')
-        self.ts.add('test_x', arr[0])
-        self.ts.add('test_x', arr[1])
-        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
-        self.assertTrue(val.dtype == arr_type)
-
-    def test_return_format_type_string(self):
-        """Test recarray return format of get_range method:
-              Tests that array of variable length strings are correctly returned."""
-        self.ts.delete('test_x')
-        self.ts.add('test_x', 'hi')
-        self.ts.add('test_x', 'how')
-        self.ts.add('test_x', 'are')
-        self.ts.add('test_x', 'you?')
-        val = self.ts.get_range('test_x', st=0, return_format='recarray')['value']
-        self.assertEqual('you?', val[3])
 
     def test_time_range(self):
         self.ts.delete('test_key')
