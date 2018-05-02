@@ -1,5 +1,4 @@
 fakeredis
 ipaddress
 netifaces
-numpy
 redis
