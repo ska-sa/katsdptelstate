@@ -12,7 +12,6 @@ import contextlib
 import functools
 import sys
 
-import numpy as np
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
@@ -524,7 +523,7 @@ class TelescopeState(object):
             # Values are pickled and hence always non-empty, so [ vs ( is irrelevant
             return b'[' + packed_time
 
-    def get_range(self, key, st=None, et=None, return_format=None,
+    def get_range(self, key, st=None, et=None,
                   include_previous=None, include_end=False, return_pickle=False):
         """Get the range of values specified by the key and timespec from the model.
 
@@ -536,9 +535,6 @@ class TelescopeState(object):
             Start time, default returns the most recent value prior to et
         et: float, optional
             End time, defaults to the end of time
-        return_format : string, optional
-            'recarray' returns values and times as numpy recarray with keys 'value' and 'time'
-            'None' returns values and times as 2D list of elements format (value, time)
         include_previous : bool, optional
             If True, the method also returns the last value
             prior to the start time (if any). This defaults to False if st is
@@ -612,17 +608,4 @@ class TelescopeState(object):
         # Avoid talking to redis if it is going to be futile
         if packed_st != packed_et:
             ret_vals += self._r.zrangebylex(full_key, packed_st, packed_et)
-        ret_list = [self._strip(str_val, return_pickle) for str_val in ret_vals]
-
-        if return_format is None:
-            return ret_list
-        elif return_format == 'recarray':
-            val_shape, val_type = None, None
-            if ret_list != []:
-                val_shape = np.array(ret_list[0][0]).shape
-                val_type = np.array(ret_list[0][0]).dtype
-                if val_type.type is np.str_ or val_type.type is np.bytes_:
-                    val_type = max([d.dtype for d in np.atleast_2d(ret_list)[:, 0]])
-            return np.array(ret_list, dtype=[('value', val_type, val_shape), ('time', np.float)])
-        else:
-            raise ValueError('Unknown return_format {}'.format(return_format))
+        return [self._strip(str_val, return_pickle) for str_val in ret_vals]

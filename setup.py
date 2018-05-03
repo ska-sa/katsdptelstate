@@ -31,7 +31,6 @@ setup(name='katsdptelstate',
       keywords='meerkat ska',
       setup_requires=['katversion'],
       use_katversion=True,
-      install_requires=['redis>=2.10.5', 'fakeredis>=0.10.1', 'netifaces',
-                        'ipaddress', 'numpy'],
+      install_requires=['redis>=2.10.5', 'fakeredis>=0.10.1', 'netifaces', 'ipaddress'],
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
-      tests_require=['mock', 'rdbtools'])
+      tests_require=['mock', 'numpy', 'rdbtools'])
