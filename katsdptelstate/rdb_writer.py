@@ -1,11 +1,11 @@
-import redis
-import struct
 import logging
 import os
 
-from katsdptelstate.endpoint import endpoint_parser
+import redis
 
+from .endpoint import endpoint_parser
 from .rdb_utility import encode_len
+
 
 RDB_HEADER = b'REDIS0006\xfe\x00'
  # Basic RDB header. First 5 bytes are the standard REDIS magic
@@ -22,6 +22,7 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 DEFAULT_PORT = 6379
  # Default Redis port for use in endpoint constructors
 
+
 class RDBWriter(object):
     """Very limited RDB dump utility used to dump a specified subset
     of keys from an active Redis DB to a valid RDB format file.
@@ -32,7 +33,7 @@ class RDBWriter(object):
     ----------
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the redis server (if a string, it is passed to the
-        :class:`~katsdptelstate.endpoint.Endpoint` constructor). 
+        :class:`~katsdptelstate.endpoint.Endpoint` constructor).
     client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis`
         A Redis compatible client instance. Must support keys() and dump()
     """
@@ -120,8 +121,10 @@ class RDBWriter(object):
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
-        if not key_dump: raise KeyError('Key {} not found in Redis'.format(key))
-        if not isinstance(key, bytes): key = key.encode('utf-8')
+        if not key_dump:
+            raise KeyError('Key {} not found in Redis'.format(key))
+        if not isinstance(key, bytes):
+            key = key.encode('utf-8')
         try:
             key_len = encode_len(len(key))
         except ValueError as e:
@@ -133,8 +136,9 @@ class RDBWriter(object):
          # The version specified and checksum are discarded.
         return key_type + key_len + key + encoded_val
 
+
 if __name__ == '__main__':
-    import argparse    
+    import argparse
 
     logging.basicConfig()
     logger = logging.getLogger()
@@ -145,17 +149,21 @@ if __name__ == '__main__':
                         help='Output RDB filename [default=%(default)s]')
     parser.add_argument('--keys', default=None, metavar='KEYS',
                         help='Comma-separated list of Redis keys to write to RDB. [default=all]')
-    parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT), default=endpoint_parser(DEFAULT_PORT)('localhost'),
-                        help='host[:port] of the Redis instance to connect to. [default=localhost:{}]'.format(DEFAULT_PORT))
+    parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT),
+                        default=endpoint_parser(DEFAULT_PORT)('localhost'),
+                        help='host[:port] of the Redis instance to connect to. [default=localhost:{}]'
+                             .format(DEFAULT_PORT))
     args = parser.parse_args()
-   
-    logger.info("Connecting to Redis instance at {}".format(args.redis)) 
+
+    logger.info("Connecting to Redis instance at {}".format(args.redis))
     rbd_writer = RDBWriter(args.redis)
     logger.info("Saving keys to RDB file {}".format(args.outfile))
     keys = args.keys
-    if keys is not None: keys = args.keys.split(",")
-    (keys_written, keys_failed) = rbd_writer.save(args.outfile, keys)
+    if keys is not None:
+        keys = args.keys.split(",")
+    keys_written, keys_failed = rbd_writer.save(args.outfile, keys)
     if keys_failed > 0:
-        logger.warning("Done - Warning {} keys failed to be written ({} succeeded)".format(keys_failed, keys_written))
+        logger.warning("Done - Warning {} keys failed to be written ({} succeeded)"
+                       .format(keys_failed, keys_written))
     else:
         logger.info("Done - {} keys written".format(keys_written))

@@ -1,6 +1,7 @@
 """Tests for the RDB handling (reading and writing) functionality."""
 
 from __future__ import print_function, division, absolute_import
+
 import time
 import unittest
 import struct
@@ -12,6 +13,7 @@ from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate import TelescopeState
+
 
 class TestRDBHandling(unittest.TestCase):
     def setUp(self):
@@ -28,7 +30,8 @@ class TestRDBHandling(unittest.TestCase):
         self.tr.flushdb()
         try:
             shutil.rmtree(self.base_dir)
-        except OSError: pass
+        except OSError:
+            pass
 
     def _enc_ts(self, ts):
         return struct.pack('>d', ts)
@@ -44,15 +47,16 @@ class TestRDBHandling(unittest.TestCase):
         test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
         self.tr.set('write', test_str)
         self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
-        self.assertEqual(self.rdb_writer.save(self.base('one.rdb'),keys=['writezl'])[0], 1)
-        self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'),keys=['does_not_exist'])[0], 0)
+        self.assertEqual(self.rdb_writer.save(self.base('one.rdb'), keys=['writezl'])[0], 1)
+        self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'), keys=['does_not_exist'])[0], 0)
         self.tr.flushall()
 
         local_tr = TabloidRedis()
         load_from_file(local_tr, self.base('all.rdb'))
         self.assertEqual(load_from_file(local_tr, self.base('all.rdb')), 2)
         self.assertEqual(local_tr.get('write'), test_str)
-        sorted_pair = local_tr.zrangebylex('writezl',b'(' + self._enc_ts(base_ts + 0.001), b'[' + self._enc_ts(base_ts + 2.001))
+        sorted_pair = local_tr.zrangebylex('writezl', b'(' + self._enc_ts(base_ts + 0.001),
+                                           b'[' + self._enc_ts(base_ts + 2.001))
         self.assertEqual(sorted_pair[1][8:], b'third')
         self.tr.flushall()
 

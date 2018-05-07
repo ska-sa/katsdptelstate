@@ -2,19 +2,20 @@
 """Tests for the sdp telescope state client."""
 
 from __future__ import print_function, division, absolute_import
+
 import threading
 import time
 import unittest
 import mock
-import numpy as np
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 
+import numpy as np
+
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError,
-                            PICKLE_PROTOCOL)
+                            TimeoutError, CancelledError, PICKLE_PROTOCOL)
 
 
 class TestTelescopeState(unittest.TestCase):
@@ -87,7 +88,8 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_return_pickle_range(self):
         test_values = ['Test Value: {}'.format(x) for x in range(5)]
-        for i,test_value in enumerate(test_values): self.ts.add('test_key',test_value,i)
+        for i, test_value in enumerate(test_values):
+            self.ts.add('test_key', test_value, i)
         stored_values = self.ts.get_range('test_key', st=0)
         self.assertEqual(stored_values[2][0], test_values[2])
         stored_values_pickled = self.ts.get_range('test_key', st=0, return_pickle=True)

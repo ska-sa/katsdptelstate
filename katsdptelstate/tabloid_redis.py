@@ -1,10 +1,8 @@
-import os
-import bisect
 import logging
 import struct
 
-from redis import ResponseError
 from fakeredis import FakeStrictRedis
+
 from .rdb_utility import encode_len, encode_prev_length
 
 
@@ -13,7 +11,7 @@ DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 class TabloidRedis(FakeStrictRedis):
     """A Redis-like class that provides a very superficial
-    simulcrum of a real Redis server. Designed specifically to 
+    simulacrum of a real Redis server. Designed specifically to
     support the read cases in use by katsdptelstate.
 
     The Redis-like functionality is almost entirely derived from FakeStrictRedis,
@@ -55,7 +53,8 @@ class TabloidRedis(FakeStrictRedis):
 
         type_specifier = b'\x00'
         key_type = self.type(key)
-        if key_type == b'none': return None
+        if key_type == b'none':
+            return None
         if key_type == b'zset':
             type_specifier = b'\x0c'
             data = self.zrange(key, 0, -1, withscores=True)
@@ -70,7 +69,7 @@ class TabloidRedis(FakeStrictRedis):
                 for entry in data:
                     enc.append(encode_len(len(entry[0])) + entry[0] + '\x010')
                      # interleave entries and scores directly
-                     # for now, scores are kept fixed at integer zero since float 
+                     # for now, scores are kept fixed at integer zero since float
                      # encoding is breaking for some reason and is not needed for telstate
                 enc.append(DUMP_POSTFIX)
                 return b"".join(enc)
