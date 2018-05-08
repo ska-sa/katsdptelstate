@@ -91,7 +91,7 @@ def equal_pickles(a, b):
 
 
 class TelescopeState(object):
-    """Interface to collection of attributes and sensors stored in Redis database.
+    """Interface to attributes and sensors stored in a Redis database.
 
     There are two types of keys permitted: single immutable values, and mutable
     keys where the full history of values is stored with timestamps. These are
