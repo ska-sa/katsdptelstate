@@ -15,9 +15,9 @@ Keys can be accessed using attribute syntax or dict syntax.
 
 .. warning::
 
-    **WARNING**: The standard warning about Python pickles applies. Never
-    retrieve data from an untrusted telescope state or connect to one over an
-    untrusted network.
+  **WARNING**: The standard warning about Python pickles applies. Never
+  retrieve data from an untrusted telescope state or connect to one over an
+  untrusted network.
 
 Getting Started
 ---------------
