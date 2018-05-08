@@ -2,8 +2,9 @@ from __future__ import print_function, division, absolute_import
 
 import socket
 import struct
-import netifaces
+
 import ipaddress
+import netifaces
 
 
 class Endpoint(object):
