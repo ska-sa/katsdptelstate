@@ -32,7 +32,7 @@ class RDBWriter(object):
     Parameters
     ----------
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
-        The address of the redis server (if a string, it is passed to the
+        The address of the Redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor).
     client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis`
         A Redis compatible client instance. Must support keys() and dump()

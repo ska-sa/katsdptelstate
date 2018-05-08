@@ -22,7 +22,7 @@ class TabloidRedis(FakeStrictRedis):
         super(TabloidRedis, self).__init__(**kwargs)
 
     def dump(self, key):
-        """Encode redis key value in an RDB compatible format.
+        """Encode Redis key value in an RDB compatible format.
            Note: This follows the DUMP command in Redis itself which produces output
            that is similarly encoded to an RDB, but not exactly the same.
 
