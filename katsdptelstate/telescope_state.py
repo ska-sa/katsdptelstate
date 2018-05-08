@@ -87,7 +87,7 @@ def equal_pickles(a, b):
 
 
 class TelescopeState(object):
-    """Interface to a collection of attributes and sensors stored in a redis database.
+    """Interface to collection of attributes and sensors stored in redis database.
 
     There are two types of keys permitted: single immutable values, and mutable
     keys where the full history of values is stored with timestamps. These are
@@ -205,8 +205,12 @@ class TelescopeState(object):
     def __getitem__(self, key):
         return self._get(key)
 
-    def __contains__(self, x):
-        return self.has_key(x)
+    def __contains__(self, key_name):
+        """Check to see if the specified key exists in the database."""
+        for prefix in self._prefixes:
+            if self._r.exists(prefix + key_name):
+                return True
+        return False
 
     def send_message(self, data, channel=None):
         """Broadcast a message to all telescope model users."""
@@ -222,13 +226,6 @@ class TelescopeState(object):
         if msg is not None:
             msg = msg['data']
         return msg
-
-    def has_key(self, key_name):
-        """Check to see if the specified key exists in the database."""
-        for prefix in self._prefixes:
-            if self._r.exists(prefix + key_name):
-                return True
-        return False
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
