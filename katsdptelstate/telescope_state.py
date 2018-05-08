@@ -1,13 +1,12 @@
 from __future__ import print_function, division, absolute_import
+
 import struct
 import time
-import os
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 import logging
-import argparse
 import contextlib
 import functools
 import sys
@@ -29,14 +28,18 @@ PICKLE_PROTOCOL = 2         #: Version of pickle protocol to use
 class TelstateError(RuntimeError):
     """Base class for errors from this module"""
 
+
 class InvalidKeyError(TelstateError):
     """A key collides with a class attribute"""
+
 
 class ImmutableKeyError(TelstateError):
     """An attempt was made to modify an immutable key"""
 
+
 class TimeoutError(TelstateError):
     """A wait for a key timed out"""
+
 
 class CancelledError(TelstateError):
     """A wait for a key was cancelled"""
@@ -135,7 +138,8 @@ class TelescopeState(object):
             if not endpoint.host:
                 self._r = TabloidRedis(db=db, singleton=False)
             elif endpoint.port is not None:
-                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port, db=db, socket_timeout=5)
+                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
+                                            db=db, socket_timeout=5)
             else:
                 self._r = redis.StrictRedis(host=endpoint.host, db=db, socket_timeout=5)
             self._ps = self._r.pubsub(ignore_subscribe_messages=True)
@@ -181,9 +185,11 @@ class TelescopeState(object):
         return self.__class__(base=self)
 
     def _strip(self, str_val, return_pickle=False):
-        if len(str_val) < 8: return None
+        if len(str_val) < 8:
+            return None
         ts = struct.unpack('>d', str_val[:8])[0]
-        if return_pickle: return (str_val[8:], ts)
+        if return_pickle:
+            return (str_val[8:], ts)
         try:
             ret_val = _pickle_loads(str_val[8:])
         except pickle.UnpicklingError:
@@ -204,14 +210,17 @@ class TelescopeState(object):
 
     def send_message(self, data, channel=None):
         """Broadcast a message to all telescope model users."""
-        if channel is None: channel = self._default_channel
+        if channel is None:
+            channel = self._default_channel
         return self._r.publish(channel, data)
 
     def get_message(self, channel=None):
         """Get the oldest unread telescope model message."""
-        if channel is None: channel = self._default_channel
+        if channel is None:
+            channel = self._default_channel
         msg = self._ps.get_message(channel)
-        if msg is not None: msg = msg['data']
+        if msg is not None:
+            msg = msg['data']
         return msg
 
     def has_key(self, key_name):
@@ -301,7 +310,8 @@ class TelescopeState(object):
             if `key` already exists with a different mutability
         """
         if key in self.__class__.__dict__:
-            raise InvalidKeyError("The specified key already exists as a class method and thus cannot be used.")
+            raise InvalidKeyError("The specified key already exists as a "
+                                  "class method and thus cannot be used.")
          # check that we are not going to munge a class method
         full_key = self._prefixes[0] + key
         str_val = pickle.dumps(value, protocol=PICKLE_PROTOCOL)

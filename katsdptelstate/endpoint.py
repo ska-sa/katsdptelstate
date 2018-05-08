@@ -1,4 +1,5 @@
 from __future__ import print_function, division, absolute_import
+
 import socket
 import struct
 import netifaces

@@ -1,14 +1,36 @@
 #!/usr/bin/env python
+
+import os
+
 from setuptools import setup, find_packages
 
 
-setup(name="katsdptelstate",
-      description="Karoo Array Telescope - Telescope State Client",
-      author="Simon Ratcliffe",
-      author_email="sratcliffe@ska.ac.za",
-      url='https://github.com/ska-sa/katsdptelstate',
+here = os.path.abspath(os.path.dirname(__file__))
+readme = open(os.path.join(here, 'README.rst')).read()
+
+setup(name='katsdptelstate',
+      description='Karoo Array Telescope - Telescope State Client',
+      long_description=readme,
+      author='Simon Ratcliffe',
+      author_email='sratcliffe@ska.ac.za',
       packages=find_packages(),
-      install_requires=['redis>=2.10.5', 'fakeredis>=0.10.1', 'netifaces', 'ipaddress'],
-      tests_require=['mock', 'numpy'],
+      url='https://github.com/ska-sa/katsdptelstate',
+      license='Modified BSD',
+      classifiers=[
+          'Development Status :: 4 - Beta',
+          'Intended Audience :: Developers',
+          'License :: OSI Approved :: BSD License',
+          'Operating System :: OS Independent',
+          'Programming Language :: Python',
+          'Programming Language :: Python :: 2',
+          'Programming Language :: Python :: 2.7',
+          'Programming Language :: Python :: 3',
+          'Topic :: Software Development :: Libraries :: Python Modules',
+          'Topic :: Scientific/Engineering :: Astronomy'],
+      platforms=['OS Independent'],
+      keywords='meerkat ska',
       setup_requires=['katversion'],
-      use_katversion=True)
+      use_katversion=True,
+      install_requires=['redis>=2.10.5', 'fakeredis>=0.10.1', 'netifaces', 'ipaddress'],
+      extras_require={'rdb': ['rdbtools', 'python-lzf']},
+      tests_require=['mock', 'numpy', 'rdbtools'])
