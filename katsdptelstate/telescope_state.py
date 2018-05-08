@@ -29,6 +29,10 @@ class TelstateError(RuntimeError):
     """Base class for errors from this module"""
 
 
+class ConnectionError(TelstateError):
+    """The initial connection to the redis server failed."""
+
+
 class InvalidKeyError(TelstateError):
     """A key collides with a class attribute"""
 
@@ -124,6 +128,11 @@ class TelescopeState(object):
         connection will be taken. This allows new views to be created by
         specifying `prefixes`, without creating new redis connections.
         If specified, `endpoint` and `db` are ignored.
+
+    Raises
+    ------
+    ConnectionError
+        If the initial connection to the (real) redis server fails
     """
     SEPARATOR = '_'
 
@@ -137,15 +146,23 @@ class TelescopeState(object):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
             if not endpoint.host:
                 self._r = TabloidRedis(db=db, singleton=False)
-            elif endpoint.port is not None:
-                self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port,
-                                            db=db, socket_timeout=5)
             else:
-                self._r = redis.StrictRedis(host=endpoint.host, db=db, socket_timeout=5)
+                redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
+                # If no port is provided, redis will pick its default port
+                if endpoint.port is not None:
+                    redis_kwargs['port'] = endpoint.port
+                self._r = redis.StrictRedis(**redis_kwargs)
             self._ps = self._r.pubsub(ignore_subscribe_messages=True)
              # subscribe to the telescope model info channel
             self._default_channel = 'tm_info'
-            self._ps.subscribe(self._default_channel)
+            try:
+                # This is the first command to the server and therefore
+                # the first test of its availability
+                self._ps.subscribe(self._default_channel)
+            except (redis.TimeoutError, redis.ConnectionError) as e:
+                # redis.TimeoutError: bad host
+                # redis.ConnectionError: good host, bad port
+                raise ConnectionError("[{}] {}".format(endpoint, e))
         # Force to tuple, in case it is some other iterable
         self._prefixes = tuple(prefixes)
 
