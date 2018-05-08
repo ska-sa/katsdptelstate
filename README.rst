@@ -15,17 +15,17 @@ Keys can be accessed using attribute syntax or dict syntax.
 
 .. warning::
 
-  **WARNING**: The standard warning about Python pickles applies. Never
-  retrieve data from an untrusted telescope state or connect to one over an
-  untrusted network.
+    **WARNING**: The standard warning about Python pickles applies. Never
+    retrieve data from an untrusted telescope state or connect to one over an
+    untrusted network.
 
 Getting Started
 ---------------
 
 You will need a relatively recent version of Redis installed (2.8.9 or newer).
 
-  - macOS: ``brew install redis``
-  - Ubuntu: ``apt-get install redis-server``
+- macOS: ``brew install redis``
+- Ubuntu: ``apt-get install redis-server``
 
 Then ``pip install katsdptelstate`` and run a local ``redis-server``. If you
 also want to load RDB files, do ``pip install katsdptelstate[rdb]``.
