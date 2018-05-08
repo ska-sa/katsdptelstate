@@ -37,11 +37,11 @@ A Simple Example
   import time
   import katsdptelstate
 
-  # Connect to an actual redis server
+  # Connect to an actual Redis server
   telstate = katsdptelstate.TelescopeState('localhost:6379')
-  # Or use a fake redis instance (key/values stored in memory, useful for testing)
+  # Or use a fake Redis instance (key/values stored in memory, useful for testing)
   telstate = katsdptelstate.TelescopeState()
-  # Load dump file into redis if katsdptelstate is installed with [rdb] option
+  # Load dump file into Redis if katsdptelstate is installed with [rdb] option
   telstate.load_from_file('dump.rdb')
 
   # Attribute / dict style access returns the latest value

@@ -182,11 +182,6 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_key', x)
         self.assertTrue((self.ts.test_key == x).all())
 
-    def test_has_key(self):
-        self.ts.add('test_key', 1234.5)
-        self.assertTrue(self.ts.has_key('test_key'))
-        self.assertFalse(self.ts.has_key('nonexistent_test_key'))
-
     def test_contains(self):
         self.ts.add('test_key', 1234.5)
         self.assertTrue('test_key' in self.ts)

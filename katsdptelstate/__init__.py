@@ -1,5 +1,6 @@
-from .telescope_state import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                              TimeoutError, CancelledError, PICKLE_PROTOCOL)
+from .telescope_state import (TelescopeState, ConnectionError, InvalidKeyError,
+                              ImmutableKeyError, TimeoutError, CancelledError,
+                              PICKLE_PROTOCOL)
 
 # BEGIN VERSION CHECK
 # Get package version when locally imported from repo or via -e develop install
