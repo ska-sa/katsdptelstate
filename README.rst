@@ -24,10 +24,11 @@ Getting Started
 
 You will need a relatively recent version of Redis installed (2.8.9 or newer).
 
-macOS: ``brew install redis``
-Ubuntu: ``apt-get install redis-server``
+  - macOS: ``brew install redis``
+  - Ubuntu: ``apt-get install redis-server``
 
-Then ``pip install katsdptelstate`` and run a local ``redis-server``.
+Then ``pip install katsdptelstate`` and run a local ``redis-server``. If you
+also want to load RDB files, do ``pip install katsdptelstate[rdb]``.
 
 A Simple Example
 ----------------
