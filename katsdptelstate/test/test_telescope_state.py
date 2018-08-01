@@ -29,13 +29,13 @@ class TestTelescopeState(unittest.TestCase):
         self.ts._r.flushdb()
 
     def test_namespace(self):
-        self.assertEqual(self.ts.prefixes, ('',))
-        self.assertEqual(self.ns.prefixes, ('ns_', ''))
+        self.assertEqual(self.ts.prefixes, (b'',))
+        self.assertEqual(self.ns.prefixes, (b'ns_', b''))
         ns2 = self.ns.view('ns_child_grandchild')
-        self.assertEqual(ns2.prefixes, ('ns_child_grandchild_', 'ns_', ''))
-        self.assertEqual(ns2.root().prefixes, ('',))
+        self.assertEqual(ns2.prefixes, (b'ns_child_grandchild_', b'ns_', b''))
+        self.assertEqual(ns2.root().prefixes, (b'',))
         ns_excl = self.ns.view('exclusive', exclusive=True)
-        self.assertEqual(ns_excl.prefixes, ('exclusive_',))
+        self.assertEqual(ns_excl.prefixes, (b'exclusive_',))
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)
@@ -77,6 +77,10 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_key_rt', 2345.6)
         self.ts.clear()
         self.assertEqual([], self.ts.keys())
+
+    def test_get_default(self):
+        self.assertIsNone(self.ts.get('foo'))
+        self.assertEqual(self.ts.get('foo', 'bar'), 'bar')
 
     def test_return_pickle(self):
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
