@@ -323,3 +323,13 @@ class TestTelescopeState(unittest.TestCase):
         thread.start()
         ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
         thread.join()
+
+    def test_mixed_unicode_bytes(self):
+        ns1 = self.ts.view(b'ns')
+        ns1.add(u'test_key', 'value', immutable=True)
+        ns2 = self.ts.view(u'ns')
+        self.assertEqual(ns2.get(b'test_key'), 'value')
+        self.assertTrue(b'test_key' in ns1)
+        self.assertTrue(u'test_key' in ns2)
+        self.assertTrue(ns1.is_immutable(b'test_key'))
+        self.assertTrue(ns2.is_immutable(u'test_key'))
