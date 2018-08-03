@@ -92,6 +92,17 @@ def equal_pickles(a, b):
         return False
 
 
+def _as_bytes(value):
+    """Force unicode values to bytes by UTF-8 encoding.
+
+    This is intended to mimic redis-py behaviour
+    """
+    if isinstance(value, _text_type):
+        return value.encode('utf-8')
+    else:
+        return value
+
+
 class TelescopeState(object):
     """Interface to attributes and sensors stored in a Redis database.
 
@@ -139,17 +150,6 @@ class TelescopeState(object):
     SEPARATOR = '_'
     SEPARATOR_BYTES = b'_'
 
-    @classmethod
-    def _as_bytes(cls, value):
-        """Force unicode values to bytes by UTF-8 encoding.
-
-        This is intended to mimic redis-py behaviour
-        """
-        if isinstance(value, _text_type):
-            return value.encode('utf-8')
-        else:
-            return value
-
     def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None):
         if base is not None:
             self._r = base._r
@@ -178,7 +178,7 @@ class TelescopeState(object):
                 # redis.ConnectionError: good host, bad port
                 raise ConnectionError("[{}] {}".format(endpoint, e))
         # Ensure all prefixes are bytes for consistency
-        self._prefixes = tuple(self._as_bytes(prefix) for prefix in prefixes)
+        self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
 
     @property
     def prefixes(self):
@@ -203,7 +203,7 @@ class TelescopeState(object):
         end with the separator, it is added (unless `add_separator` is
         false).
         """
-        name = self._as_bytes(name)
+        name = _as_bytes(name)
         if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
             name += self.SEPARATOR_BYTES
         if exclusive:
@@ -239,7 +239,7 @@ class TelescopeState(object):
 
     def __contains__(self, key_name):
         """Check to see if the specified key exists in the database."""
-        key_name = self._as_bytes(key_name)
+        key_name = _as_bytes(key_name)
         for prefix in self._prefixes:
             if self._r.exists(prefix + key_name):
                 return True
@@ -262,7 +262,7 @@ class TelescopeState(object):
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         for prefix in self._prefixes:
             type_ = self._r.type(prefix + key)
             if type_ != b'none':
@@ -297,7 +297,7 @@ class TelescopeState(object):
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
         """
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         for prefix in self._prefixes:
             self._r.delete(prefix + key)
 
@@ -345,7 +345,7 @@ class TelescopeState(object):
             raise InvalidKeyError("The specified key already exists as a "
                                   "class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         full_key = self._prefixes[0] + key
         str_val = pickle.dumps(value, protocol=PICKLE_PROTOCOL)
         if immutable:
@@ -406,7 +406,7 @@ class TelescopeState(object):
             message_value = None
 
         for prefix in self._prefixes:
-            full_key = prefix + self._as_bytes(key)
+            full_key = prefix + _as_bytes(key)
             match = full_key == message_key
             type_ = self._r.type(full_key)
             if type_ == b'string':
@@ -459,7 +459,7 @@ class TelescopeState(object):
             if cancel_future is not None and cancel_future.done():
                 raise CancelledError('wait for {} cancelled'.format(key))
 
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         # First check if condition is already satisfied, in which case we
         # don't need to create a pubsub connection.
         if self._check_condition(key, condition):
@@ -506,7 +506,7 @@ class TelescopeState(object):
         return _pickle_loads(str_val)
 
     def _get(self, key, return_pickle=False):
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
@@ -627,7 +627,7 @@ class TelescopeState(object):
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
         """
-        key = self._as_bytes(key)
+        key = _as_bytes(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             type_ = self._r.type(full_key)
