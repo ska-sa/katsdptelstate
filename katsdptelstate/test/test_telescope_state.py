@@ -334,6 +334,7 @@ class TestTelescopeState(unittest.TestCase):
         ns.add(key, 'value1', ts=1)
         self.assertEqual(
             ns.get_range(key), [('value1', 1.0)])
+        ns.wait_key(key)
 
     def test_mixed_unicode_bytes(self):
         self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
