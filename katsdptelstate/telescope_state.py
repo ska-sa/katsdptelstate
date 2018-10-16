@@ -10,7 +10,10 @@ import logging
 import contextlib
 import functools
 import sys
+import io
+import numbers
 
+import numpy as np
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
@@ -22,7 +25,17 @@ except ImportError as _rdb_reader_import_error:
 
 
 logger = logging.getLogger(__name__)
-PICKLE_PROTOCOL = 2         #: Version of pickle protocol to use
+PICKLE_PROTOCOL = 2
+
+# Header byte indicating a pickle-encoded value. This is present in pickle
+# v2+ (it is the PROTO opcode, which is required to be first). Values below
+# 0x80 are assumed to be pickle as well, since v0 uses only ASCII, and v1
+# was never used in telstate. Values above 0x80 are reserved for future
+# encoding forms.
+ENCODING_PICKLE = b'\x80'
+
+#: Default encoding for :func:`encode_value`
+ENCODING_DEFAULT = ENCODING_PICKLE
 
 
 class TelstateError(RuntimeError):
@@ -49,6 +62,14 @@ class CancelledError(TelstateError):
     """A wait for a key was cancelled"""
 
 
+class DecodeError(ValueError, TelstateError):
+    """An encoded value found in telstate could not be decoded"""
+
+
+class EncodeError(ValueError, TelstateError):
+    """A value could not be encoded"""
+
+
 if sys.version_info.major >= 3:
     # See https://stackoverflow.com/questions/11305790
     _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
@@ -58,34 +79,88 @@ else:
     _text_type = unicode
 
 
-def equal_pickles(a, b):
-    """Test whether two pickles represent the same/equivalent objects.
+def encode_value(value, encoding=ENCODING_DEFAULT):
+    """Encode a value to a byte array for storage in redis.
+
+    Parameters
+    ----------
+    value
+        Value to encode
+    encoding
+        Encoding method to use. It must be one of
+        - :const:`ENCODING_DEFAULT`
+        - :const:`ENCODING_PICKLE`
+
+    Raises
+    ------
+    ValueError
+        If `encoding` is not a recognised encoding
+    DecodeError
+        EncodeError if the value was not encodable with the chosen encoding.
+    """
+    if encoding == ENCODING_PICKLE:
+        return pickle.dumps(value, protocol=PICKLE_PROTOCOL)
+    else:
+        raise ValueError('Unknown encoding {:#x}'.format(encoding))
+
+
+def decode_value(value, allow_pickle=True):
+    """Decode a value encoded with :func:`encode_value`.
+
+    The encoded value is self-describing, so it is not necessary to specify
+    which encoding was used.
+
+    Parameters
+    ----------
+    value : bytes
+        Encoded value to decode
+    allow_pickle : bool, optional
+        If false, :const:`ENCODING_PICKLE` is disabled. This may be useful for
+        security as pickle decoding can execute arbitrary code. The default is
+        true but may change to false in future once other encodings are
+        supported and in common usage.
+
+    Raises
+    ------
+    DecodeError
+        if `allow_pickle` is false and `value` is a pickle
+    DecodeError
+        if there was an error in the encoding of `value`
+    """
+    if not value:
+        raise DecodeError('empty value')
+    elif value[:1] <= ENCODING_PICKLE:
+        if allow_pickle:
+            try:
+                return _pickle_loads(value)
+            except Exception as error:
+                raise DecodeError(str(error))
+        else:
+            raise DecodeError('value is a pickle but unpickling is disabled')
+    else:
+        raise DecodeError('value starts with unrecognised header byte {!r}'.format(value[:1]))
+
+
+def equal_encoded_values(a, b):
+    """Test whether two encoded values represent the same/equivalent objects.
 
     This is not a complete implementation. Mostly, it just checks that the
-    pickled representation is the same, but to ease the transition to Python 3,
-    it will also compare the values if both arguments unpickle to either
+    encoded representation is the same, but to ease the transition to Python 3,
+    it will also compare the values if both arguments decode to either
     ``bytes`` or ``str`` (and allows bytes and strings to be equal assuming
     UTF-8 encoding). However, it will not do this recursively in structured
     data.
     """
     if a == b:
         return True
-    if sys.version_info.major >= 3:
-        # Python 3. Treat Python 2 strings as bytes, to avoid decoding errors
-        a = pickle.loads(a, encoding='bytes')
-        b = pickle.loads(b, encoding='bytes')
-        str_type = str
-    else:
-        # Python 2
-        a = pickle.loads(a)
-        b = pickle.loads(b)
-        str_type = unicode
-    if isinstance(a, str_type) and isinstance(b, str_type):
+    a = decode_value(a)
+    b = decode_value(b)
+    if isinstance(a, _text_type) and isinstance(b, _text_type):
         return a == b      # Avoid cost of encoding both to bytes
-    elif isinstance(a, (bytes, str_type)) and isinstance(b, (bytes, str_type)):
-        if isinstance(a, str_type):
+    elif isinstance(a, (bytes, _text_type)) and isinstance(b, (bytes, _text_type)):
+        if isinstance(a, _text_type):
             a = a.encode('utf-8')
-        if isinstance(b, str_type):
+        if isinstance(b, _text_type):
             b = b.encode('utf-8')
         return a == b
     else:
@@ -216,16 +291,13 @@ class TelescopeState(object):
         """Create a view containing only the root namespace."""
         return self.__class__(base=self)
 
-    def _strip(self, str_val, return_pickle=False):
+    def _strip(self, str_val, return_encoded=False):
         if len(str_val) < 8:
             return None
         ts = struct.unpack('>d', str_val[:8])[0]
-        if return_pickle:
-            return (str_val[8:], ts)
-        try:
-            ret_val = _pickle_loads(str_val[8:])
-        except pickle.UnpicklingError:
-            ret_val = str_val[8:]
+        ret_val = str_val[8:]
+        if not return_encoded:
+            ret_val = decode_value(ret_val)
         return (ret_val, ts)
 
     def __getattr__(self, key):
@@ -311,26 +383,28 @@ class TelescopeState(object):
         """
         return self._r.flushdb()
 
-    def add(self, key, value, ts=None, immutable=False):
+    def add(self, key, value, ts=None, immutable=False, encoding=ENCODING_DEFAULT):
         """Add a new key / value pair to the model.
 
         If `immutable` is true, then either the key must not previously have
         been set, or it must have been previous set immutable with exactly the
-        same value (same pickle). Thus, immutable keys only ever have one value
-        for the lifetime of the telescope state. They also have no associated
-        timestamp.
+        same value (see :meth:`equal_encoded_value`). Thus, immutable keys only
+        ever have one value for the lifetime of the telescope state. They also
+        have no associated timestamp.
 
         Parameters
         ----------
         key : str or bytes
             Key name, which must not collide with a class attribute
         value : object
-            Arbitrary value (must be picklable)
+            Arbitrary value (must be encodable with `encoding`)
         ts : float, optional
             Timestamp associated with the update, ignored for immutables. If not
             specified, defaults to ``time.time()``.
         immutable : bool, optional
             See description above.
+        encoding : bytes
+            See :func:`encode_value`
 
         Raises
         ------
@@ -347,7 +421,7 @@ class TelescopeState(object):
          # check that we are not going to munge a class method
         key = _as_bytes(key)
         full_key = self._prefixes[0] + key
-        str_val = pickle.dumps(value, protocol=PICKLE_PROTOCOL)
+        str_val = encode_value(value, encoding)
         if immutable:
             ret = self._r.setnx(full_key, str_val)
             if not ret:
@@ -359,10 +433,10 @@ class TelescopeState(object):
                         raise
                     raise ImmutableKeyError(
                         'Attempt to overwrite mutable key {} with immutable'.format(full_key))
-                if not equal_pickles(str_val, old):
+                if not equal_encoded_values(str_val, old):
                     raise ImmutableKeyError(
                         'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
-                            full_key, _pickle_loads(old), value))
+                            full_key, decode_value(old), value))
                 else:
                     logger.info('Attribute {} updated with the same value'.format(full_key))
                     return True
@@ -415,7 +489,7 @@ class TelescopeState(object):
                     value = message_value
                 else:
                     value = self._r.get(full_key)
-                return condition(_pickle_loads(value), None)
+                return condition(decode_value(value), None)
             elif type_ != b'none':
                 # Mutable
                 if match:
@@ -496,40 +570,40 @@ class TelescopeState(object):
                     if self._check_condition(key, condition, message):
                         return
 
-    def _get_immutable(self, full_key, return_pickle=False):
+    def _get_immutable(self, full_key, return_encoded=False):
         """Return a fully-qualified key of string type."""
         str_val = self._r.get(full_key)
         if str_val is None:
             raise KeyError
-        if return_pickle:
+        if return_encoded:
             return str_val
-        return _pickle_loads(str_val)
+        return decode_value(str_val)
 
-    def _get(self, key, return_pickle=False):
+    def _get(self, key, return_encoded=False):
         key = _as_bytes(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
-                return self._get_immutable(full_key, return_pickle)
+                return self._get_immutable(full_key, return_encoded)
                  # assume simple string type for immutable
             except KeyError:
                 pass     # Key does not exist at all - try next prefix
             except redis.ResponseError as error:
                 if not error.args[0].startswith('WRONGTYPE '):
                     raise
-                return self._strip(self._r.zrange(full_key, -1, -1)[0], return_pickle)[0]
+                return self._strip(self._r.zrange(full_key, -1, -1)[0], return_encoded)[0]
         raise KeyError('{} not found'.format(key))
 
-    def get(self, key, default=None, return_pickle=False):
+    def get(self, key, default=None, return_encoded=False):
         """Get a single value from the model.
 
         Parameters
         ----------
         default : object, optional
             Object to return if key not found
-        return_pickle : bool, optional
-            Default 'False' - return values are unpickled from internal storage before returning
-            'True' - return values are retained in pickled form.
+        return_encoded : bool, optional
+            Default 'False' - return values are decoded from internal storage before returning
+            'True' - return values are retained in encoded form.
 
         Returns
         -------
@@ -537,7 +611,7 @@ class TelescopeState(object):
             for non-immutable key return the most recent value
         """
         try:
-            return self._get(key, return_pickle)
+            return self._get(key, return_encoded)
         except KeyError:
             return default
 
@@ -565,11 +639,11 @@ class TelescopeState(object):
                 # Increment to the next possible encoded value. Note that this
                 # cannot overflow because the sign bit is initially clear.
                 packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
-            # Values are pickled and hence always non-empty, so [ vs ( is irrelevant
+            # Values are encoded and hence always non-empty, so [ vs ( is irrelevant
             return b'[' + packed_time
 
     def get_range(self, key, st=None, et=None,
-                  include_previous=None, include_end=False, return_pickle=False):
+                  include_previous=None, include_end=False, return_encoded=False):
         """Get the range of values specified by the key and timespec from the model.
 
         Parameters
@@ -586,9 +660,9 @@ class TelescopeState(object):
             specified and True if st is unspecified.
         include_end : bool, optional
             If False (default), returns values in [st, et), otherwise [st, et].
-        return_pickle : bool, optional
-            Default 'False' - return values are unpickled from internal storage before returning
-            'True' - return values are retained in pickled form.
+        return_encoded : bool, optional
+            Default 'False' - return values are decoded from internal storage before returning
+            'True' - return values are retained in encoded form.
 
         Returns
         -------
@@ -654,4 +728,4 @@ class TelescopeState(object):
         # Avoid talking to Redis if it is going to be futile
         if packed_st != packed_et:
             ret_vals += self._r.zrangebylex(full_key, packed_st, packed_et)
-        return [self._strip(str_val, return_pickle) for str_val in ret_vals]
+        return [self._strip(str_val, return_encoded) for str_val in ret_vals]

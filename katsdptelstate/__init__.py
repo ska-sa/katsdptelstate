@@ -1,6 +1,8 @@
 from .telescope_state import (TelescopeState, ConnectionError, InvalidKeyError,
                               ImmutableKeyError, TimeoutError, CancelledError,
-                              PICKLE_PROTOCOL)
+                              DecodeError, EncodeError,
+                              PICKLE_PROTOCOL, encode_value, decode_value,
+                              ENCODING_PICKLE, ENCODING_DEFAULT)
 
 # BEGIN VERSION CHECK
 # Get package version when locally imported from repo or via -e develop install
