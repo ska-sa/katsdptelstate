@@ -60,7 +60,7 @@ class _TestEncoding(unittest.TestCase):
         self._test_value(np.int32(12345678), (int, np.int32))
 
     def test_complex(self):
-        self._test_value(1.2 + 3.4j)
+        self._test_value(1.2 + 3.4j, complex)
 
     def test_ndarray(self):
         self._test_value(np.array([1, 2, 3]))
