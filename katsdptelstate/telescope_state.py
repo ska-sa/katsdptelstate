@@ -37,6 +37,9 @@ ENCODING_PICKLE = b'\x80'
 #: Default encoding for :func:`encode_value`
 ENCODING_DEFAULT = ENCODING_PICKLE
 
+#: All encodings that can be used with :func:`encode_value`
+ALLOWED_ENCODINGS = frozenset([ENCODING_PICKLE])
+
 
 class TelstateError(RuntimeError):
     """Base class for errors from this module"""
@@ -87,15 +90,13 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
     value
         Value to encode
     encoding
-        Encoding method to use. It must be one of
-        - :const:`ENCODING_DEFAULT`
-        - :const:`ENCODING_PICKLE`
+        Encoding method to use. It must be one of the values in :const:`ALLOWED_ENCODINGS`
 
     Raises
     ------
     ValueError
         If `encoding` is not a recognised encoding
-    DecodeError
+    EncodeError
         EncodeError if the value was not encodable with the chosen encoding.
     """
     if encoding == ENCODING_PICKLE:
@@ -387,7 +388,7 @@ class TelescopeState(object):
         """Add a new key / value pair to the model.
 
         If `immutable` is true, then either the key must not previously have
-        been set, or it must have been previous set immutable with exactly the
+        been set, or it must have been previously set immutable with exactly the
         same value (see :meth:`equal_encoded_value`). Thus, immutable keys only
         ever have one value for the lifetime of the telescope state. They also
         have no associated timestamp.
