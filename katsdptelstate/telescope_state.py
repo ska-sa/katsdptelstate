@@ -390,7 +390,7 @@ class TelescopeState(object):
 
         If `immutable` is true, then either the key must not previously have
         been set, or it must have been previously set immutable with exactly the
-        same value (see :meth:`equal_encoded_value`). Thus, immutable keys only
+        same value (see :meth:`equal_encoded_values`). Thus, immutable keys only
         ever have one value for the lifetime of the telescope state. They also
         have no associated timestamp.
 
