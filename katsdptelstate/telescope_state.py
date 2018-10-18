@@ -139,7 +139,8 @@ def decode_value(value, allow_pickle=True):
         else:
             raise DecodeError('value is a pickle but unpickling is disabled')
     else:
-        raise DecodeError('value starts with unrecognised header byte {!r}'.format(value[:1]))
+        raise DecodeError('value starts with unrecognised header byte {!r} '
+                          '(katsdptelstate may need to be updated)'.format(value[:1]))
 
 
 def equal_encoded_values(a, b):
@@ -412,9 +413,10 @@ class TelescopeState(object):
         InvalidKeyError
             if `key` collides with a class member name
         ImmutableKeyError
-            if an attempt is made to change the value of an immutable
+            if an attempt is made to change the value of an immutable or to
+            change a mutable key to immutable or vice versa
         redis.ResponseError
-            if `key` already exists with a different mutability
+            if there is some other error from the Redis server
         """
         if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a "
@@ -434,13 +436,19 @@ class TelescopeState(object):
                         raise
                     raise ImmutableKeyError(
                         'Attempt to overwrite mutable key {} with immutable'.format(full_key))
-                if not equal_encoded_values(str_val, old):
+                try:
+                    if not equal_encoded_values(str_val, old):
+                        raise ImmutableKeyError(
+                            'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
+                                full_key, decode_value(old), value))
+                    else:
+                        logger.info('Attribute {} updated with the same value'.format(full_key))
+                        return True
+                except DecodeError as error:
                     raise ImmutableKeyError(
-                        'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
-                            full_key, decode_value(old), value))
-                else:
-                    logger.info('Attribute {} updated with the same value'.format(full_key))
-                    return True
+                        'Attempt to set value of immutable key {} to {!r} but failed to '
+                        'decode the previous value to compare: {}'
+                        .format(full_key, value, error))
         else:
             ts = float(ts) if ts is not None else time.time()
             packed_ts = struct.pack('>d', ts)

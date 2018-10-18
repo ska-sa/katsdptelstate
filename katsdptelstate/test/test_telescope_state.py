@@ -203,7 +203,7 @@ class TestTelescopeState(unittest.TestCase):
             self.ts.add('test_unicode', b'umlaut', immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_unicode', u'umlaut', immutable=True)
-        # Test with a binary string that isn't value UTF-8
+        # Test with a binary string that isn't valid UTF-8
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         # Test Python 2/3 interop by directly injecting the pickled values
@@ -211,6 +211,11 @@ class TestTelescopeState(unittest.TestCase):
         self.ts._r.set(b'test_3', b'Vhello\np0\n.')
         self.ts.add('test_2', 'hello', immutable=True)
         self.ts.add('test_3', 'hello', immutable=True)
+        # Test handling of the case where the old value cannot be decoded
+        self.ts._r.set(b'test_failed_decode', b'')  # Empty string is never valid encoding
+        with self.assertRaisesRegex(ImmutableKeyError,
+                                    'failed to decode the previous value'):
+            self.ts.add('test_failed_decode', '', immutable=True)
 
     def test_immutable_none(self):
         self.ts.add('test_none', None, immutable=True)
