@@ -14,6 +14,7 @@ except ImportError:
     import pickle
 
 import mock
+import six
 import numpy as np
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError, DecodeError,
@@ -213,8 +214,8 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
         self.ts._r.set(b'test_failed_decode', b'')  # Empty string is never valid encoding
-        with self.assertRaisesRegex(ImmutableKeyError,
-                                    'failed to decode the previous value'):
+        with six.assertRaisesRegex(self, ImmutableKeyError,
+                                   'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
 
     def test_immutable_none(self):
