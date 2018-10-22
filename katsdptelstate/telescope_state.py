@@ -15,6 +15,7 @@ import numbers
 
 import numpy as np
 import redis
+import msgpack
 
 from .endpoint import Endpoint, endpoint_parser
 from .tabloid_redis import TabloidRedis
@@ -34,11 +35,19 @@ PICKLE_PROTOCOL = 2
 # encoding forms.
 ENCODING_PICKLE = b'\x80'
 
+#: Header byte indicating a msgpack-encoded value
+ENCODING_MSGPACK = b'\xff'
+
 #: Default encoding for :func:`encode_value`
 ENCODING_DEFAULT = ENCODING_PICKLE
 
 #: All encodings that can be used with :func:`encode_value`
-ALLOWED_ENCODINGS = frozenset([ENCODING_PICKLE])
+ALLOWED_ENCODINGS = frozenset([ENCODING_PICKLE, ENCODING_MSGPACK])
+
+MSGPACK_EXT_TUPLE = 1
+MSGPACK_EXT_COMPLEX128 = 2
+MSGPACK_EXT_NDARRAY = 3           # .npy format
+MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
 
 
 class TelstateError(RuntimeError):
@@ -82,6 +91,93 @@ else:
     _text_type = unicode
 
 
+def _encode_ndarray(value):
+    fp = io.BytesIO()
+    try:
+        np.save(fp, value, allow_pickle=False)
+    except ValueError as error:
+        # Occurs if value has object type
+        raise EncodeError(str(error))
+    return fp.getvalue()
+
+
+def _decode_ndarray(data):
+    fp = io.BytesIO(data)
+    try:
+        return np.load(fp, allow_pickle=False)
+    except ValueError as error:
+        raise DecodeError(str(error))
+
+
+def _encode_numpy_scalar(value):
+    if value.dtype.hasobject:
+        raise EncodeError('cannot encode dtype {} as it contains objects'.format(value.dtype))
+    descr = np.lib.format.dtype_to_descr(value.dtype)
+    return _msgpack_encode(descr) + value.tobytes()
+
+
+def _decode_numpy_scalar(data):
+    try:
+        descr = _msgpack_decode(data)
+        raw = b''
+    except msgpack.ExtraData as exc:
+        descr = exc.unpacked
+        raw = exc.extra
+    dtype = np.dtype(descr)
+    if dtype.hasobject:
+        raise DecodeError('cannot decode dtype {} as it contains objects'.format(dtype))
+    value = np.frombuffer(raw, dtype, 1)
+    return value[0]
+
+
+def _msgpack_default(value):
+    if isinstance(value, tuple):
+        return msgpack.ExtType(MSGPACK_EXT_TUPLE, _msgpack_encode(list(value)))
+    elif isinstance(value, np.ndarray):
+        return msgpack.ExtType(MSGPACK_EXT_NDARRAY, _encode_ndarray(value))
+    elif isinstance(value, np.generic):
+        return msgpack.ExtType(MSGPACK_EXT_NUMPY_SCALAR, _encode_numpy_scalar(value))
+    elif isinstance(value, complex):
+        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128, struct.pack('>dd', value.real, value.imag))
+    else:
+        raise EncodeError('do not know how to encode type {}'.format(value.__class__.__name__))
+
+
+def _msgpack_ext_hook(code, data):
+    if code == MSGPACK_EXT_TUPLE:
+        content = _msgpack_decode(data)
+        if not isinstance(content, list):
+            raise DecodeError('incorrectly encoded tuple')
+        return tuple(content)
+    elif code == MSGPACK_EXT_COMPLEX128:
+        if len(data) != 16:
+            raise DecodeError('wrong length for COMPLEX128')
+        return complex(*struct.unpack('>dd', data))
+    elif code == MSGPACK_EXT_NDARRAY:
+        return _decode_ndarray(data)
+    elif code == MSGPACK_EXT_NUMPY_SCALAR:
+        return _decode_numpy_scalar(data)
+    else:
+        raise DecodeError('unknown extension type {}'.format(code))
+
+
+def _msgpack_encode(value):
+    return msgpack.packb(value, use_bin_type=True, strict_types=True, default=_msgpack_default)
+
+
+def _msgpack_decode(value):
+    # The max_*_len prevent a corrupted or malicious input from consuming
+    # memory significantly in excess of the input size before it determines
+    # that there isn't actually enough data to back it.
+    max_len = len(value)
+    return msgpack.unpackb(value, raw=False, ext_hook=_msgpack_ext_hook,
+                           max_str_len=max_len,
+                           max_bin_len=max_len,
+                           max_array_len=max_len,
+                           max_map_len=max_len,
+                           max_ext_len=max_len)
+
+
 def encode_value(value, encoding=ENCODING_DEFAULT):
     """Encode a value to a byte array for storage in redis.
 
@@ -101,8 +197,10 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
     """
     if encoding == ENCODING_PICKLE:
         return pickle.dumps(value, protocol=PICKLE_PROTOCOL)
+    elif encoding == ENCODING_MSGPACK:
+        return ENCODING_MSGPACK + _msgpack_encode(value)
     else:
-        raise ValueError('Unknown encoding {:#x}'.format(encoding))
+        raise ValueError('Unknown encoding {:#x}'.format(ord(encoding)))
 
 
 def decode_value(value, allow_pickle=True):
@@ -130,6 +228,11 @@ def decode_value(value, allow_pickle=True):
     """
     if not value:
         raise DecodeError('empty value')
+    elif value[:1] == ENCODING_MSGPACK:
+        try:
+            return _msgpack_decode(value[1:])
+        except Exception as error:
+            raise DecodeError(str(error))
     elif value[:1] <= ENCODING_PICKLE:
         if allow_pickle:
             try:
