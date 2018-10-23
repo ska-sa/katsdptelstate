@@ -5,13 +5,8 @@ from __future__ import print_function, division, absolute_import
 
 import threading
 import time
-import math
 import unittest
 import sys
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 
 import mock
 import six
