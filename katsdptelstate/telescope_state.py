@@ -10,10 +10,7 @@ import logging
 import contextlib
 import functools
 import sys
-import io
-import numbers
 
-import numpy as np
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
