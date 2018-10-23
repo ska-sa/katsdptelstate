@@ -10,9 +10,11 @@ import logging
 import contextlib
 import functools
 import sys
+import io
 
 import redis
 import msgpack
+import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
 from .tabloid_redis import TabloidRedis
