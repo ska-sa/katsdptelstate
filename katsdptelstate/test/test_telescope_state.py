@@ -12,9 +12,10 @@ import mock
 import six
 import numpy as np
 
-from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError, DecodeError,
-                            TimeoutError, CancelledError, encode_value, decode_value,
-                            ENCODING_PICKLE)
+from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
+                            TimeoutError, CancelledError, EncodeError, DecodeError,
+                            encode_value, decode_value,
+                            ENCODING_PICKLE, ENCODING_MSGPACK)
 
 
 class _TestEncoding(unittest.TestCase):
@@ -22,10 +23,10 @@ class _TestEncoding(unittest.TestCase):
 
     This must be subclassed to specify the encoding type.
     """
-    def _test_value(self, value, required_type=object):
+    def _test_value(self, value):
         encoded = encode_value(value, encoding=self.encoding)
         decoded = decode_value(encoded)
-        self.assertIsInstance(decoded, required_type)
+        self.assertEqual(type(value), type(decoded))
         if isinstance(value, np.ndarray):
             np.testing.assert_array_equal(value, decoded)
         else:
@@ -35,31 +36,35 @@ class _TestEncoding(unittest.TestCase):
         self._test_value(('a', 'tuple', ['with', ('embedded', 'list')]))
 
     def test_float(self):
-        self._test_value(1.0, float)
-        self._test_value(1.23456788901234567890, float)
-        self._test_value(1e300, float)
-        self._test_value(-1e-300, float)
-        self._test_value(float('inf'), float)
-        self._test_value(np.inf, float)
+        self._test_value(1.0)
+        self._test_value(1.23456788901234567890)
+        self._test_value(1e300)
+        self._test_value(-1e-300)
+        self._test_value(float('inf'))
+        self._test_value(np.inf)
 
     def test_simple(self):
-        self._test_value(True, bool)
-        self._test_value(False, bool)
+        self._test_value(True)
+        self._test_value(False)
         self._test_value(None)
 
     def test_np_scalar(self):
-        self._test_value(np.float32(5.5), (float, np.float32))
-        self._test_value(np.float64(5.5), (float, np.float64))
-        self._test_value(np.complex128(5.5 + 4.2j), (complex, np.complex128))
-        self._test_value(np.bool_(True), (bool, np.bool_))
-        self._test_value(np.bool_(False), (bool, np.bool_))
-        self._test_value(np.int32(12345678), (int, np.int32))
+        self._test_value(np.float32(5.5))
+        self._test_value(np.float64(5.5))
+        self._test_value(np.complex128(5.5 + 4.2j))
+        self._test_value(np.bool_(True))
+        self._test_value(np.bool_(False))
+        self._test_value(np.int32(12345678))
 
     def test_complex(self):
-        self._test_value(1.2 + 3.4j, complex)
+        self._test_value(1.2 + 3.4j)
 
     def test_ndarray(self):
         self._test_value(np.array([1, 2, 3]))
+
+    def test_structured_ndarray(self):
+        dtype = np.dtype([('a', np.int32), ('b', np.int16, (3, 3))])
+        self._test_value(np.zeros((2, 3), dtype))
 
     def test_nan(self):
         encoded = encode_value(np.nan, encoding=self.encoding)
@@ -67,25 +72,51 @@ class _TestEncoding(unittest.TestCase):
         self.assertTrue(np.isnan(decoded))
 
     def test_fuzz(self):
-        if self.encoding == ENCODING_PICKLE and sys.version_info < (3,):
-            raise unittest.SkipTest("Python 2.7's cPickle will segfault given a bad pickle")
+        if self.encoding == ENCODING_PICKLE:
+            raise unittest.SkipTest("Pickles will exhaust memory or crash given a bad pickle")
         # Create an encoded string with a bit of everything
-        orig = [('a str', b'bytes'), 3, 4.0, 5 + 6j, True, False, None,
-                np.array([[1, 2, 3]])]
+        orig = [('a str', b'bytes'), 3, 4.0, 5 + 6j, np.int32(1),
+                True, False, None, np.array([[1, 2, 3]])]
         encoded = encode_value(orig, encoding=self.encoding)
         # Mess with it and check that no exceptions except DecodeError come back
         for i in range(len(encoded)):
             broken = bytearray(encoded)
             for j in range(256):
                 broken[i] = j
+                try:
+                    decode_value(bytes(broken))
+                except DecodeError:
+                    pass
+        # Same thing, but now truncate the message rather than mutating it
+        for i in range(len(encoded)):
             try:
-                decode_value(bytes(broken))
+                decode_value(encoded[:i])
             except DecodeError:
                 pass
 
 
 class TestEncodingPickle(_TestEncoding):
     encoding = ENCODING_PICKLE
+
+
+class TestEncodingMsgpack(_TestEncoding):
+    encoding = ENCODING_MSGPACK
+
+    def setUp(self):
+        self.object_dtype = np.dtype([('a', np.int32), ('b', np.object_)])
+        self.object_array = np.zeros((3,), self.object_dtype)
+
+    def test_ndarray_with_object(self):
+        with self.assertRaises(EncodeError):
+            encode_value(self.object_array, encoding=self.encoding)
+
+    def test_numpy_scalar_with_object(self):
+        with self.assertRaises(EncodeError):
+            encode_value(self.object_array[0], encoding=self.encoding)
+
+    def test_unhandled_type(self):
+        with self.assertRaises(EncodeError):
+            encode_value(self, encoding=self.encoding)
 
 
 class TestTelescopeState(unittest.TestCase):

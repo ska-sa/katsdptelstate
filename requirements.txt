@@ -1,4 +1,6 @@
 fakeredis
 ipaddress
+msgpack==0.5.6
 netifaces
+numpy
 redis
