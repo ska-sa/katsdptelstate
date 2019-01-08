@@ -413,6 +413,18 @@ class TelescopeState(object):
     def __getitem__(self, key):
         return self._get(key)
 
+    def __setattr__(self, key, value):
+        if key.startswith('_'):
+            super(TelescopeState, self).__setattr__(key, value)
+        elif key in self.__class__.__dict__:
+            raise AttributeError("The specified key already exists as a "
+                                 "class method and thus cannot be used.")
+        else:
+            self.add(key, value, immutable=True)
+
+    def __setitem__(self, key, value):
+        self.add(key, value, immutable=True)
+
     def __contains__(self, key_name):
         """Check to see if the specified key exists in the database."""
         key_name = _as_bytes(key_name)
