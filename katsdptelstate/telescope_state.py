@@ -338,7 +338,12 @@ class TelescopeState(object):
             if not isinstance(endpoint, Endpoint):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
             if not endpoint.host:
-                self._r = TabloidRedis(db=db, singleton=False)
+                try:
+                    self._r = TabloidRedis(db=db, singleton=False)
+                except TypeError:
+                    # Fakeredis 1.0 removed the singleton option, and defaults
+                    # to having unique state per instance.
+                    self._r = TabloidRedis(db=db)
             else:
                 redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
                 # If no port is provided, redis will pick its default port
