@@ -296,6 +296,20 @@ class TestTelescopeState(unittest.TestCase):
         self.assertTrue('test_key' in self.ts)
         self.assertFalse('nonexistent_test_key' in self.ts)
 
+    def test_setattr(self):
+        self.ts.test_key = 'foo'
+        self.assertEqual(self.ts['test_key'], 'foo')
+        self.assertTrue(self.ts.is_immutable('test_key'))
+        with self.assertRaises(AttributeError):
+            self.ts.root = 'root is a method'
+        self.ts._internal = 'bar'
+        self.assertFalse('_internal' in self.ts)
+
+    def test_setitem(self):
+        self.ts['test_key'] = 'foo'
+        self.assertEqual(self.ts['test_key'], 'foo')
+        self.assertTrue(self.ts.is_immutable('test_key'))
+
     def test_time_range(self):
         self.ts.delete('test_key')
         self.ts.add('test_key', 8192, 1)
