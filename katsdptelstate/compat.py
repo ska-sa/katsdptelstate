@@ -6,7 +6,7 @@ import redis
 import distutils.version
 
 
-# There won't correctly handle a fakeredis 0.x client when redis-py 3.x is
+# This won't correctly handle a fakeredis 0.x client when redis-py 3.x is
 # installed. However, the last fakeredis 0.x version has a dependency on
 # redis<3 to prevent this.
 if distutils.version.StrictVersion(redis.__version__) >= '3.0':
@@ -17,6 +17,7 @@ else:
     def zadd(client, key, values):
         """Provide redis-py 3 interface to either v2 or v3 client"""
         # We can't just use **values, because the names might not be native
-        # strings.
+        # strings. So we have to produce a list of
+        # score1, name1, score2, name2, ...
         it = itertools.chain(*((score, name) for (name, score) in values.items()))
         return client.zadd(key, *it)
