@@ -4,6 +4,7 @@ import logging
 import os.path
 
 from rdbtools import RdbParser, RdbCallback
+from . import compat
 
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ class _Callback(RdbCallback):
     def __init__(self, client):
         super(_Callback, self).__init__(string_escape=None)
         self.client = client
-        self._zset = []
+        self._zset = {}
         self.n_keys = 0
 
     def set(self, key, value, expiry, info):
@@ -21,16 +22,15 @@ class _Callback(RdbCallback):
         self.n_keys += 1
 
     def start_sorted_set(self, key, length, expiry, info):
-        self._zset = []
+        self._zset = {}
         self.n_keys += 1
 
     def zadd(self, key, score, member):
-        self._zset.append(score)
-        self._zset.append(member)
+        self._zset[member] = score
 
     def end_sorted_set(self, key):
-        self.client.zadd(key, *self._zset)
-        self._zset = []
+        compat.zadd(self.client, key, self._zset)
+        self._zset = {}
 
 
 def load_from_file(client, filename):

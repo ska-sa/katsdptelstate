@@ -18,6 +18,7 @@ import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
 from .tabloid_redis import TabloidRedis
+from .compat import zadd
 try:
     from . import rdb_reader
 except ImportError as _rdb_reader_import_error:
@@ -573,7 +574,7 @@ class TelescopeState(object):
             packed_ts = struct.pack('>d', ts)
             str_val = packed_ts + str_val
             try:
-                ret = self._r.zadd(full_key, 0, str_val)
+                ret = zadd(self._r, full_key, {str_val: 0})
             except redis.ResponseError as error:
                 if not error.args[0].startswith('WRONGTYPE '):
                     raise

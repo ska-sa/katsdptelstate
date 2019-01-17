@@ -12,6 +12,7 @@ import tempfile
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
+from katsdptelstate.compat import zadd
 from katsdptelstate import TelescopeState
 
 
@@ -37,9 +38,9 @@ class TestRDBHandling(unittest.TestCase):
         return struct.pack('>d', ts)
 
     def _add_test_vec(self, key, ts):
-        self.tr.zadd(key, 0, self._enc_ts(ts) + b'first')
-        self.tr.zadd(key, 0, self._enc_ts(ts + 2) + b'third')
-        self.tr.zadd(key, 0, self._enc_ts(ts + 1) + b'second')
+        zadd(self.tr, key, {self._enc_ts(ts) + b'first': 0})
+        zadd(self.tr, key, {self._enc_ts(ts + 2) + b'third': 0})
+        zadd(self.tr, key, {self._enc_ts(ts + 1) + b'second': 0})
 
     def test_writer_reader(self):
         base_ts = int(time.time())
