@@ -13,6 +13,7 @@ from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
+from katsdptelstate.memory import MemoryBackend
 from katsdptelstate import TelescopeState
 
 
@@ -20,9 +21,12 @@ class TestRDBHandling(unittest.TestCase):
     def setUp(self):
         self.tr = TabloidRedis()
          # an empty tabloid redis instance
-        self.ts = TelescopeState()
+        self.ts = self.make_telescope_state()
         self.rdb_writer = RDBWriter(client=self.tr)
         self.base_dir = tempfile.mkdtemp()
+
+    def make_telescope_state(self):
+        return TelescopeState()
 
     def base(self, filename):
         return os.path.join(self.base_dir, filename)
@@ -69,3 +73,8 @@ class TestRDBHandling(unittest.TestCase):
 
         self.assertEqual(self.ts.load_from_file(self.base('all.rdb')), 2)
         self.tr.flushall()
+
+
+class TestRDBHandlingMemory(TestRDBHandling):
+    def make_telescope_state(self):
+        return TelescopeState(MemoryBackend())

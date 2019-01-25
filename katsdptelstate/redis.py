@@ -3,7 +3,7 @@ import struct
 
 import redis
 
-from .telescope_state import ConnectionError, ImmutableKeyError
+from .telescope_state import ConnectionError, ImmutableKeyError, Backend
 from .compat import zadd
 try:
     from . import rdb_reader
@@ -26,7 +26,7 @@ def _handle_wrongtype():
         raise ImmutableKeyError
 
 
-class RedisBackend(object):
+class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
     def __init__(self, client):
         self._r = client
@@ -83,55 +83,24 @@ class RedisBackend(object):
             return self._r.get(key)
 
     def add_mutable(self, key, value, timestamp):
-        assert timestamp >= 0
-        # abs forces -0 to +0, which encodes differently
-        packed_ts = struct.pack('>d', abs(timestamp))
-        str_val = packed_ts + value
+        str_val = self.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
             ret = zadd(self._r, key, {str_val: 0})
         self._r.publish(b'update/' + key, str_val)
-
-    @classmethod
-    def _pack_query_time(cls, time, is_end, include_end=False):
-        """Create a query value for a ZRANGEBYLEX query.
-
-        If include_end is true, the time is incremented by the smallest possible
-        amount, so that when used as an end it will be inclusive rather than
-        exclusive.
-        """
-        if time == _INF:
-            # The special positively infinite string represents the end of time
-            return b'+'
-        elif time < 0.0 or (time == 0.0 and not include_end):
-            # The special negatively infinite string represents the dawn of time
-            return b'-'
-        else:
-            # abs ensures that -0.0 becomes +0.0, which encodes differently
-            packed_time = struct.pack('>d', abs(time))
-            if include_end:
-                # Increment to the next possible encoded value. Note that this
-                # cannot overflow because the sign bit is initially clear.
-                packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
-            return (b'(' if is_end else b'[') + packed_time
-
-    def _split_timestamp(self, packed):
-        assert len(packed) >= 8
-        timestamp = struct.unpack('>d', packed[:8])[0]
-        return (packed[8:], timestamp)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         # TODO: use a transaction to avoid race conditions and multiple
         # round trips.
         with _handle_wrongtype():
-            packed_st = self._pack_query_time(start_time, False)
-            packed_et = self._pack_query_time(end_time, True, include_end)
+            packed_st = self.pack_query_timestamp(start_time, False)
+            packed_et = self.pack_query_timestamp(end_time, True, include_end)
             ret_vals = []
             if include_previous and packed_st != b'-':
                 ret_vals += self._r.zrevrangebylex(key, packed_st, b'-', 0, 1)
             # Avoid talking to Redis if it is going to be futile
             if packed_st != packed_et:
                 ret_vals += self._r.zrangebylex(key, packed_st, packed_et)
-            ans = [self._split_timestamp(val) for val in ret_vals]
+            ans = [self.split_timestamp(val) for val in ret_vals]
         # We can't immediately distinguish between there being nothing in
         # range versus the key not existing.
         if not ans and not self._r.exists(key):
@@ -161,6 +130,10 @@ class RedisBackend(object):
                     assert message['channel'].startswith(b'update/')
                     key = message['channel'][7:]
                     if message['type'] == 'subscribe':
+                        # An update may have occurred before our subscription
+                        # happened. Also, if we lost connection and
+                        # reconnected, we will get the subscribe message
+                        # again.
                         timeout = yield (key,)
                     elif message['type'] == 'message':
                         # TODO: eventually change the protocol to indicate
@@ -169,5 +142,5 @@ class RedisBackend(object):
                         if type_ == b'string':
                             timeout = yield (key, message['data'])
                         else:
-                            value, timestamp = self._split_timestamp(message['data'])
+                            value, timestamp = self.split_timestamp(message['data'])
                             timeout = yield (key, value, timestamp)

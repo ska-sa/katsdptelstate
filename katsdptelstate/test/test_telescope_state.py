@@ -15,6 +15,7 @@ from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             TimeoutError, CancelledError, EncodeError, DecodeError,
                             encode_value, decode_value,
                             ENCODING_PICKLE, ENCODING_MSGPACK)
+from katsdptelstate.memory import MemoryBackend
 
 
 class _TestEncoding(unittest.TestCase):
@@ -120,10 +121,11 @@ class TestEncodingMsgpack(_TestEncoding):
 
 class TestTelescopeState(unittest.TestCase):
     def setUp(self):
-        self.ts = TelescopeState()
-        self.ts.clear()
-         # make sure we are clean
+        self.ts = self.make_telescope_state()
         self.ns = self.ts.view('ns')
+
+    def make_telescope_state(self):
+        return TelescopeState()
 
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, (b'',))
@@ -454,3 +456,8 @@ class TestTelescopeState(unittest.TestCase):
     def test_mixed_unicode_bytes(self):
         self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
         self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
+
+
+class TestTelescopeStateMemory(TestTelescopeState):
+    def make_telescope_state(self):
+        return TelescopeState(MemoryBackend())
