@@ -6,7 +6,6 @@ from __future__ import print_function, division, absolute_import
 import threading
 import time
 import unittest
-import sys
 
 import mock
 import six
@@ -122,12 +121,9 @@ class TestEncodingMsgpack(_TestEncoding):
 class TestTelescopeState(unittest.TestCase):
     def setUp(self):
         self.ts = TelescopeState()
-        self.ts._r.flushdb()
+        self.ts.clear()
          # make sure we are clean
         self.ns = self.ts.view('ns')
-
-    def tearDown(self):
-        self.ts._r.flushdb()
 
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, (b'',))
@@ -234,12 +230,12 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         # Test Python 2/3 interop by directly injecting the pickled values
-        self.ts._r.set(b'test_2', b"S'hello'\np1\n.")
-        self.ts._r.set(b'test_3', b'Vhello\np0\n.')
+        self.ts._backend.set_immutable(b'test_2', b"S'hello'\np1\n.")
+        self.ts._backend.set_immutable(b'test_3', b'Vhello\np0\n.')
         self.ts.add('test_2', 'hello', immutable=True)
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
-        self.ts._r.set(b'test_failed_decode', b'')  # Empty string is never valid encoding
+        self.ts._backend.set_immutable(b'test_failed_decode', b'')  # Empty string is never valid encoding
         with six.assertRaisesRegex(self, ImmutableKeyError,
                                    'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
