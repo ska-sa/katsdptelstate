@@ -725,7 +725,7 @@ class TelescopeState(object):
                         .format(full_key, value, error))
         else:
             ts = float(ts) if ts is not None else time.time()
-            if not math.isfinite(ts):
+            if math.isnan(ts) or math.isinf(ts):
                 raise InvalidTimestampError('Non-finite timestamps ({}) are not supported'
                                             .format(ts))
             if ts < 0.0:
