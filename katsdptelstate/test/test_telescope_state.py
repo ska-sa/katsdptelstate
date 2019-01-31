@@ -351,6 +351,11 @@ class TestTelescopeState(unittest.TestCase):
                          self.ts.get_range('test_key', st=2, et=3,
                                            include_previous=True, include_end=True))
 
+    def test_add_duplicate(self):
+        self.ts.add('test_key', 'value', 1234.5)
+        self.ts.add('test_key', 'value', 1234.5)
+        self.assertEqual([('value', 1234.5)], self.ts.get_range('test_key', st=0))
+
     def test_wait_key_already_done_sensor(self):
         """Calling wait_key with a condition that is met must return (sensor version)."""
         self.ts.add('test_key', 123)

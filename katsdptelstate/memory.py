@@ -168,7 +168,11 @@ class MemoryBackend(Backend):
         if items is None:
             self._data[key] = [str_val]
         elif isinstance(items, list):
-            bisect.insort(items, str_val)
+            # To match redis behaviour, we need to avoid inserting the item
+            # if it already exists.
+            pos = bisect.bisect_left(items, str_val)
+            if pos == len(items) or items[pos] != str_val:
+                items.insert(pos, str_val)
         else:
             raise ImmutableKeyError
 
