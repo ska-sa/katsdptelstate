@@ -130,9 +130,6 @@ class MemoryBackend(Backend):
     def __contains__(self, key):
         return key in self._data
 
-    def is_immutable(self, key):
-        return isinstance(self._data[key], bytes)
-
     def keys(self, filter):
         if filter == b'*':
             return list(self._data.keys())
@@ -145,6 +142,9 @@ class MemoryBackend(Backend):
 
     def clear(self):
         self._data.clear()
+
+    def is_immutable(self, key):
+        return isinstance(self._data[key], bytes)
 
     def set_immutable(self, key, value):
         old = self._data.get(key)

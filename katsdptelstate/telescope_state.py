@@ -296,18 +296,12 @@ class Backend(object):
       the timestamps are non-negative finite floats and the values are
       :class:`bytes`.
     """
-    def __contains__(self, key):
-        """Return if `key` is in the backend."""
+    def load_from_file(self, filename):
+        """Implements :meth:`TelescopeState.load_from_file`."""
         raise NotImplementedError
 
-    def is_immutable(self, key):
-        """Whether `key` is an immutable key in the backend.
-
-        Raises
-        ------
-        KeyError
-            If `key` is not present at all
-        """
+    def __contains__(self, key):
+        """Return if `key` is in the backend."""
         raise NotImplementedError
 
     def keys(self, filter):
@@ -324,6 +318,16 @@ class Backend(object):
 
     def clear(self):
         """Remove all keys"""
+        raise NotImplementedError
+
+    def is_immutable(self, key):
+        """Whether `key` is an immutable key in the backend.
+
+        Raises
+        ------
+        KeyError
+            If `key` is not present at all
+        """
         raise NotImplementedError
 
     def set_immutable(self, key, value):
@@ -401,12 +405,13 @@ class Backend(object):
         """Report changes to keys in `keys`.
 
         Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a time and gets back an update event. Each
-        update event is a tuple, of the form (key, value) or (key, value,
+        After that, the caller sends a timeout and gets back an update event.
+        Each update event is a tuple, of the form (key, value) or (key, value,
         timestamp) depending on whether the update is to an immutable or a
-        mutable key; or of the form (key,) to indicate that a key may have been
-        updated but there is insufficient information to provide the latest
-        value. If there is no event within the timeout, returns ``None``.
+        mutable key; or of the form (key,) to indicate that a key may have
+        been updated but there is insufficient information to provide the
+        latest value. If there is no event within the timeout, returns
+        ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller

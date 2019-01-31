@@ -50,13 +50,6 @@ class RedisBackend(Backend):
     def __contains__(self, key):
         return self._r.exists(key)
 
-    def is_immutable(self, key):
-        type_ = self._r.type(key)
-        if type_ == b'none':
-            raise KeyError
-        else:
-            return type_ == b'string'
-
     def keys(self, filter):
         return self._r.keys(filter)
 
@@ -65,6 +58,13 @@ class RedisBackend(Backend):
 
     def clear(self):
         self._r.flushdb()
+
+    def is_immutable(self, key):
+        type_ = self._r.type(key)
+        if type_ == b'none':
+            raise KeyError
+        else:
+            return type_ == b'string'
 
     def set_immutable(self, key, value):
         while True:
