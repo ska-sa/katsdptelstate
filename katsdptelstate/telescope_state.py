@@ -441,8 +441,7 @@ class Backend(object):
             # The special negatively infinite string represents the dawn of time
             return b'-'
         else:
-            # abs ensures that -0.0 becomes +0.0, which encodes differently
-            packed_time = struct.pack('>d', abs(time))
+            packed_time = Backend.pack_timestamp(time)
             if include_end:
                 # Increment to the next possible encoded value. Note that this
                 # cannot overflow because the sign bit is initially clear.
