@@ -452,7 +452,7 @@ class Backend(object):
 
     @staticmethod
     def pack_timestamp(timestamp):
-        """Create a timestamp to a bytes that sorts correctly"""
+        """Encode a timestamp to a bytes that sorts correctly"""
         assert timestamp >= 0
         # abs forces -0 to +0, which encodes differently
         return struct.pack('>d', abs(timestamp))
