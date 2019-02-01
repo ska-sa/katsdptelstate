@@ -430,9 +430,11 @@ class Backend(object):
     def pack_query_timestamp(time, is_end, include_end=False):
         """Create a query value for a ZRANGEBYLEX query.
 
-        If include_end is true, the time is incremented by the smallest possible
-        amount, so that when used as an end it will be inclusive rather than
-        exclusive.
+        When packing the time for the start of a range, set `is_end` and
+        `include_end` to False. When packing the time for the end of a range,
+        set `is_end` to True, and `include_end` indicates whether the endpoint
+        is inclusive. The latter is implemented by incrementing the time by the
+        smallest possible amount and then treating it as exclusive.
         """
         if time == _INF:
             # The special positively infinite string represents the end of time
