@@ -4,3 +4,4 @@ msgpack
 netifaces
 numpy
 redis
+six

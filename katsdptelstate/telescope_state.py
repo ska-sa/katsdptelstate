@@ -3,16 +3,13 @@ from __future__ import print_function, division, absolute_import
 import struct
 import time
 import math
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 import logging
 import contextlib
 import functools
-import sys
 import io
+from six.moves import cPickle as pickle
 
+from six import PY2, ensure_binary, ensure_str
 import redis
 import msgpack
 import numpy as np
@@ -84,13 +81,11 @@ class EncodeError(ValueError, TelstateError):
     """A value could not be encoded"""
 
 
-if sys.version_info.major >= 3:
+if PY2:
+    _pickle_loads = pickle.loads
+else:
     # See https://stackoverflow.com/questions/11305790
     _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
-    _text_type = str
-else:
-    _pickle_loads = pickle.loads
-    _text_type = unicode
 
 
 def _encode_ndarray(value):
@@ -262,27 +257,10 @@ def equal_encoded_values(a, b):
         return True
     a = decode_value(a)
     b = decode_value(b)
-    if isinstance(a, _text_type) and isinstance(b, _text_type):
-        return a == b      # Avoid cost of encoding both to bytes
-    elif isinstance(a, (bytes, _text_type)) and isinstance(b, (bytes, _text_type)):
-        if isinstance(a, _text_type):
-            a = a.encode('utf-8')
-        if isinstance(b, _text_type):
-            b = b.encode('utf-8')
-        return a == b
-    else:
+    try:
+        return ensure_binary(a) == ensure_binary(b)
+    except TypeError:
         return False
-
-
-def _as_bytes(value):
-    """Force unicode values to bytes by UTF-8 encoding.
-
-    This is intended to mimic redis-py behaviour
-    """
-    if isinstance(value, _text_type):
-        return value.encode('utf-8')
-    else:
-        return value
 
 
 class Backend(object):
@@ -543,7 +521,7 @@ class TelescopeState(object):
                 r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes for consistency
-        self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
+        self._prefixes = tuple(ensure_binary(prefix) for prefix in prefixes)
 
     @property
     def prefixes(self):
@@ -570,7 +548,7 @@ class TelescopeState(object):
         end with the separator, it is added (unless `add_separator` is
         false).
         """
-        name = _as_bytes(name)
+        name = ensure_binary(name)
         if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
             name += self.SEPARATOR_BYTES
         if exclusive:
@@ -606,7 +584,7 @@ class TelescopeState(object):
 
     def __contains__(self, key_name):
         """Check to see if the specified key exists in the database."""
-        key_name = _as_bytes(key_name)
+        key_name = ensure_binary(key_name)
         for prefix in self._prefixes:
             if prefix + key_name in self._backend:
                 return True
@@ -622,7 +600,7 @@ class TelescopeState(object):
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             try:
                 return self._backend.is_immutable(prefix + key)
@@ -646,7 +624,7 @@ class TelescopeState(object):
         keys : list of bytes
             The key names, in sorted order.
         """
-        return sorted(self._backend.keys(_as_bytes(filter)))
+        return sorted(self._backend.keys(ensure_binary(filter)))
 
     def delete(self, key):
         """Remove a key, and all values, from the model.
@@ -658,7 +636,7 @@ class TelescopeState(object):
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
         """
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 
@@ -709,7 +687,7 @@ class TelescopeState(object):
             raise InvalidKeyError("The specified key already exists as a "
                                   "class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         full_key = self._prefixes[0] + key
         str_val = encode_value(value, encoding)
         if immutable:
@@ -767,7 +745,7 @@ class TelescopeState(object):
             return message is not None or key in self
 
         for prefix in self._prefixes:
-            full_key = prefix + _as_bytes(key)
+            full_key = prefix + ensure_binary(key)
             if message is not None and full_key == message[0]:
                 value = message[1]
                 timestamp = None if len(message) == 2 else message[2]
@@ -820,7 +798,7 @@ class TelescopeState(object):
             if cancel_future is not None and cancel_future.done():
                 raise CancelledError('wait for {} cancelled'.format(key))
 
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         # First check if condition is already satisfied, in which case we
         # don't need to create a pubsub connection.
         if self._check_condition(key, condition):
@@ -864,7 +842,7 @@ class TelescopeState(object):
         return decode_value(str_val)
 
     def _get(self, key, return_encoded=False):
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
@@ -977,7 +955,7 @@ class TelescopeState(object):
         if math.isnan(st) or math.isnan(et):
             raise InvalidTimestampError('cannot use NaN start or end time')
 
-        key = _as_bytes(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
