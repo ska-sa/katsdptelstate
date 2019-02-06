@@ -31,8 +31,8 @@ def _handle_wrongtype():
 class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
     def __init__(self, client):
-        self._r = client
-        self._ps = self._r.pubsub(ignore_subscribe_messages=True)
+        self.client = client
+        self._ps = self.client.pubsub(ignore_subscribe_messages=True)
         try:
             # This is the first command to the server and therefore
             # the first test of its availability
@@ -45,22 +45,22 @@ class RedisBackend(Backend):
     def load_from_file(self, filename):
         if rdb_reader is None:
             raise _rdb_reader_import_error
-        return rdb_reader.load_from_file(self._r, filename)
+        return rdb_reader.load_from_file(self.client, filename)
 
     def __contains__(self, key):
-        return self._r.exists(key)
+        return self.client.exists(key)
 
     def keys(self, filter):
-        return self._r.keys(filter)
+        return self.client.keys(filter)
 
     def delete(self, key):
-        self._r.delete(key)
+        self.client.delete(key)
 
     def clear(self):
-        self._r.flushdb()
+        self.client.flushdb()
 
     def is_immutable(self, key):
-        type_ = self._r.type(key)
+        type_ = self.client.type(key)
         if type_ == b'none':
             raise KeyError
         else:
@@ -68,12 +68,12 @@ class RedisBackend(Backend):
 
     def set_immutable(self, key, value):
         while True:
-            result = self._r.setnx(key, value)
+            result = self.client.setnx(key, value)
             if result:
-                self._r.publish(b'update/' + key, value)
+                self.client.publish(b'update/' + key, value)
                 return None
             with _handle_wrongtype():
-                old = self._r.get(key)
+                old = self.client.get(key)
                 # If someone deleted the key between SETNX and GET, we will
                 # get None here, in which case we can just try again. This
                 # race condition could be eliminated with a Lua script.
@@ -82,13 +82,13 @@ class RedisBackend(Backend):
 
     def get_immutable(self, key):
         with _handle_wrongtype():
-            return self._r.get(key)
+            return self.client.get(key)
 
     def add_mutable(self, key, value, timestamp):
         str_val = self.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            ret = zadd(self._r, key, {str_val: 0})
-        self._r.publish(b'update/' + key, str_val)
+            ret = zadd(self.client, key, {str_val: 0})
+        self.client.publish(b'update/' + key, str_val)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         # TODO: use a transaction to avoid race conditions and multiple
@@ -98,19 +98,19 @@ class RedisBackend(Backend):
             packed_et = self.pack_query_timestamp(end_time, True, include_end)
             ret_vals = []
             if include_previous and packed_st != b'-':
-                ret_vals += self._r.zrevrangebylex(key, packed_st, b'-', 0, 1)
+                ret_vals += self.client.zrevrangebylex(key, packed_st, b'-', 0, 1)
             # Avoid talking to Redis if it is going to be futile
             if packed_st != packed_et:
-                ret_vals += self._r.zrangebylex(key, packed_st, packed_et)
+                ret_vals += self.client.zrangebylex(key, packed_st, packed_et)
             ans = [self.split_timestamp(val) for val in ret_vals]
         # We can't immediately distinguish between there being nothing in
         # range versus the key not existing.
-        if not ans and not self._r.exists(key):
+        if not ans and not self.client.exists(key):
             return None
         return ans
 
     def send_message(self, data):
-        self._r.publish(_MESSAGE_CHANNEL, data)
+        self.client.publish(_MESSAGE_CHANNEL, data)
 
     def get_message(self):
         msg = self._ps.get_message(_MESSAGE_CHANNEL)
@@ -119,7 +119,7 @@ class RedisBackend(Backend):
         return msg
 
     def monitor_keys(self, keys):
-        p = self._r.pubsub()
+        p = self.client.pubsub()
         with contextlib.closing(p):
             for key in keys:
                 p.subscribe(b'update/' + key)
@@ -140,7 +140,7 @@ class RedisBackend(Backend):
                     elif message['type'] == 'message':
                         # TODO: eventually change the protocol to indicate
                         # mutability in the message.
-                        type_ = self._r.type(key)
+                        type_ = self.client.type(key)
                         if type_ == b'string':
                             timeout = yield (key, message['data'])
                         else:

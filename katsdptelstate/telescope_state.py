@@ -549,6 +549,10 @@ class TelescopeState(object):
     def prefixes(self):
         return self._prefixes
 
+    @property
+    def backend(self):
+        return self._backend
+
     def load_from_file(self, filename):
         """Load keys from a Redis-compatible RDB file.
 
