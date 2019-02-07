@@ -695,23 +695,26 @@ class TelescopeState(object):
             try:
                 old = self._backend.set_immutable(full_key, str_val)
             except ImmutableKeyError:
-                raise ImmutableKeyError(
-                    'Attempt to overwrite mutable key {} with immutable'.format(full_key))
+                raise ImmutableKeyError('Attempt to overwrite mutable '
+                                        'key {!r} with immutable'
+                                        .format(ensure_str(full_key)))
             if old is not None:
                 # The key already exists. Check if the value is the same.
                 try:
                     if not equal_encoded_values(str_val, old):
                         raise ImmutableKeyError(
-                            'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
-                                full_key, decode_value(old), value))
+                            'Attempt to change value of immutable key {!r} from '
+                            '{!r} to {!r}'.format(ensure_str(full_key),
+                                                  decode_value(old), value))
                     else:
-                        logger.info('Attribute {} updated with the same value'.format(full_key))
+                        logger.info('Attribute {!r} updated with the same value'
+                                    .format(ensure_str(full_key)))
                         return True
                 except DecodeError as error:
                     raise ImmutableKeyError(
-                        'Attempt to set value of immutable key {} to {!r} but failed to '
-                        'decode the previous value to compare: {}'
-                        .format(full_key, value, error))
+                        'Attempt to set value of immutable key {!r} to {!r} '
+                        'but failed to decode the previous value to compare: {}'
+                        .format(ensure_str(full_key), value, error))
         else:
             ts = float(ts) if ts is not None else time.time()
             if math.isnan(ts) or math.isinf(ts):
@@ -723,7 +726,8 @@ class TelescopeState(object):
             try:
                 self._backend.add_mutable(full_key, str_val, ts)
             except ImmutableKeyError:
-                raise ImmutableKeyError('Attempt to overwrite immutable key'.format(full_key))
+                raise ImmutableKeyError('Attempt to overwrite immutable key {!r}'
+                                        .format(ensure_str(full_key)))
 
     def _check_condition(self, key, condition, message=None):
         """Check whether key exists and satisfies a condition (if any).
@@ -797,7 +801,8 @@ class TelescopeState(object):
         """
         def check_cancelled():
             if cancel_future is not None and cancel_future.done():
-                raise CancelledError('wait for {} cancelled'.format(key))
+                raise CancelledError('Wait for {!r} cancelled'
+                                     .format(ensure_str(key)))
 
         key = ensure_binary(key)
         # First check if condition is already satisfied, in which case we
@@ -820,8 +825,8 @@ class TelescopeState(object):
                 if timeout is not None:
                     remain = (start + timeout) - time.time()
                     if remain <= 0:
-                        raise TimeoutError(
-                            'Timed out waiting for {} after {}s'.format(key, timeout))
+                        raise TimeoutError('Timed out waiting for {!r} after {}s'
+                                           .format(ensure_str(key), timeout))
                     get_timeout = min(get_timeout, remain)
                 message = monitor.send(get_timeout)
                 if message is None:
@@ -860,7 +865,7 @@ class TelescopeState(object):
                 if return_encoded:
                     return value
                 return decode_value(value)
-        raise KeyError('{} not found'.format(key))
+        raise KeyError('{!r} not found'.format(ensure_str(key)))
 
     def get(self, key, default=None, return_encoded=False):
         """Get a single value from the model.
@@ -962,9 +967,10 @@ class TelescopeState(object):
             try:
                 ret_vals = self._backend.get_range(full_key, st, et, include_previous, include_end)
             except ImmutableKeyError:
-                raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
+                raise ImmutableKeyError('{!r} is immutable, cannot use get_range'
+                                        .format(ensure_str(full_key)))
             if ret_vals is not None:
                 if not return_encoded:
                     ret_vals = [(decode_value(value), timestamp) for value, timestamp in ret_vals]
                 return ret_vals
-        raise KeyError('{} not found'.format(key))
+        raise KeyError('{!r} not found'.format(ensure_str(key)))
