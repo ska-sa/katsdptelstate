@@ -525,7 +525,7 @@ class TelescopeState(object):
 
     @property
     def prefixes(self):
-        return self._prefixes
+        return tuple(ensure_str(prefix) for prefix in self._prefixes)
 
     @property
     def backend(self):
@@ -608,7 +608,7 @@ class TelescopeState(object):
                 pass
         return False
 
-    def keys(self, filter='*'):
+    def keys(self, filter=b'*'):
         """Return a list of keys currently in the model.
 
         This function ignores the prefix list, returns all keys with
@@ -621,10 +621,11 @@ class TelescopeState(object):
 
         Returns
         -------
-        keys : list of bytes
-            The key names, in sorted order.
+        keys : list of str
+            The key names, in sorted order
         """
-        return sorted(self._backend.keys(ensure_binary(filter)))
+        keys = self._backend.keys(ensure_binary(filter))
+        return sorted(ensure_str(key) for key in keys)
 
     def delete(self, key):
         """Remove a key, and all values, from the model.
