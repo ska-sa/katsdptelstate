@@ -355,8 +355,7 @@ class Backend(object):
         key : bytes
             Key to search
         start_time : float
-            Start of the range (inclusive). It is guaranteed to be
-            non-negative.
+            Start of the range (inclusive).
         end_time : float
             End of the range. It is guaranteed to be non-negative.
         include_previous : bool
