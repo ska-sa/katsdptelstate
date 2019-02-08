@@ -127,6 +127,14 @@ class TestTelescopeState(unittest.TestCase):
     def make_telescope_state(self):
         return TelescopeState()
 
+    def test_bad_construct(self):
+        with self.assertRaises(ValueError):
+            TelescopeState('redis.example.com:7148', base=self.ts)
+        with self.assertRaises(ValueError):
+            TelescopeState('', 1, base=self.ts)
+        with self.assertRaises(ValueError):
+            TelescopeState(MemoryBackend(), 1)
+
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, (b'',))
         self.assertEqual(self.ns.prefixes, (b'ns_', b''))
