@@ -5,7 +5,11 @@ import re
 import logging
 import os
 
-from rdbtools import RdbParser, RdbCallback
+try:
+    from rdbtools import RdbParser, RdbCallback
+except ImportError as _rdbtools_import_error:
+    RdbCallback = object     # So that _Callback can still be defined
+    RdbParser = None
 
 from .telescope_state import Backend, ImmutableKeyError
 
@@ -121,6 +125,8 @@ class MemoryBackend(Backend):
         self._data = {}
 
     def load_from_file(self, filename):
+        if RdbParser is None:
+            raise _rdbtools_import_error
         logger.debug("Loading data from RDB dump of %d bytes", os.path.getsize(filename))
         callback = _Callback(self._data)
         parser = RdbParser(callback)
