@@ -6,7 +6,6 @@ from __future__ import print_function, division, absolute_import
 import threading
 import time
 import unittest
-import sys
 
 import mock
 import six
@@ -16,6 +15,7 @@ from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             TimeoutError, CancelledError, EncodeError, DecodeError,
                             encode_value, decode_value,
                             ENCODING_PICKLE, ENCODING_MSGPACK)
+from katsdptelstate.memory import MemoryBackend
 
 
 class _TestEncoding(unittest.TestCase):
@@ -121,13 +121,19 @@ class TestEncodingMsgpack(_TestEncoding):
 
 class TestTelescopeState(unittest.TestCase):
     def setUp(self):
-        self.ts = TelescopeState()
-        self.ts._r.flushdb()
-         # make sure we are clean
+        self.ts = self.make_telescope_state()
         self.ns = self.ts.view('ns')
 
-    def tearDown(self):
-        self.ts._r.flushdb()
+    def make_telescope_state(self):
+        return TelescopeState()
+
+    def test_bad_construct(self):
+        with self.assertRaises(ValueError):
+            TelescopeState('redis.example.com:7148', base=self.ts)
+        with self.assertRaises(ValueError):
+            TelescopeState('', 1, base=self.ts)
+        with self.assertRaises(ValueError):
+            TelescopeState(MemoryBackend(), 1)
 
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, (b'',))
@@ -234,12 +240,12 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         # Test Python 2/3 interop by directly injecting the pickled values
-        self.ts._r.set(b'test_2', b"S'hello'\np1\n.")
-        self.ts._r.set(b'test_3', b'Vhello\np0\n.')
+        self.ts.backend.set_immutable(b'test_2', b"S'hello'\np1\n.")
+        self.ts.backend.set_immutable(b'test_3', b'Vhello\np0\n.')
         self.ts.add('test_2', 'hello', immutable=True)
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
-        self.ts._r.set(b'test_failed_decode', b'')  # Empty string is never valid encoding
+        self.ts.backend.set_immutable(b'test_failed_decode', b'')  # Empty string is never valid encoding
         with six.assertRaisesRegex(self, ImmutableKeyError,
                                    'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
@@ -353,6 +359,11 @@ class TestTelescopeState(unittest.TestCase):
                          self.ts.get_range('test_key', st=2, et=3,
                                            include_previous=True, include_end=True))
 
+    def test_add_duplicate(self):
+        self.ts.add('test_key', 'value', 1234.5)
+        self.ts.add('test_key', 'value', 1234.5)
+        self.assertEqual([('value', 1234.5)], self.ts.get_range('test_key', st=0))
+
     def test_wait_key_already_done_sensor(self):
         """Calling wait_key with a condition that is met must return (sensor version)."""
         self.ts.add('test_key', 123)
@@ -458,3 +469,8 @@ class TestTelescopeState(unittest.TestCase):
     def test_mixed_unicode_bytes(self):
         self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
         self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
+
+
+class TestTelescopeStateMemory(TestTelescopeState):
+    def make_telescope_state(self):
+        return TelescopeState(MemoryBackend())

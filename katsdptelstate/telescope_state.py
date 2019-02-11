@@ -2,6 +2,7 @@ from __future__ import print_function, division, absolute_import
 
 import struct
 import time
+import math
 try:
     import cPickle as pickle
 except ImportError:
@@ -18,11 +19,6 @@ import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
 from .tabloid_redis import TabloidRedis
-from .compat import zadd
-try:
-    from . import rdb_reader
-except ImportError as _rdb_reader_import_error:
-    rdb_reader = None
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +45,8 @@ MSGPACK_EXT_COMPLEX128 = 2
 MSGPACK_EXT_NDARRAY = 3           # .npy format
 MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
 
+_INF = float('inf')
+
 
 class TelstateError(RuntimeError):
     """Base class for errors from this module"""
@@ -60,6 +58,10 @@ class ConnectionError(TelstateError):
 
 class InvalidKeyError(TelstateError):
     """A key collides with a class attribute"""
+
+
+class InvalidTimestampError(TelstateError):
+    """Negative or non-finite timestamp"""
 
 
 class ImmutableKeyError(TelstateError):
@@ -283,6 +285,189 @@ def _as_bytes(value):
         return value
 
 
+class Backend(object):
+    """Low-level interface for telescope state backends.
+
+    The backend interface does not deal with namespaces or encodings, which are
+    handled by the frontend :class:`TelescopeState` class. A backend must be
+    able to store
+    - immutables: key-value pairs (both :class:`bytes`);
+    - mutables: a key associated with a set of (timestamp, value) pairs, where
+      the timestamps are non-negative finite floats and the values are
+      :class:`bytes`.
+    """
+    def load_from_file(self, filename):
+        """Implements :meth:`TelescopeState.load_from_file`."""
+        raise NotImplementedError
+
+    def __contains__(self, key):
+        """Return if `key` is in the backend."""
+        raise NotImplementedError
+
+    def keys(self, filter):
+        """Return all keys matching `filter`.
+
+        The filter is a redis pattern. Backends might only support ``b'*'`` as
+        a filter.
+        """
+        raise NotImplementedError
+
+    def delete(self, key):
+        """Delete a key (no-op if it does not exist)"""
+        raise NotImplementedError
+
+    def clear(self):
+        """Remove all keys"""
+        raise NotImplementedError
+
+    def is_immutable(self, key):
+        """Whether `key` is an immutable key in the backend.
+
+        Raises
+        ------
+        KeyError
+            If `key` is not present at all
+        """
+        raise NotImplementedError
+
+    def set_immutable(self, key, value):
+        """Set the value of an immutable key.
+
+        If the key already exists (and is immutable), returns the existing
+        value and does not update it. Otherwise, returns ``None``.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key exists and is mutable
+        """
+        raise NotImplementedError
+
+    def get_immutable(self, key):
+        """Get the value of an immutable key.
+
+        Returns ``None`` if the key does not exist.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key is mutable
+        """
+        raise NotImplementedError
+
+    def add_mutable(self, key, value, timestamp):
+        """Set a (timestamp, value) pair in a mutable key.
+
+        The `timestamp` will be a non-negative float value.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key exists and is immutable
+        """
+        raise NotImplementedError
+
+    def get_range(self, key, start_time, end_time, include_previous, include_end):
+        """Obtain a range of values from a mutable key.
+
+        If the key does not exist, returns None.
+
+        Parameters
+        ----------
+        key : bytes
+            Key to search
+        start_time : float
+            Start of the range (inclusive).
+        end_time : float
+            End of the range. It is guaranteed to be non-negative.
+        include_previous : bool
+            If true, also return the last entry prior to `start_time`.
+        include_end : bool
+            If true, treat `end_time` as inclusive, otherwise exclusive.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key exists and is immutable
+        """
+        raise NotImplementedError
+
+    def send_message(self, data):
+        """Same as :meth:`TelescopeState.send_message`"""
+        raise NotImplementedError
+
+    def get_message(self):
+        """Same as :meth:`TelescopeState.get_message`"""
+        raise NotImplementedError
+
+    def monitor_keys(self, keys):
+        """Report changes to keys in `keys`.
+
+        Returns a generator. The first yield from the generator is a no-op.
+        After that, the caller sends a timeout and gets back an update event.
+        Each update event is a tuple, of the form (key, value) or (key, value,
+        timestamp) depending on whether the update is to an immutable or a
+        mutable key; or of the form (key,) to indicate that a key may have
+        been updated but there is insufficient information to provide the
+        latest value. If there is no event within the timeout, returns
+        ``None``.
+
+        It is acceptable (but undesirable) for this function to miss the
+        occasional update e.g. due to a network connection outage. The caller
+        takes care not use a low timeout and retry rather than blocking for
+        long periods.
+
+        The generator runs until it is closed.
+        """
+        # This is a valid but usually suboptimal implementation
+        timeout = yield None
+        while True:
+            time.sleep(timeout)
+            timeout = yield (keys[0],)
+
+    @staticmethod
+    def pack_query_timestamp(time, is_end, include_end=False):
+        """Create a query value for a ZRANGEBYLEX query.
+
+        When packing the time for the start of a range, set `is_end` and
+        `include_end` to False. When packing the time for the end of a range,
+        set `is_end` to True, and `include_end` indicates whether the endpoint
+        is inclusive. The latter is implemented by incrementing the time by the
+        smallest possible amount and then treating it as exclusive.
+        """
+        if time == _INF:
+            # The special positively infinite string represents the end of time
+            return b'+'
+        elif time < 0.0 or (time == 0.0 and not include_end):
+            # The special negatively infinite string represents the dawn of time
+            return b'-'
+        else:
+            packed_time = Backend.pack_timestamp(time)
+            if include_end:
+                # Increment to the next possible encoded value. Note that this
+                # cannot overflow because the sign bit is initially clear.
+                packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
+            return (b'(' if is_end else b'[') + packed_time
+
+    @staticmethod
+    def pack_timestamp(timestamp):
+        """Encode a timestamp to a bytes that sorts correctly"""
+        assert timestamp >= 0
+        # abs forces -0 to +0, which encodes differently
+        return struct.pack('>d', abs(timestamp))
+
+    @staticmethod
+    def split_timestamp(packed):
+        """Split out the value and timestamp from a packed item.
+
+        The item contains 8 bytes with the timestamp in big-endian IEEE-754
+        double precision, followed by the value.
+        """
+        assert len(packed) >= 8
+        timestamp = struct.unpack('>d', packed[:8])[0]
+        return (packed[8:], timestamp)
+
+
 class TelescopeState(object):
     """Interface to attributes and sensors stored in a Redis database.
 
@@ -306,62 +491,65 @@ class TelescopeState(object):
 
     Parameters
     ----------
-    endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
-        The address of the Redis server (if a string, it is passed to the
-        :class:`~katsdptelstate.endpoint.Endpoint` constructor). If empty, a
-        :class:`tabloid_redis.TabloidRedis` instance is used instead.
+    endpoint : str, :class:`~katsdptelstate.endpoint.Endpoint` or :class:`Backend`
+        If an endpoint or string, the address of the Redis server (if a string,
+        it is passed to the :class:`~katsdptelstate.endpoint.Endpoint`
+        constructor). If empty, a :class:`tabloid_redis.TabloidRedis` instance
+        is used to construct a :class:`~katsdptelstate.redis.RedisBackend`. If
+        a :class:`Backend`, that backend is used directly. 
     db : int
-        Database number within the Redis server
+        Database number within the Redis server.
     prefixes : tuple of str/bytes
         Prefixes that will be tried in turn for key lookup. While this can be
         specified directly for advanced cases, it is normally generated by
         :meth:`view`. Writes are made using the first prefix in the list.
     base : :class:`~katsdptelstate.telescope_state.TelescopeState`
-        Existing telescope state instance, from which the underlying Redis
-        connection will be taken. This allows new views to be created by
-        specifying `prefixes`, without creating new Redis connections.
-        If specified, `endpoint` and `db` are ignored.
+        Existing telescope state instance, from which the backend will be
+        taken. This allows new views to be created by specifying `prefixes`,
+        without creating new backends.
 
     Raises
     ------
     ConnectionError
         If the initial connection to the (real) Redis server fails
+    ValueError
+        If a `base` is specified and either `endpoint` or `db` is non-default
+    ValueError
+        If `endpoint` is a :class:`Backend` and `db` is non-default
     """
     SEPARATOR = '_'
     SEPARATOR_BYTES = b'_'
 
     def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None):
+        from .redis import RedisBackend
+
         if base is not None:
-            self._r = base._r
-            self._ps = base._ps
+            if endpoint != '':
+                raise ValueError('Cannot specify both base and endpoint')
+            if db != 0:
+                raise ValueError('Cannot specify both base and db')
+            self._backend = base._backend
+        elif isinstance(endpoint, Backend):
+            if db != 0:
+                raise ValueError('Cannot specify both a backend and a db')
+            self._backend = endpoint
         else:
-            self._r = None
             if not isinstance(endpoint, Endpoint):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
             if not endpoint.host:
                 try:
-                    self._r = TabloidRedis(db=db, singleton=False)
+                    r = TabloidRedis(db=db, singleton=False)
                 except TypeError:
                     # Fakeredis 1.0 removed the singleton option, and defaults
                     # to having unique state per instance.
-                    self._r = TabloidRedis(db=db)
+                    r = TabloidRedis(db=db)
             else:
                 redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
                 # If no port is provided, redis will pick its default port
                 if endpoint.port is not None:
                     redis_kwargs['port'] = endpoint.port
-                self._r = redis.StrictRedis(**redis_kwargs)
-            self._ps = self._r.pubsub(ignore_subscribe_messages=True)
-             # subscribe to the telescope model info channel
-            self._default_channel = 'tm_info'
-            try:
-                # This is the first command to the server and therefore
-                # the first test of its availability
-                self._ps.subscribe(self._default_channel)
-            except (redis.TimeoutError, redis.ConnectionError) as e:
-                # redis.TimeoutError: bad host
-                # redis.ConnectionError: good host, bad port
-                raise ConnectionError("[{}] {}".format(endpoint, e))
+                r = redis.StrictRedis(**redis_kwargs)
+            self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes for consistency
         self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
 
@@ -369,14 +557,16 @@ class TelescopeState(object):
     def prefixes(self):
         return self._prefixes
 
+    @property
+    def backend(self):
+        return self._backend
+
     def load_from_file(self, filename):
         """Load keys from a Redis-compatible RDB file.
 
         Will raise ImportError if the rdbtools package is not installed.
         """
-        if rdb_reader is None:
-            raise _rdb_reader_import_error
-        keys_loaded = rdb_reader.load_from_file(self._r, filename)
+        keys_loaded = self._backend.load_from_file(filename)
         logger.info("Loading {} keys from {}".format(keys_loaded, filename))
         return keys_loaded
 
@@ -395,20 +585,11 @@ class TelescopeState(object):
             prefixes = (name,)
         else:
             prefixes = (name,) + self._prefixes
-        return self.__class__(None, None, prefixes=prefixes, base=self)
+        return self.__class__(prefixes=prefixes, base=self)
 
     def root(self):
         """Create a view containing only the root namespace."""
         return self.__class__(base=self)
-
-    def _strip(self, str_val, return_encoded=False):
-        if len(str_val) < 8:
-            return None
-        ts = struct.unpack('>d', str_val[:8])[0]
-        ret_val = str_val[8:]
-        if not return_encoded:
-            ret_val = decode_value(ret_val)
-        return (ret_val, ts)
 
     def __getattr__(self, key):
         try:
@@ -435,32 +616,26 @@ class TelescopeState(object):
         """Check to see if the specified key exists in the database."""
         key_name = _as_bytes(key_name)
         for prefix in self._prefixes:
-            if self._r.exists(prefix + key_name):
+            if prefix + key_name in self._backend:
                 return True
         return False
 
-    def send_message(self, data, channel=None):
+    def send_message(self, data):
         """Broadcast a message to all telescope model users."""
-        if channel is None:
-            channel = self._default_channel
-        return self._r.publish(channel, data)
+        self._backend.send_message(data)
 
-    def get_message(self, channel=None):
+    def get_message(self):
         """Get the oldest unread telescope model message."""
-        if channel is None:
-            channel = self._default_channel
-        msg = self._ps.get_message(channel)
-        if msg is not None:
-            msg = msg['data']
-        return msg
+        return self._backend.get_message()
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
         key = _as_bytes(key)
         for prefix in self._prefixes:
-            type_ = self._r.type(prefix + key)
-            if type_ != b'none':
-                return type_ == b'string'
+            try:
+                return self._backend.is_immutable(prefix + key)
+            except KeyError:
+                pass
         return False
 
     def keys(self, filter='*'):
@@ -479,7 +654,7 @@ class TelescopeState(object):
         keys : list of bytes
             The key names, in sorted order.
         """
-        return sorted(self._r.keys(filter))
+        return sorted(self._backend.keys(_as_bytes(filter)))
 
     def delete(self, key):
         """Remove a key, and all values, from the model.
@@ -493,7 +668,7 @@ class TelescopeState(object):
         """
         key = _as_bytes(key)
         for prefix in self._prefixes:
-            self._r.delete(prefix + key)
+            self._backend.delete(prefix + key)
 
     def clear(self):
         """Remove all keys in all namespaces.
@@ -503,7 +678,7 @@ class TelescopeState(object):
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
         """
-        return self._r.flushdb()
+        return self._backend.clear()
 
     def add(self, key, value, ts=None, immutable=False, encoding=ENCODING_DEFAULT):
         """Add a new key / value pair to the model.
@@ -546,16 +721,13 @@ class TelescopeState(object):
         full_key = self._prefixes[0] + key
         str_val = encode_value(value, encoding)
         if immutable:
-            ret = self._r.setnx(full_key, str_val)
-            if not ret:
+            try:
+                old = self._backend.set_immutable(full_key, str_val)
+            except ImmutableKeyError:
+                raise ImmutableKeyError(
+                    'Attempt to overwrite mutable key {} with immutable'.format(full_key))
+            if old is not None:
                 # The key already exists. Check if the value is the same.
-                try:
-                    old = self._r.get(full_key)
-                except redis.ResponseError as error:
-                    if not error.args[0].startswith('WRONGTYPE '):
-                        raise
-                    raise ImmutableKeyError(
-                        'Attempt to overwrite mutable key {} with immutable'.format(full_key))
                 try:
                     if not equal_encoded_values(str_val, old):
                         raise ImmutableKeyError(
@@ -571,17 +743,16 @@ class TelescopeState(object):
                         .format(full_key, value, error))
         else:
             ts = float(ts) if ts is not None else time.time()
-            packed_ts = struct.pack('>d', ts)
-            str_val = packed_ts + str_val
+            if math.isnan(ts) or math.isinf(ts):
+                raise InvalidTimestampError('Non-finite timestamps ({}) are not supported'
+                                            .format(ts))
+            if ts < 0.0:
+                raise InvalidTimestampError('Negative timestamps ({}) are not supported'
+                                            .format(ts))
             try:
-                ret = zadd(self._r, full_key, {str_val: 0})
-            except redis.ResponseError as error:
-                if not error.args[0].startswith('WRONGTYPE '):
-                    raise
+                self._backend.add_mutable(full_key, str_val, ts)
+            except ImmutableKeyError:
                 raise ImmutableKeyError('Attempt to overwrite immutable key'.format(full_key))
-
-        self._r.publish(b'update/' + full_key, str_val)
-        return ret
 
     def _check_condition(self, key, condition, message=None):
         """Check whether key exists and satisfies a condition (if any).
@@ -592,40 +763,35 @@ class TelescopeState(object):
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
-        message : dict, optional
-            A pubsub message of type 'message'.
+        message : tuple, optional
+            A tuple of the form (key, value) or (key, value, timestamp).
+            The first indicates an update to an immutable, and the third an
+            update to a mutable.
+
             If specified, this is used to find the latest value and timestamp
             (if available) of the key instead of retrieving it from the backend.
         """
         if condition is None:
             return message is not None or key in self
 
-        if message is not None:
-            assert message['channel'].startswith(b'update/')
-            message_key = message['channel'][7:]
-            message_value = message['data']
-        else:
-            message_key = None
-            message_value = None
-
         for prefix in self._prefixes:
             full_key = prefix + _as_bytes(key)
-            match = full_key == message_key
-            type_ = self._r.type(full_key)
-            if type_ == b'string':
-                # Immutable
-                if match:
-                    value = message_value
-                else:
-                    value = self._r.get(full_key)
-                return condition(decode_value(value), None)
-            elif type_ != b'none':
-                # Mutable
-                if match:
-                    value_ts = message_value
-                else:
-                    value_ts = self._r.zrange(full_key, -1, -1)[0]
-                return condition(*self._strip(value_ts))
+            if message is not None and full_key == message[0]:
+                value = message[1]
+                timestamp = None if len(message) == 2 else message[2]
+            else:
+                try:
+                    value = self._backend.get_immutable(full_key)
+                    if value is None:
+                        continue      # Key does not exist, so try the next one
+                    timestamp = None
+                except ImmutableKeyError:
+                    values = self._backend.get_range(full_key, _INF, _INF, True, False)
+                    if not values:
+                        continue      # Could happen if key is deleted in between
+                    value = values[0][0]
+                    timestamp = values[0][1]
+            return condition(decode_value(value), timestamp)
         return False    # Key does not exist
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
@@ -668,10 +834,9 @@ class TelescopeState(object):
         if self._check_condition(key, condition):
             return
         check_cancelled()
-        p = self._r.pubsub()
-        for prefix in self._prefixes:
-            p.subscribe(b'update/' + prefix + key)
-        with contextlib.closing(p):
+        monitor = self._backend.monitor_keys([prefix + key for prefix in self._prefixes])
+        with contextlib.closing(monitor):
+            monitor.send(None)   # Just to start the generator going
             start = time.time()
             while True:
                 # redis-py automatically reconnects to the server if the connection
@@ -687,21 +852,19 @@ class TelescopeState(object):
                         raise TimeoutError(
                             'Timed out waiting for {} after {}s'.format(key, timeout))
                     get_timeout = min(get_timeout, remain)
-                message = p.get_message(timeout=get_timeout)
+                message = monitor.send(get_timeout)
                 if message is None:
                     continue
-                if message['type'] == 'subscribe':
-                    # An update may have happened between our first check and our
-                    # subscription taking effect, so check again.
-                    if self._check_condition(key, condition):
-                        return
-                elif message['type'] == 'message':
-                    if self._check_condition(key, condition, message):
-                        return
+                if len(message) <= 1:
+                    # The monitor thinks it's worth checking again, but doesn't
+                    # have enough information to be useful.
+                    message = None
+                if self._check_condition(key, condition, message):
+                    return
 
     def _get_immutable(self, full_key, return_encoded=False):
         """Return a fully-qualified key of string type."""
-        str_val = self._r.get(full_key)
+        str_val = self._backend.get_immutable(full_key)
         if str_val is None:
             raise KeyError
         if return_encoded:
@@ -717,10 +880,15 @@ class TelescopeState(object):
                  # assume simple string type for immutable
             except KeyError:
                 pass     # Key does not exist at all - try next prefix
-            except redis.ResponseError as error:
-                if not error.args[0].startswith('WRONGTYPE '):
-                    raise
-                return self._strip(self._r.zrange(full_key, -1, -1)[0], return_encoded)[0]
+            except ImmutableKeyError:
+                # It's a mutable; get the latest value
+                values = self._backend.get_range(full_key, _INF, _INF, True, False)
+                assert values is not None, "key was deleting during _get"
+                assert values, "key is mutable but has no value???"
+                value = values[0][0]
+                if return_encoded:
+                    return value
+                return decode_value(value)
         raise KeyError('{} not found'.format(key))
 
     def get(self, key, default=None, return_encoded=False):
@@ -743,33 +911,6 @@ class TelescopeState(object):
             return self._get(key, return_encoded)
         except KeyError:
             return default
-
-    @classmethod
-    def _pack_query_time(cls, time, include_end=False):
-        """Create a query value for a ZRANGEBYLEX query.
-
-        If include_end is true, the time is incremented by the smallest possible
-        amount, so that when used as an end it will be inclusive rather than
-        exclusive.
-
-        A time of None indicates +infinity, while any negative value is
-        equivalent to -infinity (since all actual timestamps are non-negative).
-        """
-        if time is None:
-            # The special positively infinite string represents the end of time
-            return b'+'
-        elif time < 0.0 or (time == 0.0 and not include_end):
-            # The special negatively infinite string represents the dawn of time
-            return b'-'
-        else:
-            # abs ensures that -0.0 becomes +0.0, which encodes differently
-            packed_time = struct.pack('>d', abs(float(time)))
-            if include_end:
-                # Increment to the next possible encoded value. Note that this
-                # cannot overflow because the sign bit is initially clear.
-                packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
-            # Values are encoded and hence always non-empty, so [ vs ( is irrelevant
-            return b'[' + packed_time
 
     def get_range(self, key, st=None, et=None,
                   include_previous=None, include_end=False, return_encoded=False):
@@ -830,31 +971,29 @@ class TelescopeState(object):
         get_range('key_name',et=t1)
             returns the most recent record prior to time t1
         """
-        key = _as_bytes(key)
-        for prefix in self._prefixes:
-            full_key = prefix + key
-            type_ = self._r.type(full_key)
-            if type_ != b'none':
-                if type_ != b'zset':
-                    raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
-                else:
-                    break
-        else:
-            raise KeyError('{} not found'.format(key))
-
         # set up include_previous and st default values
         if include_previous is None:
             include_previous = True if st is None else False
+        if et is None:
+            et = _INF
+        else:
+            et = float(et)
         if st is None:
             st = et
+        else:
+            st = float(st)
+        if math.isnan(st) or math.isnan(et):
+            raise InvalidTimestampError('cannot use NaN start or end time')
 
-        packed_st = self._pack_query_time(st)
-        packed_et = self._pack_query_time(et, include_end)
-        ret_vals = []
-        if include_previous and packed_st != b'-':
-            ret_vals += self._r.zrevrangebylex(full_key, packed_st, b'-', 0, 1)
-
-        # Avoid talking to Redis if it is going to be futile
-        if packed_st != packed_et:
-            ret_vals += self._r.zrangebylex(full_key, packed_st, packed_et)
-        return [self._strip(str_val, return_encoded) for str_val in ret_vals]
+        key = _as_bytes(key)
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            try:
+                ret_vals = self._backend.get_range(full_key, st, et, include_previous, include_end)
+            except ImmutableKeyError:
+                raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
+            if ret_vals is not None:
+                if not return_encoded:
+                    ret_vals = [(decode_value(value), timestamp) for value, timestamp in ret_vals]
+                return ret_vals
+        raise KeyError('{} not found'.format(key))
