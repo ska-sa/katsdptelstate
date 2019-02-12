@@ -1,3 +1,5 @@
+# coding: utf-8
+
 ################################################################################
 # Copyright (c) 2015-2019, National Research Foundation (Square Kilometre Array)
 #
@@ -13,8 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-
-# coding: utf-8
 
 """Tests for the sdp telescope state client."""
 
