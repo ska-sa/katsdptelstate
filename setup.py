@@ -23,10 +23,12 @@ from setuptools import setup, find_packages
 
 here = os.path.abspath(os.path.dirname(__file__))
 readme = open(os.path.join(here, 'README.rst')).read()
+news = open(os.path.join(here, 'NEWS.rst')).read()
+long_description = readme + '\n\n' + news
 
 setup(name='katsdptelstate',
       description='Karoo Array Telescope - Telescope State Client',
-      long_description=readme,
+      long_description=long_description,
       author='Simon Ratcliffe',
       author_email='sratcliffe@ska.ac.za',
       packages=find_packages(),
