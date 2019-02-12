@@ -7,6 +7,7 @@ History
 * Introduce backends and add in-memory backend as alternative to redis (#71, #72)
 * Simplify setting attributes via `__setitem__` (#68)
 * Let keys be bytes internally, but allow specification as unicode strings (#63)
+* The GitHub repository is now public as well
 
 0.6 (2018-05-10)
 ----------------
