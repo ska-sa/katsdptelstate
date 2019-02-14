@@ -1,4 +1,4 @@
-fakeredis
+fakeredis==1.0.1
 ipaddress
 msgpack
 netifaces

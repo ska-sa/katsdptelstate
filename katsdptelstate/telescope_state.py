@@ -34,7 +34,6 @@ import msgpack
 import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
-from .tabloid_redis import TabloidRedis
 
 
 logger = logging.getLogger(__name__)
@@ -537,8 +536,6 @@ class TelescopeState(object):
     SEPARATOR_BYTES = b'_'
 
     def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None):
-        from .redis import RedisBackend
-
         if base is not None:
             if endpoint != '':
                 raise ValueError('Cannot specify both base and endpoint')
@@ -549,22 +546,20 @@ class TelescopeState(object):
             if db != 0:
                 raise ValueError('Cannot specify both a backend and a db')
             self._backend = endpoint
+        elif not endpoint:
+            from .memory import MemoryBackend
+            if db != 0:
+                raise ValueError('Cannot specify a db when using the default backend')
+            self._backend = MemoryBackend()
         else:
+            from .redis import RedisBackend
             if not isinstance(endpoint, Endpoint):
                 endpoint = endpoint_parser(default_port=None)(endpoint)
-            if not endpoint.host:
-                try:
-                    r = TabloidRedis(db=db, singleton=False)
-                except TypeError:
-                    # Fakeredis 1.0 removed the singleton option, and defaults
-                    # to having unique state per instance.
-                    r = TabloidRedis(db=db)
-            else:
-                redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
-                # If no port is provided, redis will pick its default port
-                if endpoint.port is not None:
-                    redis_kwargs['port'] = endpoint.port
-                r = redis.StrictRedis(**redis_kwargs)
+            redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
+            # If no port is provided, redis will pick its default port
+            if endpoint.port is not None:
+                redis_kwargs['port'] = endpoint.port
+            r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes for consistency
         self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
