@@ -4,3 +4,5 @@ msgpack
 netifaces
 numpy
 redis
+six                        # via fakeredis
+sortedcontainers==2.1.0    # via fakeredis
