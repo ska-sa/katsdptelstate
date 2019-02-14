@@ -28,6 +28,7 @@ except ImportError as _rdbtools_import_error:
     RdbParser = None
 
 from .telescope_state import Backend, ImmutableKeyError
+from .rdb_utility import dump_string, dump_zset
 
 
 _INF = float('inf')
@@ -221,3 +222,12 @@ class MemoryBackend(Backend):
             start_pos -= 1
         end_pos = self._bisect(items, end_time, True, include_end)
         return [self.split_timestamp(value) for value in items[start_pos:end_pos]]
+
+    def dump(self, key):
+        value = self._data.get(key)
+        if value is None:
+            return None
+        elif isinstance(value, bytes):
+            return dump_string(value)
+        else:
+            return dump_zset(value)

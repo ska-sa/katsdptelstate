@@ -415,6 +415,10 @@ class Backend(object):
         """Same as :meth:`TelescopeState.get_message`"""
         raise NotImplementedError
 
+    def dump(self, key):
+        """Return a key in the same format as the Redis DUMP command, or None if not present"""
+        raise NotImplementedError
+
     def monitor_keys(self, keys):
         """Report changes to keys in `keys`.
 

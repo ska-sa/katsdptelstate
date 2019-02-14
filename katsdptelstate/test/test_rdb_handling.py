@@ -89,14 +89,12 @@ class TestLoadFromFile(unittest.TestCase):
         return TelescopeState()
 
     def test_load_from_file(self):
-        # Create a TabloidRedis-backed telstate so we can write to file
-        tr = TabloidRedis()
-        write_ts = TelescopeState(RedisBackend(tr))
+        write_ts = self.make_telescope_state()
         write_ts['immutable'] = ['some value']
         write_ts.add('mutable', 'first', 12.0)
         write_ts.add('mutable', 'second', 15.5)
         # Write data to file
-        rdb_writer = RDBWriter(client=tr)
+        rdb_writer = RDBWriter(client=write_ts.backend)
         rdb_writer.save(self.filename)
 
         # Load it back into some backend
@@ -113,4 +111,4 @@ class TestLoadFromFile(unittest.TestCase):
 class TestLoadFromFileRedis(unittest.TestCase):
     """Test :meth:`TelescopeState.load_from_file` with redis backend."""
     def make_telescope_state(self):
-        return TelescopeState(RedisBackend(fakeredis.FakeStrictRedis()))
+        return TelescopeState(RedisBackend(TabloidRedis()))
