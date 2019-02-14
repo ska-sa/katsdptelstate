@@ -48,13 +48,12 @@ class TestRDBHandling(unittest.TestCase):
     def base(self, filename):
         return os.path.join(self.base_dir, filename)
 
-    def _add_test_vec(self, key, ts):
+    def _add_test_vec(self, key):
         # TabloidRedis does not properly support non-zero scores
-        zadd(self.tr, key, {b'first': 0, b'second': 0.0, b'third\n\0': 0.0})
+        zadd(self.tr, key, {b'first': 0.0, b'second': 0.0, b'third\n\0': 0.0})
 
     def test_writer_reader(self):
-        base_ts = int(time.time())
-        self._add_test_vec('writezl', base_ts)
+        self._add_test_vec('writezl')
         test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
         self.tr.set('write', test_str)
         self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
@@ -74,6 +73,18 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(local_tr.keys(), [b'writezl'])
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
+
+    def test_big_zset(self):
+        # TabloidRedis encodes large zsets (>127 entries) differently
+        for i in range(200):
+            zadd(self.tr, 'big_zset', {b'item%03d' % i: 0.0})
+        self.rdb_writer.save(self.base('big.rdb'))
+
+        local_tr = TabloidRedis()
+        load_from_file(local_tr, self.base('big.rdb'))
+        self.assertEqual(local_tr.keys(), [b'big_zset'])
+        vec = local_tr.zrange('big_zset', 0, -1, withscores=True)
+        self.assertEqual(vec, [(b'item%03d' % i, 0.0) for i in range(200)])
 
 
 class TestLoadFromFile(unittest.TestCase):

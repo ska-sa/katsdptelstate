@@ -87,7 +87,7 @@ def dump_zset(data):
         enc = [b'\x03' + encode_len(len(data))]
          # for inscrutable reasons the length here is half the number of actual entries (i.e. scores are ignored)
         for entry in data:
-            enc.append(encode_len(len(entry)) + entry + '\x010')
+            enc.append(encode_len(len(entry)) + entry + b'\x010')
              # interleave entries and scores directly
              # for now, scores are kept fixed at integer zero since float
              # encoding is breaking for some reason and is not needed for telstate
