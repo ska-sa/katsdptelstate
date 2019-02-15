@@ -33,8 +33,8 @@ def encode_len(length):
     if length < 64:
         return struct.pack('B', length)
     if length < 16384:
-        return struct.pack(">h", 0x4000 + length)
-    return struct.pack('>q', 0x8000000000 + length)[3:]
+        return struct.pack(">H", 0x4000 + length)
+    return struct.pack('>Q', 0x8000000000 + length)[3:]
 
 
 def encode_prev_length(length):
@@ -45,7 +45,7 @@ def encode_prev_length(length):
     """
     if length < 254:
         return struct.pack('B', length)
-    return b'\xfe' + struct.pack(">q", length)
+    return b'\xfe' + struct.pack("<I", length)
 
 
 def dump_string(data):
@@ -83,7 +83,9 @@ def dump_zset(data):
     # The entries counter for ziplists is encoded as 2 bytes, if we exceed this limit
     # we fall back to making a simple set. Redis of course makes the decision point using
     # only 7 out of the 16 bits available and switches at 127 entries...
-    if entry_count > 127:
+    # Additionally, ziplists can't be used if the total size is too large to encode. For
+    # safety, we switch at 2GB rather than risking off-by-one errors.
+    if entry_count > 127 or sum(len(entry) for entry in data) >= 2**31:
         enc = [b'\x03' + encode_len(len(data))]
          # for inscrutable reasons the length here is half the number of actual entries (i.e. scores are ignored)
         for entry in data:
@@ -109,5 +111,5 @@ def dump_zset(data):
     encoded_entries = b"".join(raw_entries) + b'\xff'
     zl_length = 10 + len(encoded_entries)
      # account for the known 10 bytes worth of length descriptors when calculating envelope length
-    zl_envelope = struct.pack('<i', zl_length) + struct.pack('<i', zl_length - 3) + struct.pack('<h', entry_count) + encoded_entries
+    zl_envelope = struct.pack('<I', zl_length) + struct.pack('<I', zl_length - 3) + struct.pack('<H', entry_count) + encoded_entries
     return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX

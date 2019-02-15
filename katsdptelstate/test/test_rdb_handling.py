@@ -74,17 +74,30 @@ class TestRDBHandling(unittest.TestCase):
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
-    def test_big_zset(self):
-        # TabloidRedis encodes large zsets (>127 entries) differently
-        for i in range(200):
-            zadd(self.tr, 'big_zset', {b'item%03d' % i: 0.0})
-        self.rdb_writer.save(self.base('big.rdb'))
+    def _test_zset(self, items):
+        zadd(self.tr, 'my_zset', {x: 0.0 for x in items})
+        self.rdb_writer.save(self.base('zset.rdb'))
 
         local_tr = TabloidRedis()
-        load_from_file(local_tr, self.base('big.rdb'))
-        self.assertEqual(local_tr.keys(), [b'big_zset'])
-        vec = local_tr.zrange('big_zset', 0, -1, withscores=True)
-        self.assertEqual(vec, [(b'item%03d' % i, 0.0) for i in range(200)])
+        load_from_file(local_tr, self.base('zset.rdb'))
+        self.assertEqual(local_tr.keys(), [b'my_zset'])
+        vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
+        self.assertEqual(vec, [(item, 0.0) for item in items])
+
+    def test_zset_many_entries(self):
+        """Zset with more than 127 entries.
+
+        This uses the more general encoding, rather than ziplist.
+        """
+        self._test_zset([b'item%03d' % i for i in range(200)])
+
+    def test_zset_with_big_entry(self):
+        """Ziplist with large entry (has different encoding)"""
+        self._test_zset([b'?' * 100000])
+
+    def test_zset_4gb(self):
+        """Ziplist with >4GB of data (can't be encoded as ziplist)"""
+        self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
 
 class TestLoadFromFile(unittest.TestCase):
