@@ -51,7 +51,7 @@ ENCODING_PICKLE = b'\x80'
 ENCODING_MSGPACK = b'\xff'
 
 #: Default encoding for :func:`encode_value`
-ENCODING_DEFAULT = ENCODING_PICKLE
+ENCODING_DEFAULT = ENCODING_MSGPACK
 
 #: All encodings that can be used with :func:`encode_value`
 ALLOWED_ENCODINGS = frozenset([ENCODING_PICKLE, ENCODING_MSGPACK])
