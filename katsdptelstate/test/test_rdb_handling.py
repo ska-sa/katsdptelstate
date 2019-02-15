@@ -25,42 +25,32 @@ import shutil
 import os
 import tempfile
 
+import fakeredis
+
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
 from katsdptelstate.memory import MemoryBackend
+from katsdptelstate.redis import RedisBackend
 from katsdptelstate import TelescopeState
 
 
 class TestRDBHandling(unittest.TestCase):
+    """Test that data can be written by :class:`~.TabloidRedis` then read back"""
     def setUp(self):
+        # an empty tabloid redis instance
         self.tr = TabloidRedis()
-         # an empty tabloid redis instance
-        self.ts = self.make_telescope_state()
         self.rdb_writer = RDBWriter(client=self.tr)
         self.base_dir = tempfile.mkdtemp()
-
-    def make_telescope_state(self):
-        return TelescopeState()
+        self.addCleanup(shutil.rmtree, self.base_dir)
 
     def base(self, filename):
         return os.path.join(self.base_dir, filename)
 
-    def tearDown(self):
-        self.tr.flushdb()
-        try:
-            shutil.rmtree(self.base_dir)
-        except OSError:
-            pass
-
-    def _enc_ts(self, ts):
-        return struct.pack('>d', ts)
-
     def _add_test_vec(self, key, ts):
-        zadd(self.tr, key, {self._enc_ts(ts) + b'first': 0})
-        zadd(self.tr, key, {self._enc_ts(ts + 2) + b'third': 0})
-        zadd(self.tr, key, {self._enc_ts(ts + 1) + b'second': 0})
+        # TabloidRedis does not properly support non-zero scores
+        zadd(self.tr, key, {b'first': 0, b'second': 0.0, b'third\n\0': 0.0})
 
     def test_writer_reader(self):
         base_ts = int(time.time())
@@ -70,27 +60,57 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
         self.assertEqual(self.rdb_writer.save(self.base('one.rdb'), keys=['writezl'])[0], 1)
         self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'), keys=['does_not_exist'])[0], 0)
-        self.tr.flushall()
 
         local_tr = TabloidRedis()
         load_from_file(local_tr, self.base('all.rdb'))
         self.assertEqual(load_from_file(local_tr, self.base('all.rdb')), 2)
+        self.assertEqual(set(local_tr.keys()), {b'write', b'writezl'})
         self.assertEqual(local_tr.get('write'), test_str)
-        sorted_pair = local_tr.zrangebylex('writezl', b'(' + self._enc_ts(base_ts + 0.001),
-                                           b'[' + self._enc_ts(base_ts + 2.001))
-        self.assertEqual(sorted_pair[1][8:], b'third')
-        self.tr.flushall()
+        vec = local_tr.zrange('writezl', 0, -1, withscores=True)
+        self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
         local_tr = TabloidRedis()
         load_from_file(local_tr, self.base('one.rdb'))
-        self.assertEqual(len(local_tr.keys()), 1)
-        self.assertEqual(local_tr.zcard('writezl'), 3)
-        self.tr.flushall()
-
-        self.assertEqual(self.ts.load_from_file(self.base('all.rdb')), 2)
-        self.tr.flushall()
+        self.assertEqual(local_tr.keys(), [b'writezl'])
+        vec = local_tr.zrange('writezl', 0, -1, withscores=True)
+        self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
 
-class TestRDBHandlingMemory(TestRDBHandling):
+class TestLoadFromFile(unittest.TestCase):
+    """Test :meth:`TelescopeState.load_from_file`."""
+
+    def setUp(self):
+        # an empty tabloid redis instance
+        self.base_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base_dir)
+        self.filename = os.path.join(self.base_dir, 'dump.rdb')
+
     def make_telescope_state(self):
-        return TelescopeState(MemoryBackend())
+        return TelescopeState()
+
+    def test_load_from_file(self):
+        # Create a TabloidRedis-backed telstate so we can write to file
+        tr = TabloidRedis()
+        write_ts = TelescopeState(RedisBackend(tr))
+        write_ts['immutable'] = ['some value']
+        write_ts.add('mutable', 'first', 12.0)
+        write_ts.add('mutable', 'second', 15.5)
+        # Write data to file
+        rdb_writer = RDBWriter(client=tr)
+        rdb_writer.save(self.filename)
+
+        # Load it back into some backend
+        read_ts = self.make_telescope_state()
+        read_ts.load_from_file(self.filename)
+        self.assertEqual(read_ts.keys(), [b'immutable', b'mutable'])
+        self.assertTrue(read_ts.is_immutable('immutable'))
+        self.assertEqual(read_ts['immutable'], ['some value'])
+        self.assertEqual(
+            read_ts.get_range('mutable', st=0),
+            [('first', 12.0), ('second', 15.5)])
+
+
+class TestLoadFromFileRedis(unittest.TestCase):
+    """Test :meth:`TelescopeState.load_from_file` with redis backend."""
+    def make_telescope_state(self):
+        return TelescopeState(RedisBackend(fakeredis.FakeStrictRedis()))

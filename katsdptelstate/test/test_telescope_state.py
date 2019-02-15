@@ -27,12 +27,14 @@ import unittest
 import mock
 import six
 import numpy as np
+import fakeredis
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             TimeoutError, CancelledError, EncodeError, DecodeError,
                             encode_value, decode_value,
                             ENCODING_PICKLE, ENCODING_MSGPACK)
 from katsdptelstate.memory import MemoryBackend
+from katsdptelstate.redis import RedisBackend
 
 
 class _TestEncoding(unittest.TestCase):
@@ -151,6 +153,8 @@ class TestTelescopeState(unittest.TestCase):
             TelescopeState('', 1, base=self.ts)
         with self.assertRaises(ValueError):
             TelescopeState(MemoryBackend(), 1)
+        with self.assertRaises(ValueError):
+            TelescopeState(db=1)
 
     def test_namespace(self):
         self.assertEqual(self.ts.prefixes, (b'',))
@@ -488,6 +492,12 @@ class TestTelescopeState(unittest.TestCase):
         self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
 
 
-class TestTelescopeStateMemory(TestTelescopeState):
+class TestTelescopeStateRedis(TestTelescopeState):
     def make_telescope_state(self):
-        return TelescopeState(MemoryBackend())
+        def make_fakeredis(**kwargs):
+            return fakeredis.FakeStrictRedis()
+
+        with mock.patch('redis.StrictRedis', side_effect=make_fakeredis) as mock_redis:
+            ts = TelescopeState('example.com', 1)
+            mock_redis.assert_called_with(host='example.com', db=1, socket_timeout=mock.ANY)
+        return ts

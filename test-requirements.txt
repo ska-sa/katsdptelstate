@@ -5,4 +5,3 @@ nose
 pbr
 python-lzf==0.2.4
 rdbtools==0.1.12
-six
