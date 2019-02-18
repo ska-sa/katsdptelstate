@@ -17,8 +17,6 @@
 import logging
 import os
 
-import redis
-
 from .endpoint import endpoint_parser
 from .rdb_utility import encode_len
 
@@ -43,14 +41,15 @@ class RDBWriter(object):
     """Very limited RDB dump utility used to dump a specified subset
     of keys from an active Redis DB to a valid RDB format file.
 
-    Either an endpoint or a compatible client must be provided.
+    Either an endpoint, a compatible redis client, or a
+    :class:`katsdptelstate.Backend` must be provided.
 
     Parameters
     ----------
     endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
         The address of the Redis server (if a string, it is passed to the
         :class:`~katsdptelstate.endpoint.Endpoint` constructor).
-    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis`
+    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
         A Redis compatible client instance. Must support keys() and dump()
     """
     def __init__(self, endpoint=None, client=None):
@@ -59,6 +58,7 @@ class RDBWriter(object):
         if client:
             self._r = client
         else:
+            import redis
             if isinstance(endpoint, str):
                 endpoint = endpoint_parser(DEFAULT_PORT)(endpoint)
             self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
@@ -89,7 +89,7 @@ class RDBWriter(object):
         """
         if keys is None:
             self.logger.warning("No keys specified - dumping entire database")
-            keys = self._r.keys()
+            keys = self._r.keys(b'*')
 
         with open(filename, 'wb') as f:
             f.write(RDB_HEADER)

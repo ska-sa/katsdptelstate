@@ -48,13 +48,12 @@ class TestRDBHandling(unittest.TestCase):
     def base(self, filename):
         return os.path.join(self.base_dir, filename)
 
-    def _add_test_vec(self, key, ts):
+    def _add_test_vec(self, key):
         # TabloidRedis does not properly support non-zero scores
-        zadd(self.tr, key, {b'first': 0, b'second': 0.0, b'third\n\0': 0.0})
+        zadd(self.tr, key, {b'first': 0.0, b'second': 0.0, b'third\n\0': 0.0})
 
     def test_writer_reader(self):
-        base_ts = int(time.time())
-        self._add_test_vec('writezl', base_ts)
+        self._add_test_vec('writezl')
         test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
         self.tr.set('write', test_str)
         self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
@@ -75,6 +74,31 @@ class TestRDBHandling(unittest.TestCase):
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
+    def _test_zset(self, items):
+        zadd(self.tr, 'my_zset', {x: 0.0 for x in items})
+        self.rdb_writer.save(self.base('zset.rdb'))
+
+        local_tr = TabloidRedis()
+        load_from_file(local_tr, self.base('zset.rdb'))
+        self.assertEqual(local_tr.keys(), [b'my_zset'])
+        vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
+        self.assertEqual(vec, [(item, 0.0) for item in items])
+
+    def test_zset_many_entries(self):
+        """Zset with more than 127 entries.
+
+        This uses the more general encoding, rather than ziplist.
+        """
+        self._test_zset([b'item%03d' % i for i in range(200)])
+
+    def test_zset_with_big_entry(self):
+        """Ziplist with large entry (has different encoding)"""
+        self._test_zset([b'?' * 100000])
+
+    def test_zset_4gb(self):
+        """Ziplist with >4GB of data (can't be encoded as ziplist)"""
+        self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
+
 
 class TestLoadFromFile(unittest.TestCase):
     """Test :meth:`TelescopeState.load_from_file`."""
@@ -89,14 +113,12 @@ class TestLoadFromFile(unittest.TestCase):
         return TelescopeState()
 
     def test_load_from_file(self):
-        # Create a TabloidRedis-backed telstate so we can write to file
-        tr = TabloidRedis()
-        write_ts = TelescopeState(RedisBackend(tr))
+        write_ts = self.make_telescope_state()
         write_ts['immutable'] = ['some value']
         write_ts.add('mutable', 'first', 12.0)
         write_ts.add('mutable', 'second', 15.5)
         # Write data to file
-        rdb_writer = RDBWriter(client=tr)
+        rdb_writer = RDBWriter(client=write_ts.backend)
         rdb_writer.save(self.filename)
 
         # Load it back into some backend
@@ -113,4 +135,4 @@ class TestLoadFromFile(unittest.TestCase):
 class TestLoadFromFileRedis(unittest.TestCase):
     """Test :meth:`TelescopeState.load_from_file` with redis backend."""
     def make_telescope_state(self):
-        return TelescopeState(RedisBackend(fakeredis.FakeStrictRedis()))
+        return TelescopeState(RedisBackend(TabloidRedis()))

@@ -162,3 +162,6 @@ class RedisBackend(Backend):
                         else:
                             value, timestamp = self.split_timestamp(message['data'])
                             timeout = yield (key, value, timestamp)
+
+    def dump(self, key):
+        return self.client.dump(key)
