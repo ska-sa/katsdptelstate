@@ -95,9 +95,10 @@ class TestRDBHandling(unittest.TestCase):
         """Ziplist with large entry (has different encoding)"""
         self._test_zset([b'?' * 100000])
 
-    def test_zset_4gb(self):
-        """Ziplist with >4GB of data (can't be encoded as ziplist)"""
-        self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
+    # Disabled because it uses too much memory in Jenkins
+    # def test_zset_4gb(self):
+    #     """Ziplist with >4GB of data (can't be encoded as ziplist)"""
+    #     self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
 
 class TestLoadFromFile(unittest.TestCase):
