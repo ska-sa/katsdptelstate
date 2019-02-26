@@ -255,7 +255,7 @@ def decode_value(value, allow_pickle=None):
         If false, :const:`ENCODING_PICKLE` is disabled. This may be useful for
         security as pickle decoding can execute arbitrary code. If the default
         of ``None`` is used, it is controlled by the
-        KATSDPTELSTATE_ALLOW_PICKLE environment variable. Is that is not set,
+        KATSDPTELSTATE_ALLOW_PICKLE environment variable. If that is not set,
         the default is true (with a warning), but it may change to false in future.
 
     Raises
