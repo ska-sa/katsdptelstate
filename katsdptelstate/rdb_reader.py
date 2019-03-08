@@ -68,17 +68,15 @@ def load_from_file(callback, file):
     try:
         size = os.path.getsize(file)
     except TypeError:
-        start_pos = file.tell()
-        file.seek(0, 2)
-        size = file.tell() - start_pos
-        file.seek(start_pos)
-    except AttributeError:
-        size = -1   # File object does not support seeking
-    logger.debug("Loading data from RDB dump of %s bytes",
-                 str(size) if size >= 0 else 'unknown')
+        # One could maybe seek() and tell() on file object but is it worth it?
+        size = 'unknown'
+    logger.debug("Loading data from RDB dump of %s bytes", size)
     parser = RdbParser(callback)
     try:
-        parser.parse(file)
+        fd = open(file, 'rb')
     except TypeError:
         parser.parse_fd(file)
+    else:
+        with fd:
+            parser.parse_fd(fd)
     return callback.n_keys

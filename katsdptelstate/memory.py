@@ -23,8 +23,8 @@ import logging
 from .telescope_state import Backend, ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
+    from rdbtools import RdbCallback
     from . import rdb_reader
-    from .rdb_reader import RdbCallback
 except ImportError as _rdb_reader_import_error:
     RdbCallback = object     # So that _Callback can still be defined
     rdb_reader = None
