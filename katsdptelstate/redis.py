@@ -58,10 +58,11 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
 
-    def load_from_file(self, filename):
+    def load_from_file(self, file):
         if rdb_reader is None:
             raise _rdb_reader_import_error
-        return rdb_reader.load_from_file(self.client, filename)
+        callback = rdb_reader.Callback(self.client)
+        return rdb_reader.load_from_file(callback, file)
 
     def __contains__(self, key):
         return self.client.exists(key)

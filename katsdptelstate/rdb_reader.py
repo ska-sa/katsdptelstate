@@ -26,9 +26,10 @@ from . import compat
 logger = logging.getLogger(__name__)
 
 
-class _Callback(RdbCallback):
+class Callback(RdbCallback):
+    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
-        super(_Callback, self).__init__(string_escape=None)
+        super(Callback, self).__init__(string_escape=None)
         self.client = client
         self._zset = {}
         self.n_keys = 0
@@ -49,23 +50,35 @@ class _Callback(RdbCallback):
         self._zset = {}
 
 
-def load_from_file(client, filename):
+def load_from_file(callback, file):
     """Load keys from the specified RDB-compatible dump file.
 
     Parameters
-    ---------
-    client : :class:`redis.StrictRedis`-like
-        Redis client wrapper
-    filename : str
-        Filename of .rdb file to import
+    ----------
+    callback : :class:`rdbtools.RdbCallback`-like
+        Backend-specific callback that stores keys as RDB file is parsed
+    file : str or file-like object
+        Filename of .rdb file to import, or object representing contents of RDB
 
     Returns
     -------
     int
         Number of keys loaded
     """
-    callback = _Callback(client)
+    try:
+        size = os.path.getsize(file)
+    except TypeError:
+        start_pos = file.tell()
+        file.seek(0, 2)
+        size = file.tell() - start_pos
+        file.seek(start_pos)
+    except AttributeError:
+        size = -1   # File object does not support seeking
+    logger.debug("Loading data from RDB dump of %s bytes",
+                 str(size) if size >= 0 else 'unknown')
     parser = RdbParser(callback)
-    logger.debug("Loading data from RDB dump of %d bytes", os.path.getsize(filename))
-    parser.parse(filename)
+    try:
+        parser.parse(file)
+    except TypeError:
+        parser.parse_fd(file)
     return callback.n_keys

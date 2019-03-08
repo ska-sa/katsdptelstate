@@ -19,16 +19,15 @@ from __future__ import print_function, division, absolute_import
 import bisect
 import re
 import logging
-import os
-
-try:
-    from rdbtools import RdbParser, RdbCallback
-except ImportError as _rdbtools_import_error:
-    RdbCallback = object     # So that _Callback can still be defined
-    RdbParser = None
 
 from .telescope_state import Backend, ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
+try:
+    from . import rdb_reader
+    from .rdb_reader import RdbCallback
+except ImportError as _rdb_reader_import_error:
+    RdbCallback = object     # So that _Callback can still be defined
+    rdb_reader = None
 
 
 _INF = float('inf')
@@ -106,6 +105,7 @@ def _compile_pattern(pattern):
 
 
 class _Callback(RdbCallback):
+    """Callback that stores keys in :class:`MemoryBackend` data structure."""
     def __init__(self, data):
         super(_Callback, self).__init__(string_escape=None)
         self.data = data
@@ -141,14 +141,10 @@ class MemoryBackend(Backend):
     def __init__(self):
         self._data = {}
 
-    def load_from_file(self, filename):
-        if RdbParser is None:
-            raise _rdbtools_import_error
-        logger.debug("Loading data from RDB dump of %d bytes", os.path.getsize(filename))
-        callback = _Callback(self._data)
-        parser = RdbParser(callback)
-        parser.parse(filename)
-        return callback.n_keys
+    def load_from_file(self, file):
+        if rdb_reader is None:
+            raise _rdb_reader_import_error
+        return rdb_reader.load_from_file(_Callback(self._data), file)
 
     def __contains__(self, key):
         return key in self._data
