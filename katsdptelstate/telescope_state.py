@@ -311,7 +311,7 @@ class Backend(object):
       the timestamps are non-negative finite floats and the values are
       :class:`bytes`.
     """
-    def load_from_file(self, filename):
+    def load_from_file(self, file):
         """Implements :meth:`TelescopeState.load_from_file`."""
         raise NotImplementedError
 
@@ -576,13 +576,13 @@ class TelescopeState(object):
     def backend(self):
         return self._backend
 
-    def load_from_file(self, filename):
-        """Load keys from a Redis-compatible RDB file.
+    def load_from_file(self, file):
+        """Load keys from a Redis-compatible RDB file (as filename or object).
 
         Will raise ImportError if the rdbtools package is not installed.
         """
-        keys_loaded = self._backend.load_from_file(filename)
-        logger.info("Loading {} keys from {}".format(keys_loaded, filename))
+        keys_loaded = self._backend.load_from_file(file)
+        logger.info("Loading {} keys from {}".format(keys_loaded, file))
         return keys_loaded
 
     def view(self, name, add_separator=True, exclusive=False):

@@ -26,9 +26,10 @@ from . import compat
 logger = logging.getLogger(__name__)
 
 
-class _Callback(RdbCallback):
+class Callback(RdbCallback):
+    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
-        super(_Callback, self).__init__(string_escape=None)
+        super(Callback, self).__init__(string_escape=None)
         self.client = client
         self._zset = {}
         self.n_keys = 0
@@ -49,23 +50,36 @@ class _Callback(RdbCallback):
         self._zset = {}
 
 
-def load_from_file(client, filename):
+def load_from_file(callback, file):
     """Load keys from the specified RDB-compatible dump file.
 
     Parameters
-    ---------
-    client : :class:`redis.StrictRedis`-like
-        Redis client wrapper
-    filename : str
-        Filename of .rdb file to import
+    ----------
+    callback : :class:`rdbtools.RdbCallback`-like with `n_keys` attribute
+        Backend-specific callback that stores keys as RDB file is parsed. In
+        addition to the interface of :class:`rdbtools.RdbCallback` it should
+        have an `n_keys` attribute that reflects the number of keys loaded from
+        the RDB file.
+    file : str or file-like object
+        Filename of .rdb file to import, or object representing contents of RDB
 
     Returns
     -------
     int
-        Number of keys loaded
+        Number of keys loaded (obtained from :attr:`callback.n_keys`)
     """
-    callback = _Callback(client)
+    try:
+        size = os.path.getsize(file)
+    except TypeError:
+        # One could maybe seek() and tell() on file object but is it worth it?
+        size = 'unknown'
+    logger.debug("Loading data from RDB dump of %s bytes", size)
     parser = RdbParser(callback)
-    logger.debug("Loading data from RDB dump of %d bytes", os.path.getsize(filename))
-    parser.parse(filename)
+    try:
+        fd = open(file, 'rb')
+    except TypeError:
+        parser.parse_fd(file)
+    else:
+        with fd:
+            parser.parse_fd(fd)
     return callback.n_keys

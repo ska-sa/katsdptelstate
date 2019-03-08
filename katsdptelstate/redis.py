@@ -17,7 +17,6 @@
 from __future__ import print_function, division, absolute_import
 
 import contextlib
-import struct
 
 import redis
 
@@ -58,10 +57,11 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
 
-    def load_from_file(self, filename):
+    def load_from_file(self, file):
         if rdb_reader is None:
             raise _rdb_reader_import_error
-        return rdb_reader.load_from_file(self.client, filename)
+        callback = rdb_reader.Callback(self.client)
+        return rdb_reader.load_from_file(callback, file)
 
     def __contains__(self, key):
         return self.client.exists(key)
@@ -103,7 +103,7 @@ class RedisBackend(Backend):
     def add_mutable(self, key, value, timestamp):
         str_val = self.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            ret = zadd(self.client, key, {str_val: 0})
+            zadd(self.client, key, {str_val: 0})
         self.client.publish(b'update/' + key, str_val)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
