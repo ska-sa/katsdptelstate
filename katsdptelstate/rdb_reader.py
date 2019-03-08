@@ -55,15 +55,18 @@ def load_from_file(callback, file):
 
     Parameters
     ----------
-    callback : :class:`rdbtools.RdbCallback`-like
-        Backend-specific callback that stores keys as RDB file is parsed
+    callback : :class:`rdbtools.RdbCallback`-like with `n_keys` attribute
+        Backend-specific callback that stores keys as RDB file is parsed. In
+        addition to the interface of :class:`rdbtools.RdbCallback` it should
+        have an `n_keys` attribute that reflects the number of keys loaded from
+        the RDB file.
     file : str or file-like object
         Filename of .rdb file to import, or object representing contents of RDB
 
     Returns
     -------
     int
-        Number of keys loaded
+        Number of keys loaded (obtained from :attr:`callback.n_keys`)
     """
     try:
         size = os.path.getsize(file)
