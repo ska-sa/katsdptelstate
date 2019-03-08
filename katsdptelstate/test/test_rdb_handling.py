@@ -18,20 +18,15 @@
 
 from __future__ import print_function, division, absolute_import
 
-import time
 import unittest
-import struct
 import shutil
 import os
 import tempfile
-
-import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file, Callback
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
-from katsdptelstate.memory import MemoryBackend
 from katsdptelstate.redis import RedisBackend
 from katsdptelstate import TelescopeState
 

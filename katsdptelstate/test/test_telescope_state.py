@@ -34,7 +34,6 @@ from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
                             encode_value, decode_value,
                             ENCODING_PICKLE, ENCODING_MSGPACK)
 from katsdptelstate.memory import MemoryBackend
-from katsdptelstate.redis import RedisBackend
 
 
 class _TestEncoding(unittest.TestCase):

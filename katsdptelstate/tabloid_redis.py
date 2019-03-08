@@ -15,7 +15,6 @@
 ################################################################################
 
 import logging
-import struct
 
 from fakeredis import FakeStrictRedis
 

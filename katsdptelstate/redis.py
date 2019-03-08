@@ -17,7 +17,6 @@
 from __future__ import print_function, division, absolute_import
 
 import contextlib
-import struct
 
 import redis
 
@@ -104,7 +103,7 @@ class RedisBackend(Backend):
     def add_mutable(self, key, value, timestamp):
         str_val = self.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            ret = zadd(self.client, key, {str_val: 0})
+            zadd(self.client, key, {str_val: 0})
         self.client.publish(b'update/' + key, str_val)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
