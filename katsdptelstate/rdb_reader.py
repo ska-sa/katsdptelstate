@@ -20,7 +20,9 @@ import logging
 import os.path
 
 from rdbtools import RdbParser, RdbCallback
+
 from . import compat
+from .telescope_state import RdbParseError
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,17 @@ class Callback(RdbCallback):
         self._zset = {}
 
 
+def _parse_rdb_file(parser, fd, filename=None):
+    """Apply RDB parser to file descriptor, raising RdbParseError on error."""
+    try:
+        parser.parse_fd(fd)
+    except Exception as err:
+        if err.args == ('verify_magic_string', 'Invalid File Format'):
+            name = repr(filename) if filename else 'object'
+            raise RdbParseError('Invalid RDB file {}'.format(name))
+        raise
+
+
 def load_from_file(callback, file):
     """Load keys from the specified RDB-compatible dump file.
 
@@ -67,6 +80,11 @@ def load_from_file(callback, file):
     -------
     int
         Number of keys loaded (obtained from :attr:`callback.n_keys`)
+
+    Raises
+    ------
+    RdbParseError
+        If `file` does not represent a valid RDB file
     """
     try:
         size = os.path.getsize(file)
@@ -78,8 +96,8 @@ def load_from_file(callback, file):
     try:
         fd = open(file, 'rb')
     except TypeError:
-        parser.parse_fd(file)
+        _parse_rdb_file(parser, file)
     else:
         with fd:
-            parser.parse_fd(fd)
+            _parse_rdb_file(parser, fd, file)
     return callback.n_keys

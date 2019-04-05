@@ -120,6 +120,10 @@ class ConnectionError(TelstateError):
     """The initial connection to the Redis server failed."""
 
 
+class RdbParseError(TelstateError):
+    """Error parsing RDB file."""
+
+
 class InvalidKeyError(TelstateError):
     """A key collides with a class attribute"""
 
