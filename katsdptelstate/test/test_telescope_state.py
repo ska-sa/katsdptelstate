@@ -90,6 +90,7 @@ class _TestEncoding(unittest.TestCase):
         decoded = decode_value(encoded)
         self.assertTrue(np.isnan(decoded))
 
+    @mock.patch('katsdptelstate.telescope_state._allow_pickle', False)
     def test_fuzz(self):
         if self.encoding == ENCODING_PICKLE:
             raise unittest.SkipTest("Pickles will exhaust memory or crash given a bad pickle")
@@ -114,8 +115,8 @@ class _TestEncoding(unittest.TestCase):
                 pass
 
 
-@mock.patch('katsdptelstate.telescope_state.ALLOW_PICKLE', True)
-@mock.patch('katsdptelstate.telescope_state.WARN_ON_PICKLE', False)
+@mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
+@mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
 class TestEncodingPickle(_TestEncoding):
     encoding = ENCODING_PICKLE
 
@@ -244,8 +245,8 @@ class TestTelescopeState(unittest.TestCase):
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 2345.6, immutable=True)
 
-    @mock.patch('katsdptelstate.telescope_state.ALLOW_PICKLE', True)
-    @mock.patch('katsdptelstate.telescope_state.WARN_ON_PICKLE', False)
+    @mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
+    @mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
     def test_immutable_same_value_str(self):
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
