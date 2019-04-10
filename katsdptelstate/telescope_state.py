@@ -312,7 +312,7 @@ def decode_value(value, allow_pickle=None):
             with _pickle_lock:
                 allow_pickle = _allow_pickle
                 if _warn_on_pickle:
-                    warnings.warn(PICKLE_WARNING)
+                    warnings.warn(PICKLE_WARNING, FutureWarning)
                     _warn_on_pickle = False
         if allow_pickle:
             try:
