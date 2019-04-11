@@ -28,6 +28,9 @@ import contextlib
 import functools
 import sys
 import io
+import os
+import warnings
+import threading
 
 import redis
 import msgpack
@@ -61,6 +64,55 @@ MSGPACK_EXT_NDARRAY = 3           # .npy format
 MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
 
 _INF = float('inf')
+
+_allow_pickle = True
+_warn_on_pickle = True
+_pickle_lock = threading.Lock()       # Protects _allow_pickle, _warn_on_pickle
+
+
+PICKLE_WARNING = ('The telescope state contains pickled values. This is a security risk, '
+                  'but is allowed because MeerKAT data up to March 2019 uses it. '
+                  'You can suppress this warning by setting KATSDPTELSTATE_ALLOW_PICKLE=1 '
+                  'in the environment, or disable pickles by setting '
+                  'KATSDPTELSTATE_ALLOW_PICKLE=0.')
+
+
+def set_allow_pickle(allow, warn):
+    """Control whether pickles are allowed.
+
+    This overrides the defaults which are determined from the environment.
+
+    Parameters
+    ----------
+    allow : bool
+        If true, allow pickles to be loaded.
+    warn : bool
+        If true, warn the user the next time a pickle is loaded (after which
+        it becomes false). This has no effect if `allow` is false.
+    """
+    global _allow_pickle, _warn_on_pickle
+
+    with _pickle_lock:
+        _allow_pickle = allow
+        _warn_on_pickle = warn
+
+
+def _init_allow_pickle():
+    env = os.environ.get('KATSDPTELSTATE_ALLOW_PICKLE')
+    allow = True
+    warn = True
+    if env == '1':
+        allow = True
+        warn = False
+    elif env == '0':
+        allow = False
+        warn = False
+    elif env is not None:
+        warnings.warn('Unknown value {!r} for KATSDPTELSTATE_ALLOW_PICKLE'.format(env))
+    set_allow_pickle(allow, warn)
+
+
+_init_allow_pickle()
 
 
 class TelstateError(RuntimeError):
@@ -220,7 +272,7 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
         raise ValueError('Unknown encoding {:#x}'.format(ord(encoding)))
 
 
-def decode_value(value, allow_pickle=True):
+def decode_value(value, allow_pickle=None):
     """Decode a value encoded with :func:`encode_value`.
 
     The encoded value is self-describing, so it is not necessary to specify
@@ -232,9 +284,12 @@ def decode_value(value, allow_pickle=True):
         Encoded value to decode
     allow_pickle : bool, optional
         If false, :const:`ENCODING_PICKLE` is disabled. This may be useful for
-        security as pickle decoding can execute arbitrary code. The default is
-        true but may change to false in future once other encodings are
-        supported and in common usage.
+        security as pickle decoding can execute arbitrary code. If the default
+        of ``None`` is used, it is controlled by the
+        KATSDPTELSTATE_ALLOW_PICKLE environment variable. If that is not set,
+        the default is true (with a warning), but it may change to false in
+        future. The default may also be overridden with
+        :func:`set_allow_pickle`.
 
     Raises
     ------
@@ -243,6 +298,8 @@ def decode_value(value, allow_pickle=True):
     DecodeError
         if there was an error in the encoding of `value`
     """
+    global _warn_on_pickle
+
     if not value:
         raise DecodeError('empty value')
     elif value[:1] == ENCODING_MSGPACK:
@@ -251,6 +308,12 @@ def decode_value(value, allow_pickle=True):
         except Exception as error:
             raise DecodeError(str(error))
     elif value[:1] <= ENCODING_PICKLE:
+        if allow_pickle is None:
+            with _pickle_lock:
+                allow_pickle = _allow_pickle
+                if _warn_on_pickle:
+                    warnings.warn(PICKLE_WARNING, FutureWarning)
+                    _warn_on_pickle = False
         if allow_pickle:
             try:
                 return _pickle_loads(value)
