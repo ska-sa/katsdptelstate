@@ -500,3 +500,14 @@ class TestTelescopeStateRedis(TestTelescopeState):
             ts = TelescopeState('example.com', 1)
             mock_redis.assert_called_with(host='example.com', db=1, socket_timeout=mock.ANY)
         return ts
+
+
+class TestTelescopeStateRedisUrl(TestTelescopeState):
+    def make_telescope_state(self):
+        def make_fakeredis(cls, **kwargs):
+            return fakeredis.FakeStrictRedis()
+
+        with mock.patch('redis.StrictRedis.from_url', side_effect=make_fakeredis) as mock_redis:
+            ts = TelescopeState('redis://example.com', db=1)
+            mock_redis.assert_called_with('redis://example.com', db=1, socket_timeout=mock.ANY)
+        return ts

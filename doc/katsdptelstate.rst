@@ -11,16 +11,72 @@ Subpackages
 Submodules
 ----------
 
-katsdptelstate\.endpoint module
--------------------------------
+katsdptelstate.compat module
+----------------------------
+
+.. automodule:: katsdptelstate.compat
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.endpoint module
+------------------------------
 
 .. automodule:: katsdptelstate.endpoint
     :members:
     :undoc-members:
     :show-inheritance:
 
-katsdptelstate\.telescope\_state module
----------------------------------------
+katsdptelstate.memory module
+----------------------------
+
+.. automodule:: katsdptelstate.memory
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.rdb\_reader module
+---------------------------------
+
+.. automodule:: katsdptelstate.rdb_reader
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.rdb\_utility module
+----------------------------------
+
+.. automodule:: katsdptelstate.rdb_utility
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.rdb\_writer module
+---------------------------------
+
+.. automodule:: katsdptelstate.rdb_writer
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.redis module
+---------------------------
+
+.. automodule:: katsdptelstate.redis
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.tabloid\_redis module
+------------------------------------
+
+.. automodule:: katsdptelstate.tabloid_redis
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdptelstate.telescope\_state module
+--------------------------------------
 
 .. automodule:: katsdptelstate.telescope_state
     :members:

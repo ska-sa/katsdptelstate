@@ -306,7 +306,9 @@ class Backend(object):
     The backend interface does not deal with namespaces or encodings, which are
     handled by the frontend :class:`TelescopeState` class. A backend must be
     able to store
+
     - immutables: key-value pairs (both :class:`bytes`);
+
     - mutables: a key associated with a set of (timestamp, value) pairs, where
       the timestamps are non-negative finite floats and the values are
       :class:`bytes`.
@@ -511,11 +513,18 @@ class TelescopeState(object):
     Parameters
     ----------
     endpoint : str, :class:`~katsdptelstate.endpoint.Endpoint` or :class:`Backend`
-        If an endpoint or string, the address of the Redis server (if a string,
-        it is passed to the :class:`~katsdptelstate.endpoint.Endpoint`
-        constructor). If empty, a :class:`tabloid_redis.TabloidRedis` instance
-        is used to construct a :class:`~katsdptelstate.redis.RedisBackend`. If
-        a :class:`Backend`, that backend is used directly. 
+        It can be
+
+        - an endpoint: specifies the address of the Redis server
+
+        - an URL (i.e., contains ``://``): passed to :meth:`redis.StrictRedis.from_url`
+
+        - an empty string: a :class:`~katsdptelstate.memory.MemoryBackend` is created
+
+        - any other string: passed to :class:`~katsdptelstate.endpoint.Endpoint` to
+          create an endpoint
+
+        - a :class:`Backend`: used directly.
     db : int
         Database number within the Redis server.
     prefixes : tuple of str/bytes
@@ -557,13 +566,16 @@ class TelescopeState(object):
             self._backend = MemoryBackend()
         else:
             from .redis import RedisBackend
-            if not isinstance(endpoint, Endpoint):
-                endpoint = endpoint_parser(default_port=None)(endpoint)
-            redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
-            # If no port is provided, redis will pick its default port
-            if endpoint.port is not None:
-                redis_kwargs['port'] = endpoint.port
-            r = redis.StrictRedis(**redis_kwargs)
+            if isinstance(endpoint, str) and '://' in endpoint:
+                r = redis.StrictRedis.from_url(endpoint, db=db, socket_timeout=5)
+            else:
+                if not isinstance(endpoint, Endpoint):
+                    endpoint = endpoint_parser(default_port=None)(endpoint)
+                redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
+                # If no port is provided, redis will pick its default port
+                if endpoint.port is not None:
+                    redis_kwargs['port'] = endpoint.port
+                r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes for consistency
         self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
