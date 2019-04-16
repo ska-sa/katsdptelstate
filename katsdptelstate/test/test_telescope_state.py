@@ -462,6 +462,15 @@ class TestTelescopeState(unittest.TestCase):
         self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
         self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
 
+    def test_undecodable_bytes_in_key(self):
+        """Gracefully handle non-UTF-8 bytes in keys."""
+        key_b = b'undecodable\xff'
+        self.ts.backend.set_immutable(key_b, b"S'hello'\np1\n.")
+        key = [k for k in self.ts.keys() if k.startswith('undecodable')][0]
+        self.assertEqual(self.ts.get(key), 'hello')
+        self.assertEqual(self.ts.get(key_b), 'hello')
+        self.assertEqual(self.ts.get(key_b[1:]), None)
+
 
 class TestTelescopeStateMemory(TestTelescopeState):
     def make_telescope_state(self):
