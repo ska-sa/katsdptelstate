@@ -121,7 +121,8 @@ def _decode_ndarray(data):
 
 def _encode_numpy_scalar(value):
     if value.dtype.hasobject:
-        raise EncodeError('cannot encode dtype {} as it contains objects'.format(value.dtype))
+        raise EncodeError('cannot encode dtype {} as it contains objects'
+                          .format(value.dtype))
     descr = np.lib.format.dtype_to_descr(value.dtype)
     return _msgpack_encode(descr) + value.tobytes()
 
@@ -135,7 +136,8 @@ def _decode_numpy_scalar(data):
         raw = exc.extra
     dtype = np.dtype(descr)
     if dtype.hasobject:
-        raise DecodeError('cannot decode dtype {} as it contains objects'.format(dtype))
+        raise DecodeError('cannot decode dtype {} as it contains objects'
+                          .format(dtype))
     value = np.frombuffer(raw, dtype, 1)
     return value[0]
 
@@ -148,9 +150,11 @@ def _msgpack_default(value):
     elif isinstance(value, np.generic):
         return msgpack.ExtType(MSGPACK_EXT_NUMPY_SCALAR, _encode_numpy_scalar(value))
     elif isinstance(value, complex):
-        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128, struct.pack('>dd', value.real, value.imag))
+        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128,
+                               struct.pack('>dd', value.real, value.imag))
     else:
-        raise EncodeError('do not know how to encode type {}'.format(value.__class__.__name__))
+        raise EncodeError('do not know how to encode type {}'
+                          .format(value.__class__.__name__))
 
 
 def _msgpack_ext_hook(code, data):
@@ -172,7 +176,8 @@ def _msgpack_ext_hook(code, data):
 
 
 def _msgpack_encode(value):
-    return msgpack.packb(value, use_bin_type=True, strict_types=True, default=_msgpack_default)
+    return msgpack.packb(value, use_bin_type=True, strict_types=True,
+                         default=_msgpack_default)
 
 
 def _msgpack_decode(value):
@@ -196,7 +201,7 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
     value
         Value to encode
     encoding
-        Encoding method to use. It must be one of the values in :const:`ALLOWED_ENCODINGS`
+        Encoding method to use, one of the values in :const:`ALLOWED_ENCODINGS`
 
     Raises
     ------
@@ -487,7 +492,7 @@ class TelescopeState(object):
         it is passed to the :class:`~katsdptelstate.endpoint.Endpoint`
         constructor). If empty, a :class:`tabloid_redis.TabloidRedis` instance
         is used to construct a :class:`~katsdptelstate.redis.RedisBackend`. If
-        a :class:`Backend`, that backend is used directly. 
+        a :class:`Backend`, that backend is used directly.
     db : int
         Database number within the Redis server (ignored if a backend is given).
     prefixes : tuple of str/bytes
@@ -537,6 +542,7 @@ class TelescopeState(object):
 
     @property
     def prefixes(self):
+        """The active key prefixes as a tuple of strings."""
         return tuple(_ensure_str(prefix) for prefix in self._prefixes)
 
     @property
@@ -745,7 +751,7 @@ class TelescopeState(object):
 
         Parameters
         ----------
-        key : str
+        key : str or bytes
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
@@ -785,7 +791,7 @@ class TelescopeState(object):
 
         Parameters
         ----------
-        key : str
+        key : str or bytes
             Key name to monitor
         condition : callable, signature `bool = condition(value, ts)`, optional
             If not specified, wait until the key exists. Otherwise, the
@@ -822,7 +828,8 @@ class TelescopeState(object):
                 raise CancelledError('Wait for {} cancelled'.format(key_str))
 
         check_cancelled()
-        monitor = self._backend.monitor_keys([prefix + key for prefix in self._prefixes])
+        monitor = self._backend.monitor_keys([prefix + key
+                                              for prefix in self._prefixes])
         with contextlib.closing(monitor):
             monitor.send(None)   # Just to start the generator going
             start = time.time()
@@ -887,7 +894,7 @@ class TelescopeState(object):
         default : object, optional
             Object to return if key not found
         return_encoded : bool, optional
-            Default 'False' - return values are decoded from internal storage before returning
+            Default 'False' - return values are first decoded from internal storage
             'True' - return values are retained in encoded form.
 
         Returns
@@ -906,7 +913,7 @@ class TelescopeState(object):
 
         Parameters
         ----------
-        key : string
+        key : str or bytes
             Database key to extract
         st : float, optional
             Start time, default returns the most recent value prior to et
@@ -919,7 +926,7 @@ class TelescopeState(object):
         include_end : bool, optional
             If False (default), returns values in [st, et), otherwise [st, et].
         return_encoded : bool, optional
-            Default 'False' - return values are decoded from internal storage before returning
+            Default 'False' - return values are first decoded from internal storage
             'True' - return values are retained in encoded form.
 
         Returns
@@ -977,12 +984,14 @@ class TelescopeState(object):
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
-                ret_vals = self._backend.get_range(full_key, st, et, include_previous, include_end)
+                ret_vals = self._backend.get_range(full_key, st, et,
+                                                   include_previous, include_end)
             except ImmutableKeyError:
                 raise ImmutableKeyError('{} is immutable, cannot use get_range'
                                         .format(_display_str(full_key)))
             if ret_vals is not None:
                 if not return_encoded:
-                    ret_vals = [(decode_value(value), timestamp) for value, timestamp in ret_vals]
+                    ret_vals = [(decode_value(value), timestamp)
+                                for value, timestamp in ret_vals]
                 return ret_vals
         raise KeyError('{} not found'.format(_display_str(key)))
