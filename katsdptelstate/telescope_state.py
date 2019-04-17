@@ -15,18 +15,15 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
+import six
+from six.moves import cPickle as pickle
 
 import struct
 import time
 import math
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 import logging
 import contextlib
 import functools
-import sys
 import io
 import os
 import warnings
@@ -151,13 +148,24 @@ class EncodeError(ValueError, TelstateError):
     """A value could not be encoded"""
 
 
-if sys.version_info.major >= 3:
+if six.PY2:
+    _pickle_loads = pickle.loads
+    _ensure_str = six.ensure_str
+    _ensure_binary = six.ensure_binary
+else:
     # See https://stackoverflow.com/questions/11305790
     _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
-    _text_type = str
-else:
-    _pickle_loads = pickle.loads
-    _text_type = unicode
+    # Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
+    _ensure_str = functools.partial(six.ensure_str, errors='surrogateescape')
+    _ensure_binary = functools.partial(six.ensure_binary, errors='surrogateescape')
+
+
+def _display_str(s):
+    """Return most human-readable and yet accurate version of *s*."""
+    try:
+        return '{!r}'.format(six.ensure_str(s))
+    except UnicodeDecodeError:
+        return '{!r}'.format(s)
 
 
 def _encode_ndarray(value):
@@ -180,7 +188,8 @@ def _decode_ndarray(data):
 
 def _encode_numpy_scalar(value):
     if value.dtype.hasobject:
-        raise EncodeError('cannot encode dtype {} as it contains objects'.format(value.dtype))
+        raise EncodeError('cannot encode dtype {} as it contains objects'
+                          .format(value.dtype))
     descr = np.lib.format.dtype_to_descr(value.dtype)
     return _msgpack_encode(descr) + value.tobytes()
 
@@ -194,7 +203,8 @@ def _decode_numpy_scalar(data):
         raw = exc.extra
     dtype = np.dtype(descr)
     if dtype.hasobject:
-        raise DecodeError('cannot decode dtype {} as it contains objects'.format(dtype))
+        raise DecodeError('cannot decode dtype {} as it contains objects'
+                          .format(dtype))
     value = np.frombuffer(raw, dtype, 1)
     return value[0]
 
@@ -207,9 +217,11 @@ def _msgpack_default(value):
     elif isinstance(value, np.generic):
         return msgpack.ExtType(MSGPACK_EXT_NUMPY_SCALAR, _encode_numpy_scalar(value))
     elif isinstance(value, complex):
-        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128, struct.pack('>dd', value.real, value.imag))
+        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128,
+                               struct.pack('>dd', value.real, value.imag))
     else:
-        raise EncodeError('do not know how to encode type {}'.format(value.__class__.__name__))
+        raise EncodeError('do not know how to encode type {}'
+                          .format(value.__class__.__name__))
 
 
 def _msgpack_ext_hook(code, data):
@@ -231,7 +243,8 @@ def _msgpack_ext_hook(code, data):
 
 
 def _msgpack_encode(value):
-    return msgpack.packb(value, use_bin_type=True, strict_types=True, default=_msgpack_default)
+    return msgpack.packb(value, use_bin_type=True, strict_types=True,
+                         default=_msgpack_default)
 
 
 def _msgpack_decode(value):
@@ -255,7 +268,7 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
     value
         Value to encode
     encoding
-        Encoding method to use. It must be one of the values in :const:`ALLOWED_ENCODINGS`
+        Encoding method to use, one of the values in :const:`ALLOWED_ENCODINGS`
 
     Raises
     ------
@@ -340,27 +353,10 @@ def equal_encoded_values(a, b):
         return True
     a = decode_value(a)
     b = decode_value(b)
-    if isinstance(a, _text_type) and isinstance(b, _text_type):
-        return a == b      # Avoid cost of encoding both to bytes
-    elif isinstance(a, (bytes, _text_type)) and isinstance(b, (bytes, _text_type)):
-        if isinstance(a, _text_type):
-            a = a.encode('utf-8')
-        if isinstance(b, _text_type):
-            b = b.encode('utf-8')
-        return a == b
-    else:
+    try:
+        return _ensure_binary(a) == _ensure_binary(b)
+    except TypeError:
         return False
-
-
-def _as_bytes(value):
-    """Force unicode values to bytes by UTF-8 encoding.
-
-    This is intended to mimic redis-py behaviour
-    """
-    if isinstance(value, _text_type):
-        return value.encode('utf-8')
-    else:
-        return value
 
 
 class Backend(object):
@@ -640,12 +636,13 @@ class TelescopeState(object):
                     redis_kwargs['port'] = endpoint.port
                 r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
-        # Ensure all prefixes are bytes for consistency
-        self._prefixes = tuple(_as_bytes(prefix) for prefix in prefixes)
+        # Ensure all prefixes are bytes internally for consistency
+        self._prefixes = tuple(_ensure_binary(prefix) for prefix in prefixes)
 
     @property
     def prefixes(self):
-        return self._prefixes
+        """The active key prefixes as a tuple of strings."""
+        return tuple(_ensure_str(prefix) for prefix in self._prefixes)
 
     @property
     def backend(self):
@@ -668,7 +665,7 @@ class TelescopeState(object):
         end with the separator, it is added (unless `add_separator` is
         false).
         """
-        name = _as_bytes(name)
+        name = _ensure_binary(name)
         if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
             name += self.SEPARATOR_BYTES
         if exclusive:
@@ -704,7 +701,7 @@ class TelescopeState(object):
 
     def __contains__(self, key_name):
         """Check to see if the specified key exists in the database."""
-        key_name = _as_bytes(key_name)
+        key_name = _ensure_binary(key_name)
         for prefix in self._prefixes:
             if prefix + key_name in self._backend:
                 return True
@@ -720,7 +717,7 @@ class TelescopeState(object):
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         for prefix in self._prefixes:
             try:
                 return self._backend.is_immutable(prefix + key)
@@ -741,10 +738,11 @@ class TelescopeState(object):
 
         Returns
         -------
-        keys : list of bytes
-            The key names, in sorted order.
+        keys : list of str
+            The key names, in sorted order
         """
-        return sorted(self._backend.keys(_as_bytes(filter)))
+        keys = self._backend.keys(_ensure_binary(filter))
+        return sorted(_ensure_str(key) for key in keys)
 
     def delete(self, key):
         """Remove a key, and all values, from the model.
@@ -756,7 +754,7 @@ class TelescopeState(object):
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
         """
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 
@@ -807,30 +805,32 @@ class TelescopeState(object):
             raise InvalidKeyError("The specified key already exists as a "
                                   "class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         full_key = self._prefixes[0] + key
+        key_str = _display_str(full_key)
         str_val = encode_value(value, encoding)
         if immutable:
             try:
                 old = self._backend.set_immutable(full_key, str_val)
             except ImmutableKeyError:
-                raise ImmutableKeyError(
-                    'Attempt to overwrite mutable key {} with immutable'.format(full_key))
+                raise ImmutableKeyError('Attempt to overwrite mutable key {} '
+                                        'with immutable'.format(key_str))
             if old is not None:
                 # The key already exists. Check if the value is the same.
                 try:
                     if not equal_encoded_values(str_val, old):
                         raise ImmutableKeyError(
-                            'Attempt to change value of immutable key {} from {!r} to {!r}.'.format(
-                                full_key, decode_value(old), value))
+                            'Attempt to change value of immutable key {} from '
+                            '{!r} to {!r}'.format(key_str, decode_value(old), value))
                     else:
-                        logger.info('Attribute {} updated with the same value'.format(full_key))
+                        logger.info('Attribute {} updated with the same value'
+                                    .format(key_str))
                         return True
                 except DecodeError as error:
                     raise ImmutableKeyError(
-                        'Attempt to set value of immutable key {} to {!r} but failed to '
-                        'decode the previous value to compare: {}'
-                        .format(full_key, value, error))
+                        'Attempt to set value of immutable key {} to {!r} but '
+                        'failed to decode the previous value to compare: {}'
+                        .format(key_str, value, error))
         else:
             ts = float(ts) if ts is not None else time.time()
             if math.isnan(ts) or math.isinf(ts):
@@ -842,14 +842,15 @@ class TelescopeState(object):
             try:
                 self._backend.add_mutable(full_key, str_val, ts)
             except ImmutableKeyError:
-                raise ImmutableKeyError('Attempt to overwrite immutable key'.format(full_key))
+                raise ImmutableKeyError('Attempt to overwrite immutable key {}'
+                                        .format(key_str))
 
     def _check_condition(self, key, condition, message=None):
         """Check whether key exists and satisfies a condition (if any).
 
         Parameters
         ----------
-        key : str
+        key : str or bytes
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
@@ -865,7 +866,7 @@ class TelescopeState(object):
             return message is not None or key in self
 
         for prefix in self._prefixes:
-            full_key = prefix + _as_bytes(key)
+            full_key = prefix + _ensure_binary(key)
             if message is not None and full_key == message[0]:
                 value = message[1]
                 timestamp = None if len(message) == 2 else message[2]
@@ -889,7 +890,7 @@ class TelescopeState(object):
 
         Parameters
         ----------
-        key : str
+        key : str or bytes
             Key name to monitor
         condition : callable, signature `bool = condition(value, ts)`, optional
             If not specified, wait until the key exists. Otherwise, the
@@ -914,17 +915,20 @@ class TelescopeState(object):
         CancelledError
             if a cancellation future was specified and done
         """
-        def check_cancelled():
-            if cancel_future is not None and cancel_future.done():
-                raise CancelledError('wait for {} cancelled'.format(key))
-
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         # First check if condition is already satisfied, in which case we
         # don't need to create a pubsub connection.
         if self._check_condition(key, condition):
             return
+        key_str = _display_str(key)
+
+        def check_cancelled():
+            if cancel_future is not None and cancel_future.done():
+                raise CancelledError('Wait for {} cancelled'.format(key_str))
+
         check_cancelled()
-        monitor = self._backend.monitor_keys([prefix + key for prefix in self._prefixes])
+        monitor = self._backend.monitor_keys([prefix + key
+                                              for prefix in self._prefixes])
         with contextlib.closing(monitor):
             monitor.send(None)   # Just to start the generator going
             start = time.time()
@@ -939,8 +943,8 @@ class TelescopeState(object):
                 if timeout is not None:
                     remain = (start + timeout) - time.time()
                     if remain <= 0:
-                        raise TimeoutError(
-                            'Timed out waiting for {} after {}s'.format(key, timeout))
+                        raise TimeoutError('Timed out waiting for {} after {}s'
+                                           .format(key_str, timeout))
                     get_timeout = min(get_timeout, remain)
                 message = monitor.send(get_timeout)
                 if message is None:
@@ -962,7 +966,7 @@ class TelescopeState(object):
         return decode_value(str_val)
 
     def _get(self, key, return_encoded=False):
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
@@ -979,7 +983,7 @@ class TelescopeState(object):
                 if return_encoded:
                     return value
                 return decode_value(value)
-        raise KeyError('{} not found'.format(key))
+        raise KeyError('{} not found'.format(_display_str(key)))
 
     def get(self, key, default=None, return_encoded=False):
         """Get a single value from the model.
@@ -989,7 +993,7 @@ class TelescopeState(object):
         default : object, optional
             Object to return if key not found
         return_encoded : bool, optional
-            Default 'False' - return values are decoded from internal storage before returning
+            Default 'False' - return values are first decoded from internal storage
             'True' - return values are retained in encoded form.
 
         Returns
@@ -1008,7 +1012,7 @@ class TelescopeState(object):
 
         Parameters
         ----------
-        key : string
+        key : str or bytes
             Database key to extract
         st : float, optional
             Start time, default returns the most recent value prior to et
@@ -1021,7 +1025,7 @@ class TelescopeState(object):
         include_end : bool, optional
             If False (default), returns values in [st, et), otherwise [st, et].
         return_encoded : bool, optional
-            Default 'False' - return values are decoded from internal storage before returning
+            Default 'False' - return values are first decoded from internal storage
             'True' - return values are retained in encoded form.
 
         Returns
@@ -1075,15 +1079,18 @@ class TelescopeState(object):
         if math.isnan(st) or math.isnan(et):
             raise InvalidTimestampError('cannot use NaN start or end time')
 
-        key = _as_bytes(key)
+        key = _ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
-                ret_vals = self._backend.get_range(full_key, st, et, include_previous, include_end)
+                ret_vals = self._backend.get_range(full_key, st, et,
+                                                   include_previous, include_end)
             except ImmutableKeyError:
-                raise ImmutableKeyError('{} is immutable, cannot use get_range'.format(full_key))
+                raise ImmutableKeyError('{} is immutable, cannot use get_range'
+                                        .format(_display_str(full_key)))
             if ret_vals is not None:
                 if not return_encoded:
-                    ret_vals = [(decode_value(value), timestamp) for value, timestamp in ret_vals]
+                    ret_vals = [(decode_value(value), timestamp)
+                                for value, timestamp in ret_vals]
                 return ret_vals
-        raise KeyError('{} not found'.format(key))
+        raise KeyError('{} not found'.format(_display_str(key)))

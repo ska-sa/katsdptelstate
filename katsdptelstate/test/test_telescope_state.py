@@ -159,13 +159,13 @@ class TestTelescopeState(unittest.TestCase):
             TelescopeState(db=1)
 
     def test_namespace(self):
-        self.assertEqual(self.ts.prefixes, (b'',))
-        self.assertEqual(self.ns.prefixes, (b'ns_', b''))
-        ns2 = self.ns.view('ns_child_grandchild')
-        self.assertEqual(ns2.prefixes, (b'ns_child_grandchild_', b'ns_', b''))
-        self.assertEqual(ns2.root().prefixes, (b'',))
+        self.assertEqual(self.ts.prefixes, ('',))
+        self.assertEqual(self.ns.prefixes, ('ns_', ''))
+        ns2 = self.ns.view(b'ns_child_grandchild')
+        self.assertEqual(ns2.prefixes, ('ns_child_grandchild_', 'ns_', ''))
+        self.assertEqual(ns2.root().prefixes, ('',))
         ns_excl = self.ns.view('exclusive', exclusive=True)
-        self.assertEqual(ns_excl.prefixes, (b'exclusive_',))
+        self.assertEqual(ns_excl.prefixes, ('exclusive_',))
 
     def test_basic_add(self):
         self.ts.add('test_key', 1234.5)
@@ -311,10 +311,10 @@ class TestTelescopeState(unittest.TestCase):
     def test_keys(self):
         self.ts.add('key1', 'a')
         self.ns.add('key2', 'b')
-        self.ns.add('key2', 'c')
-        self.ts.add('immutable', 'd', immutable=True)
-        self.assertEqual(self.ts.keys(), [b'immutable', b'key1', b'ns_key2'])
-        self.assertEqual(self.ts.keys('ns_*'), [b'ns_key2'])
+        self.ns.add(b'key2', 'c')
+        self.ts.add(b'immutable', 'd', immutable=True)
+        self.assertEqual(self.ts.keys(), ['immutable', 'key1', 'ns_key2'])
+        self.assertEqual(self.ts.keys('ns_*'), ['ns_key2'])
 
     def test_complex_store(self):
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
@@ -494,6 +494,15 @@ class TestTelescopeState(unittest.TestCase):
     def test_mixed_unicode_bytes(self):
         self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
         self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
+
+    def test_undecodable_bytes_in_key(self):
+        """Gracefully handle non-UTF-8 bytes in keys."""
+        key_b = b'undecodable\xff'
+        self.ts.backend.set_immutable(key_b, b"S'hello'\np1\n.")
+        key = [k for k in self.ts.keys() if k.startswith('undecodable')][0]
+        self.assertEqual(self.ts.get(key), 'hello')
+        self.assertEqual(self.ts.get(key_b), 'hello')
+        self.assertEqual(self.ts.get(key_b[1:]), None)
 
 
 class TestTelescopeStateRedis(TestTelescopeState):
