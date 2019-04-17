@@ -6,22 +6,22 @@
 #
 #    pip-compile --output-file doc-requirements.txt doc-requirements.in
 #
-alabaster         # via sphinx
-babel             # via sphinx
-certifi           # via requests
-chardet           # via requests
-docutils          # via sphinx
-idna              # via requests
-imagesize         # via sphinx
-jinja2            # via sphinx
-markupsafe        # via jinja2
-packaging         # via sphinx
-pygments          # via sphinx
-pyparsing         # via packaging
-pytz              # via babel
-requests          # via sphinx
-six               # via packaging, sphinx
-snowballstemmer   # via sphinx
+alabaster                   # via sphinx
+babel                       # via sphinx
+certifi                     # via requests
+chardet                     # via requests
+docutils                    # via sphinx
+idna                        # via requests
+imagesize                   # via sphinx
+jinja2                      # via sphinx
+markupsafe                  # via jinja2
+packaging                   # via sphinx
+pygments                    # via sphinx
+pyparsing                   # via packaging
+pytz                        # via babel
+requests                    # via sphinx
+six                         # via packaging, sphinx
+snowballstemmer             # via sphinx
 sphinx-rtd-theme
 sphinx
 sphinxcontrib-websupport    # via sphinx

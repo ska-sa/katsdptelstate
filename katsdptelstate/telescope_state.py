@@ -537,7 +537,7 @@ class TelescopeState(object):
                     redis_kwargs['port'] = endpoint.port
                 r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
-        # Ensure all prefixes are bytes for consistency
+        # Ensure all prefixes are bytes internally for consistency
         self._prefixes = tuple(_ensure_binary(prefix) for prefix in prefixes)
 
     @property
@@ -626,7 +626,7 @@ class TelescopeState(object):
                 pass
         return False
 
-    def keys(self, filter=b'*'):
+    def keys(self, filter='*'):
         """Return a list of keys currently in the model.
 
         This function ignores the prefix list, returns all keys with
