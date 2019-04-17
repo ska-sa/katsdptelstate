@@ -750,8 +750,10 @@ class TelescopeState(object):
         This respects the prefix list and presents keys with prefixes removed.
         """
         keys = []
-        for prefix in self._prefixes:
-            keys.extend(k[len(prefix):] for k in self.keys(prefix + b'*'))
+        keys_b = self._backend.keys(b'*')
+        for prefix_b in self._prefixes:
+            keys.extend(sorted(_ensure_str(k[len(prefix_b):])
+                               for k in keys_b if k.startswith(prefix_b)))
         return keys
 
     def delete(self, key):
