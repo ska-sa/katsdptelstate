@@ -111,7 +111,7 @@ class TestLoadFromFile(unittest.TestCase):
         # Load RDB file back into some backend
         read_ts = self.make_telescope_state()
         read_ts.load_from_file(file)
-        self.assertEqual(read_ts.keys(), [b'immutable', b'mutable'])
+        self.assertEqual(read_ts.keys(), ['immutable', 'mutable'])
         self.assertTrue(read_ts.is_immutable('immutable'))
         self.assertEqual(read_ts['immutable'], ['some value'])
         self.assertEqual(read_ts.get_range('mutable', st=0),
