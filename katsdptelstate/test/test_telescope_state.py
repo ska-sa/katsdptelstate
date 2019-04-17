@@ -504,6 +504,15 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ts.get(key_b), 'hello')
         self.assertEqual(self.ts.get(key_b[1:]), None)
 
+    def test_tab_completion(self):
+        self.ts.clear()
+        ns = self.ts.view('ns')
+        ns['c'] = 'value'
+        ns['b'] = 'value'
+        ns['a'] = 'value'
+        keys = ns._ipython_key_completions_()
+        self.assertEqual(keys, ['a', 'b', 'c', 'ns_a', 'ns_b', 'ns_c'])
+
 
 class TestTelescopeStateRedis(TestTelescopeState):
     def make_telescope_state(self):
