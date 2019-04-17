@@ -511,7 +511,7 @@ class TestTelescopeState(unittest.TestCase):
         ns['b'] = 'value'
         ns['a'] = 'value'
         keys = ns._ipython_key_completions_()
-        self.assertEqual(keys, ['a', 'b', 'c', 'ns_a', 'ns_b', 'ns_c'])
+        self.assertEqual(sorted(keys), ['a', 'b', 'c', 'ns_a', 'ns_b', 'ns_c'])
 
 
 class TestTelescopeStateRedis(TestTelescopeState):

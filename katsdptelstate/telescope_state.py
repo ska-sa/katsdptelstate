@@ -752,8 +752,8 @@ class TelescopeState(object):
         keys = []
         keys_b = self._backend.keys(b'*')
         for prefix_b in self._prefixes:
-            keys.extend(sorted(_ensure_str(k[len(prefix_b):])
-                               for k in keys_b if k.startswith(prefix_b)))
+            keys.extend(_ensure_str(k[len(prefix_b):])
+                        for k in keys_b if k.startswith(prefix_b))
         return keys
 
     def delete(self, key):
