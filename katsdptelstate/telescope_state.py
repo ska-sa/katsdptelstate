@@ -728,7 +728,7 @@ class TelescopeState(object):
     def keys(self, filter='*'):
         """Return a list of keys currently in the model.
 
-        This function ignores the prefix list, returns all keys with
+        This function ignores the prefix list and returns all keys with
         fully-qualified names.
 
         Parameters
@@ -743,6 +743,18 @@ class TelescopeState(object):
         """
         keys = self._backend.keys(_ensure_binary(filter))
         return sorted(_ensure_str(key) for key in keys)
+
+    def _ipython_key_completions_(self):
+        """List of keys used in IPython (version >= 5) tab completion.
+
+        This respects the prefix list and presents keys with prefixes removed.
+        """
+        keys = []
+        keys_b = self._backend.keys(b'*')
+        for prefix_b in self._prefixes:
+            keys.extend(_ensure_str(k[len(prefix_b):])
+                        for k in keys_b if k.startswith(prefix_b))
+        return keys
 
     def delete(self, key):
         """Remove a key, and all values, from the model.

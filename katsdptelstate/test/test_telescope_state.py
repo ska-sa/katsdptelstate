@@ -206,7 +206,7 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 1234.5)
         self.ts.add('test_key_rt', 2345.6)
         self.ts.clear()
-        self.assertEqual([], self.ts.keys())
+        self.assertEqual(self.ts.keys(), [])
 
     def test_get_default(self):
         self.assertIsNone(self.ts.get('foo'))
@@ -503,6 +503,15 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ts.get(key), 'hello')
         self.assertEqual(self.ts.get(key_b), 'hello')
         self.assertEqual(self.ts.get(key_b[1:]), None)
+
+    def test_tab_completion(self):
+        self.ts['z'] = 'value'
+        self.ns['b'] = 'value'
+        self.ns['a'] = 'value'
+        keys = self.ns._ipython_key_completions_()
+        self.assertEqual(sorted(keys), ['a', 'b', 'ns_a', 'ns_b', 'z'])
+        keys = self.ts._ipython_key_completions_()
+        self.assertEqual(sorted(keys), ['ns_a', 'ns_b', 'z'])
 
 
 class TestTelescopeStateRedis(TestTelescopeState):
