@@ -15,7 +15,7 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
-from future.utils import raise_from
+from six import raise_from
 
 import logging
 import os.path
