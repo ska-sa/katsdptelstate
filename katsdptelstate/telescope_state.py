@@ -704,11 +704,11 @@ class TelescopeState(object):
     def __setitem__(self, key, value):
         self.add(key, value, immutable=True)
 
-    def __contains__(self, key_name):
+    def __contains__(self, key):
         """Check to see if the specified key exists in the database."""
-        key_name = _ensure_binary(key_name)
+        key = _ensure_binary(key)
         for prefix in self._prefixes:
-            if prefix + key_name in self._backend:
+            if prefix + key in self._backend:
                 return True
         return False
 
@@ -1064,22 +1064,22 @@ class TelescopeState(object):
 
         Usage examples:
 
-        get_range('key_name')
+        get_range('key')
             returns most recent record
 
-        get_range('key_name',st=0)
+        get_range('key',st=0)
             returns list of all records in the telescope state database
 
-        get_range('key_name',st=0,et=t1)
+        get_range('key',st=0,et=t1)
             returns list of all records before time t1
 
-        get_range('key_name',st=t0,et=t1)
+        get_range('key',st=t0,et=t1)
             returns list of all records in the range [t0,t1)
 
-        get_range('key_name',st=t0)
+        get_range('key',st=t0)
             returns list of all records after time t0
 
-        get_range('key_name',et=t1)
+        get_range('key',et=t1)
             returns the most recent record prior to time t1
         """
         # set up include_previous and st default values
