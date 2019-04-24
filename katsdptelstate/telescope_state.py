@@ -657,6 +657,11 @@ class TelescopeState(object):
         logger.info("Loading {} keys from {}".format(keys_loaded, file))
         return keys_loaded
 
+    @classmethod
+    def join(cls, *names):
+        """Join string components of key with supported separator."""
+        return cls.SEPARATOR.join(names)
+
     def view(self, name, add_separator=True, exclusive=False):
         """Create a view with an extra name in the list of namespaces.
 

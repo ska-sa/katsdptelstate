@@ -180,7 +180,7 @@ class TestTelescopeState(unittest.TestCase):
         self.ns.add('test_key', 1234.5)
         self.assertEqual(self.ns.test_key, 1234.5)
         self.assertEqual(self.ns['test_key'], 1234.5)
-        self.assertEqual(self.ts['ns_test_key'], 1234.5)
+        self.assertEqual(self.ts[self.ts.join('ns', 'test_key')], 1234.5)
         with self.assertRaises(KeyError):
             self.ts['test_key']
 
