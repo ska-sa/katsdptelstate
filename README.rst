@@ -18,9 +18,10 @@ telstate object using attribute syntax or dict syntax.
 .. _MessagePack: http://www.msgpack.org/
 
 Databases can be accessed via one of two backends: a Redis client backend
-that allows shared access to an actual Redis server over the network (or
-simulated servers) and a simplified in-memory backend for stand-alone access.
-Both backends support loading a Redis snapshot in the form of an RDB dump file.
+that allows shared access to an actual Redis server over the network (or a
+simulated server via fakeredis) and a simplified in-memory backend for
+stand-alone access. Both backends support loading and saving a Redis snapshot
+in the form of an RDB dump file.
 
 It is possible to have multiple *views* on the same database (one per telstate
 instance). A view is defined as a list of *prefixes* acting as namespaces that
