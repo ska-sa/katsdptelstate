@@ -15,6 +15,7 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
+from future.utils import raise_from
 
 import logging
 import os.path
@@ -56,10 +57,11 @@ def _parse_rdb_file(parser, fd, filename=None):
     """Apply RDB parser to file descriptor, raising RdbParseError on error."""
     try:
         parser.parse_fd(fd)
-    except Exception as err:
-        if err.args == ('verify_magic_string', 'Invalid File Format'):
+    except Exception as exc:
+        if exc.args == ('verify_magic_string', 'Invalid File Format'):
             name = repr(filename) if filename else 'object'
-            raise RdbParseError('Invalid RDB file {}'.format(name))
+            err = RdbParseError('Invalid RDB file {}'.format(name))
+            raise_from(err, exc)
         raise
 
 

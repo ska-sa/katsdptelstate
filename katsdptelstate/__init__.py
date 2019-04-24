@@ -16,7 +16,7 @@
 
 from .telescope_state import (TelescopeState, ConnectionError, InvalidKeyError,
                               ImmutableKeyError, TimeoutError, CancelledError,
-                              DecodeError, EncodeError,
+                              DecodeError, EncodeError, RdbParseError,
                               PICKLE_PROTOCOL, encode_value, decode_value,
                               ALLOWED_ENCODINGS, ENCODING_DEFAULT,
                               ENCODING_PICKLE, ENCODING_MSGPACK)

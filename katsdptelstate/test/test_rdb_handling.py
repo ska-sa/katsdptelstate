@@ -28,7 +28,7 @@ from katsdptelstate.rdb_reader import load_from_file, Callback
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend
-from katsdptelstate import TelescopeState
+from katsdptelstate import TelescopeState, RdbParseError
 
 
 class TestRDBHandling(unittest.TestCase):
@@ -128,6 +128,11 @@ class TestLoadFromFile(unittest.TestCase):
         # Check loading from filenames and file-like objects
         self.load_from_file_and_check(self.filename)
         self.load_from_file_and_check(open(self.filename, 'rb'))
+        # Check that malformed RDB file raises the appropriate exception
+        file = open(self.filename, 'rb')
+        file.read(1)
+        with self.assertRaises(RdbParseError):
+            self.load_from_file_and_check(file)
 
 
 class TestLoadFromFileRedis(unittest.TestCase):
