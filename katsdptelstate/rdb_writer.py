@@ -17,7 +17,6 @@
 import logging
 import os
 
-from .endpoint import endpoint_parser
 from .rdb_utility import encode_len
 
 
@@ -33,35 +32,20 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
  # RDB is happy with zero checksum - we will protect the RDB
  # dump in other ways
 
-DEFAULT_PORT = 6379
- # Default Redis port for use in endpoint constructors
-
 
 class RDBWriter(object):
-    """Very limited RDB dump utility used to dump a specified subset
-    of keys from an active Redis DB to a valid RDB format file.
+    """Dump a specified subset of keys from a Redis DB to an RDB dump file.
 
-    Either an endpoint, a compatible redis client, or a
-    :class:`katsdptelstate.Backend` must be provided.
+    This is a very limited RDB dump utility. Either a compatible redis client
+    or a :class:`katsdptelstate.Backend` must be provided.
 
     Parameters
     ----------
-    endpoint : str or :class:`~katsdptelstate.endpoint.Endpoint`
-        The address of the Redis server (if a string, it is passed to the
-        :class:`~katsdptelstate.endpoint.Endpoint` constructor).
-    client : :class:`~katsdptelstate.tabloid_redis.TabloidRedis` or :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
-        A Redis compatible client instance. Must support keys() and dump()
+    client : :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
+        A Redis-compatible client instance. Must support keys() and dump().
     """
-    def __init__(self, endpoint=None, client=None):
-        if not endpoint and not client:
-            raise ValueError("You must specify either an endpoint or a valid client.")
-        if client:
-            self._r = client
-        else:
-            import redis
-            if isinstance(endpoint, str):
-                endpoint = endpoint_parser(DEFAULT_PORT)(endpoint)
-            self._r = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
+    def __init__(self, client):
+        self.client = client
         self.logger = logging.getLogger(__name__)
 
     def save(self, filename, keys=None, supplemental_dumps=[]):
@@ -89,7 +73,7 @@ class RDBWriter(object):
         """
         if keys is None:
             self.logger.warning("No keys specified - dumping entire database")
-            keys = self._r.keys(b'*')
+            keys = self.client.keys(b'*')
 
         with open(filename, 'wb') as f:
             f.write(RDB_HEADER)
@@ -118,7 +102,7 @@ class RDBWriter(object):
         return [self._encode_item(key, client.dump(key)) for key in keys]
 
     def encode_item(self, key):
-        return self._encode_item(key, self._r.dump(key))
+        return self._encode_item(key, self.client.dump(key))
 
     def _encode_item(self, key, key_dump):
         """Returns a binary string containing an RDB encoded key and value.
@@ -155,6 +139,12 @@ class RDBWriter(object):
 
 if __name__ == '__main__':
     import argparse
+    import redis
+
+    from .endpoint import endpoint_parser
+
+    DEFAULT_PORT = 6379
+     # Default Redis port for use in endpoint constructors
 
     logging.basicConfig()
     logger = logging.getLogger()
@@ -171,12 +161,14 @@ if __name__ == '__main__':
                              .format(DEFAULT_PORT))
     args = parser.parse_args()
 
-    logger.info("Connecting to Redis instance at {}".format(args.redis))
-    rbd_writer = RDBWriter(args.redis)
+    endpoint = args.redis
+    logger.info("Connecting to Redis instance at {}".format(endpoint))
+    client = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
+    rbd_writer = RDBWriter(client)
     logger.info("Saving keys to RDB file {}".format(args.outfile))
     keys = args.keys
     if keys is not None:
-        keys = args.keys.split(",")
+        keys = keys.split(",")
     keys_written, keys_failed = rbd_writer.save(args.outfile, keys)
     if keys_failed > 0:
         logger.warning("Done - Warning {} keys failed to be written ({} succeeded)"
