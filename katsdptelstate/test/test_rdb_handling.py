@@ -133,6 +133,9 @@ class TestLoadFromFile(unittest.TestCase):
         file.read(1)
         with self.assertRaises(RdbParseError):
             self.load_from_file_and_check(file)
+        # Check what happens if file does not exist
+        with self.assertRaises(OSError):
+            self.load_from_file_and_check(self.filename + '.nonexistent')
 
 
 class TestLoadFromFileRedis(unittest.TestCase):

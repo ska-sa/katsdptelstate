@@ -122,6 +122,12 @@ class ConnectionError(TelstateError):
 
 class RdbParseError(TelstateError):
     """Error parsing RDB file."""
+    def __init__(self, filename=None):
+        self.filename = filename
+
+    def __str__(self):
+        name = repr(self.filename) if self.filename else 'object'
+        return 'Invalid RDB file {}'.format(name)
 
 
 class InvalidKeyError(TelstateError):

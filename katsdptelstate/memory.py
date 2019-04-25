@@ -110,6 +110,7 @@ class _Callback(RdbCallback):
         super(_Callback, self).__init__(string_escape=None)
         self.data = data
         self.n_keys = 0
+        self.client_busy = False
 
     def set(self, key, value, expiry, info):
         self.data[key] = value

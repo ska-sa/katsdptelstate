@@ -36,9 +36,13 @@ class Callback(RdbCallback):
         self.client = client
         self._zset = {}
         self.n_keys = 0
+        # Flag that helps to disambiguate callback errors from parser errors
+        self.client_busy = False
 
     def set(self, key, value, expiry, info):
+        self.client_busy = True
         self.client.set(key, value, expiry)
+        self.client_busy = False
         self.n_keys += 1
 
     def start_sorted_set(self, key, length, expiry, info):
@@ -49,7 +53,9 @@ class Callback(RdbCallback):
         self._zset[member] = score
 
     def end_sorted_set(self, key):
+        self.client_busy = True
         compat.zadd(self.client, key, self._zset)
+        self.client_busy = False
         self._zset = {}
 
 
@@ -58,11 +64,10 @@ def _parse_rdb_file(parser, fd, filename=None):
     try:
         parser.parse_fd(fd)
     except Exception as exc:
-        if exc.args == ('verify_magic_string', 'Invalid File Format'):
-            name = repr(filename) if filename else 'object'
-            err = RdbParseError('Invalid RDB file {}'.format(name))
-            raise_from(err, exc)
-        raise
+        # Don't remap exception to RdbParseError if it originates from callback
+        if parser._callback.client_busy:
+            raise
+        raise_from(RdbParseError(filename), exc)
 
 
 def load_from_file(callback, file):
