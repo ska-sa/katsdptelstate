@@ -54,11 +54,11 @@ class RDBWriter(object):
         ----------
         filename : str
             Destination filename. Will be opened in 'wb'.
-        keys : list
-            A list of the keys to extract from Redis and include in the dump.
+        keys : sequence of str or bytes, optional
+            The keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
-        supplemental_dumps : list
+        supplemental_dumps : sequence of bytes, optional
             A list of encoded supplemental key/values in string form to be included
             in the RDB dump.
 
@@ -103,7 +103,7 @@ class RDBWriter(object):
         return self._encode_item(key, self.client.dump(_ensure_binary(key)))
 
     def _encode_item(self, key, key_dump):
-        """Returns a binary string containing an RDB encoded key and value.
+        """Returns a binary string containing an RDB-encoded key and value.
 
         First byte is used to indicate the encoding used for the value of this key.
         This is essentially just the Redis type.
@@ -162,16 +162,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     endpoint = args.redis
-    logger.info("Connecting to Redis instance at {}".format(endpoint))
+    logger.info("Connecting to Redis instance at %s", endpoint)
     client = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
     rdb_writer = RDBWriter(client)
-    logger.info("Saving keys to RDB file {}".format(args.outfile))
+    logger.info("Saving keys to RDB file %s", args.outfile)
     keys = args.keys
     if keys is not None:
         keys = keys.split(",")
     keys_written, keys_failed = rdb_writer.save(args.outfile, keys)
     if keys_failed > 0:
-        logger.warning("Done - Warning {} keys failed to be written ({} succeeded)"
-                       .format(keys_failed, keys_written))
+        logger.warning("Done - Warning %d keys failed to be written (%d succeeded)",
+                       keys_failed, keys_written)
     else:
-        logger.info("Done - {} keys written".format(keys_written))
+        logger.info("Done - %d keys written", keys_written)
