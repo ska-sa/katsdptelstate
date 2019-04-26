@@ -19,18 +19,16 @@ import os
 
 from .rdb_utility import encode_len
 
-
+# Basic RDB header. First 5 bytes are the standard REDIS magic
+# Next 4 bytes store the RDB format version number (6 in this case)
+# 0xFE flags the start of the DB selector (which is set to 0)
 RDB_HEADER = b'REDIS0006\xfe\x00'
- # Basic RDB header. First 5 bytes are the standard REDIS magic
- # Next 4 bytes store the RDB format version number (6 in this case)
- # 0xFE flags the start of the DB selector (which is set to 0)
 
 RDB_TERMINATOR = b'\xFF'
 
+# Fast CRC-64 implementations on Python seem rare
+# RDB is happy with zero checksum - we will protect the RDB dump in other ways
 RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
- # Fast CRC-64 implementations on Python seem rare
- # RDB is happy with zero checksum - we will protect the RDB
- # dump in other ways
 
 
 class RDBWriter(object):
@@ -97,8 +95,7 @@ class RDBWriter(object):
         return (keys_written, keys_failed)
 
     def encode_supplemental_keys(self, client, keys):
-        """Helper class to encode a specific set of keys on a non-prime Redis like client.
-        """
+        """Helper class to encode a specific set of keys on a non-prime Redis like client."""
         return [self._encode_item(key, client.dump(key)) for key in keys]
 
     def encode_item(self, key):
@@ -113,11 +110,12 @@ class RDBWriter(object):
         Subsequent bytes represent the name of the key, which consists of a length
         encoding followed by the actual byte representation of the string. For this simple
         writer we only provide two length encoding schemas:
-             String length up to 63 - single byte, 6 LSB encode number directly
-             String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
 
-        Thereafter the value, encoding according to its appropriate schema is appended. As a shortcut,
-        the Redis DUMP command is used to generate the encoded value string.
+        - String length up to 63 - single byte, 6 LSB encode number directly
+        - String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
+
+        Thereafter the value, encoding according to its appropriate schema is appended.
+        As a shortcut, the Redis DUMP command is used to generate the encoded value string.
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
@@ -129,11 +127,12 @@ class RDBWriter(object):
             key_len = encode_len(len(key))
         except ValueError as e:
             raise ValueError('Failed to encode key length: {}'.format(e))
+        # The DUMPed value includes a leading type descriptor,
+        # the encoded value itself (including length specifier),
+        # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
+        # The version specified and checksum are discarded.
         key_type = key_dump[:1]
         encoded_val = key_dump[1:-10]
-         # The DUMPed value includes a leading type descriptor, the encoded value itself (including length specifier),
-         # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
-         # The version specified and checksum are discarded.
         return key_type + key_len + key + encoded_val
 
 
@@ -143,8 +142,8 @@ if __name__ == '__main__':
 
     from .endpoint import endpoint_parser
 
+    # Default Redis port for use in endpoint constructors
     DEFAULT_PORT = 6379
-     # Default Redis port for use in endpoint constructors
 
     logging.basicConfig()
     logger = logging.getLogger()
@@ -157,19 +156,19 @@ if __name__ == '__main__':
                         help='Comma-separated list of Redis keys to write to RDB. [default=all]')
     parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT),
                         default=endpoint_parser(DEFAULT_PORT)('localhost'),
-                        help='host[:port] of the Redis instance to connect to. [default=localhost:{}]'
-                             .format(DEFAULT_PORT))
+                        help='host[:port] of the Redis instance to connect to. '
+                             '[default=localhost:{}]'.format(DEFAULT_PORT))
     args = parser.parse_args()
 
     endpoint = args.redis
     logger.info("Connecting to Redis instance at {}".format(endpoint))
     client = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
-    rbd_writer = RDBWriter(client)
+    rdb_writer = RDBWriter(client)
     logger.info("Saving keys to RDB file {}".format(args.outfile))
     keys = args.keys
     if keys is not None:
         keys = keys.split(",")
-    keys_written, keys_failed = rbd_writer.save(args.outfile, keys)
+    keys_written, keys_failed = rdb_writer.save(args.outfile, keys)
     if keys_failed > 0:
         logger.warning("Done - Warning {} keys failed to be written ({} succeeded)"
                        .format(keys_failed, keys_written))
