@@ -15,58 +15,59 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
+from six import raise_from
 
 import logging
 import os.path
 
 from rdbtools import RdbParser, RdbCallback
-from . import compat
+
+from .telescope_state import RdbParseError
 
 
 logger = logging.getLogger(__name__)
 
 
-class Callback(RdbCallback):
-    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
-    def __init__(self, client):
-        super(Callback, self).__init__(string_escape=None)
-        self.client = client
-        self._zset = {}
+class BackendCallback(RdbCallback):
+    """A callback adapter that stores keys in backend as RDB file is parsed."""
+    def __init__(self):
+        super(BackendCallback, self).__init__(string_escape=None)
+        # Counter keeping track of number of keys inserted into backend
         self.n_keys = 0
+        # Flag that helps to disambiguate callback errors from parser errors
+        self.client_busy = False
 
-    def set(self, key, value, expiry, info):
-        self.client.set(key, value, expiry)
-        self.n_keys += 1
 
-    def start_sorted_set(self, key, length, expiry, info):
-        self._zset = {}
-        self.n_keys += 1
-
-    def zadd(self, key, score, member):
-        self._zset[member] = score
-
-    def end_sorted_set(self, key):
-        compat.zadd(self.client, key, self._zset)
-        self._zset = {}
+def _parse_rdb_file(parser, callback, fd, filename=None):
+    """Apply RDB parser to file descriptor, raising RdbParseError on error."""
+    try:
+        parser.parse_fd(fd)
+    except Exception as exc:
+        # Don't remap exception to RdbParseError if it originates from callback
+        if callback.client_busy:
+            raise
+        raise_from(RdbParseError(filename), exc)
 
 
 def load_from_file(callback, file):
-    """Load keys from the specified RDB-compatible dump file.
+    """Load keys from the specified RDB-compatible dump file into backend.
 
     Parameters
     ----------
-    callback : :class:`rdbtools.RdbCallback`-like with `n_keys` attribute
-        Backend-specific callback that stores keys as RDB file is parsed. In
-        addition to the interface of :class:`rdbtools.RdbCallback` it should
-        have an `n_keys` attribute that reflects the number of keys loaded from
-        the RDB file.
+    callback : :class:`katsdptelstate.rdb_reader.BackendCallback`
+        Backend-specific callback that stores keys as RDB file is parsed
     file : str or file-like object
         Filename of .rdb file to import, or object representing contents of RDB
 
     Returns
     -------
     int
-        Number of keys loaded (obtained from :attr:`callback.n_keys`)
+        Number of keys loaded into backend
+
+    Raises
+    ------
+    RdbParseError
+        If `file` does not represent a valid RDB file
     """
     try:
         size = os.path.getsize(file)
@@ -78,8 +79,8 @@ def load_from_file(callback, file):
     try:
         fd = open(file, 'rb')
     except TypeError:
-        parser.parse_fd(file)
+        _parse_rdb_file(parser, callback, file)
     else:
         with fd:
-            parser.parse_fd(fd)
+            _parse_rdb_file(parser, callback, fd, file)
     return callback.n_keys

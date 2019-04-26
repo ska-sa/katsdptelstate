@@ -23,11 +23,11 @@ import logging
 from .telescope_state import Backend, ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
-    from rdbtools import RdbCallback
     from . import rdb_reader
-except ImportError as _rdb_reader_import_error:
-    RdbCallback = object     # So that _Callback can still be defined
+    from .rdb_reader import BackendCallback
+except ImportError as _rdb_reader_import_error:   # noqa: F841
     rdb_reader = None
+    BackendCallback = object     # So that MemoryCallback can still be defined
 
 
 _INF = float('inf')
@@ -104,12 +104,11 @@ def _compile_pattern(pattern):
     return re.compile(regex, re.S)
 
 
-class _Callback(RdbCallback):
-    """Callback that stores keys in :class:`MemoryBackend` data structure."""
+class MemoryCallback(BackendCallback):
+    """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
     def __init__(self, data):
-        super(_Callback, self).__init__(string_escape=None)
+        super(MemoryCallback, self).__init__()
         self.data = data
-        self.n_keys = 0
 
     def set(self, key, value, expiry, info):
         self.data[key] = value
@@ -143,8 +142,8 @@ class MemoryBackend(Backend):
 
     def load_from_file(self, file):
         if rdb_reader is None:
-            raise _rdb_reader_import_error
-        return rdb_reader.load_from_file(_Callback(self._data), file)
+            raise _rdb_reader_import_error   # noqa: F821
+        return rdb_reader.load_from_file(MemoryCallback(self._data), file)
 
     def __contains__(self, key):
         return key in self._data

@@ -23,12 +23,15 @@ import shutil
 import os
 import tempfile
 
+import redis
+import fakeredis
+
 from katsdptelstate.rdb_writer import RDBWriter
-from katsdptelstate.rdb_reader import load_from_file, Callback
+from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
-from katsdptelstate.redis import RedisBackend
-from katsdptelstate import TelescopeState
+from katsdptelstate.redis import RedisBackend, RedisCallback
+from katsdptelstate import TelescopeState, RdbParseError
 
 
 class TestRDBHandling(unittest.TestCase):
@@ -56,14 +59,14 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'), keys=['does_not_exist'])[0], 0)
 
         local_tr = TabloidRedis()
-        self.assertEqual(load_from_file(Callback(local_tr), self.base('all.rdb')), 2)
+        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 2)
         self.assertEqual(set(local_tr.keys()), {b'write', b'writezl'})
         self.assertEqual(local_tr.get('write'), test_str)
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
         local_tr = TabloidRedis()
-        load_from_file(Callback(local_tr), self.base('one.rdb'))
+        load_from_file(RedisCallback(local_tr), self.base('one.rdb'))
         self.assertEqual(local_tr.keys(), [b'writezl'])
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
@@ -73,7 +76,7 @@ class TestRDBHandling(unittest.TestCase):
         self.rdb_writer.save(self.base('zset.rdb'))
 
         local_tr = TabloidRedis()
-        load_from_file(Callback(local_tr), self.base('zset.rdb'))
+        load_from_file(RedisCallback(local_tr), self.base('zset.rdb'))
         self.assertEqual(local_tr.keys(), [b'my_zset'])
         vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
         self.assertEqual(vec, [(item, 0.0) for item in items])
@@ -107,6 +110,15 @@ class TestLoadFromFile(unittest.TestCase):
     def make_telescope_state(self):
         return TelescopeState()
 
+    def save_to_file(self, file):
+        write_ts = self.make_telescope_state()
+        write_ts['immutable'] = ['some value']
+        write_ts.add('mutable', 'first', 12.0)
+        write_ts.add('mutable', 'second', 15.5)
+        # Write data to file
+        rdb_writer = RDBWriter(client=write_ts.backend)
+        rdb_writer.save(file)
+
     def load_from_file_and_check(self, file):
         # Load RDB file back into some backend
         read_ts = self.make_telescope_state()
@@ -118,19 +130,30 @@ class TestLoadFromFile(unittest.TestCase):
                          [('first', 12.0), ('second', 15.5)])
 
     def test_load_from_file(self):
-        write_ts = self.make_telescope_state()
-        write_ts['immutable'] = ['some value']
-        write_ts.add('mutable', 'first', 12.0)
-        write_ts.add('mutable', 'second', 15.5)
-        # Write data to file
-        rdb_writer = RDBWriter(client=write_ts.backend)
-        rdb_writer.save(self.filename)
+        self.save_to_file(self.filename)
         # Check loading from filenames and file-like objects
         self.load_from_file_and_check(self.filename)
         self.load_from_file_and_check(open(self.filename, 'rb'))
+        # Check that malformed RDB file raises the appropriate exception
+        file = open(self.filename, 'rb')
+        file.read(1)
+        with self.assertRaises(RdbParseError):
+            self.load_from_file_and_check(file)
+        # Check what happens if file does not exist
+        with self.assertRaises(OSError):
+            self.load_from_file_and_check(self.filename + '.nonexistent')
 
 
-class TestLoadFromFileRedis(unittest.TestCase):
+class TestLoadFromFileRedis(TestLoadFromFile):
     """Test :meth:`TelescopeState.load_from_file` with redis backend."""
-    def make_telescope_state(self):
-        return TelescopeState(RedisBackend(TabloidRedis()))
+    def make_telescope_state(self, **kwargs):
+        return TelescopeState(RedisBackend(TabloidRedis(**kwargs)))
+
+    def test_callback_errors_are_preserved(self):
+        """Check that a redis.ConnectionError doesn't mutate into RdbParseError."""
+        self.save_to_file(self.filename)
+        server = fakeredis.FakeServer()
+        read_ts = self.make_telescope_state(server=server)
+        server.connected = False
+        with self.assertRaises(redis.ConnectionError):
+            read_ts.load_from_file(self.filename)

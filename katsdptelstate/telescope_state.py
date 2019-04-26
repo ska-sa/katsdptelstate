@@ -120,6 +120,16 @@ class ConnectionError(TelstateError):
     """The initial connection to the Redis server failed."""
 
 
+class RdbParseError(TelstateError):
+    """Error parsing RDB file."""
+    def __init__(self, filename=None):
+        self.filename = filename
+
+    def __str__(self):
+        name = repr(self.filename) if self.filename else 'object'
+        return 'Invalid RDB file {}'.format(name)
+
+
 class InvalidKeyError(TelstateError):
     """A key collides with a class attribute"""
 
@@ -649,9 +659,35 @@ class TelescopeState(object):
         return self._backend
 
     def load_from_file(self, file):
-        """Load keys from a Redis-compatible RDB file (as filename or object).
+        """Load keys from a Redis-compatible RDB snapshot file.
 
-        Will raise ImportError if the rdbtools package is not installed.
+        Redis keys are extracted sequentially from the RDB file and inserted
+        directly into the backend without any checks and ignoring the view.
+        It is therefore a bad idea to insert keys that already exist in telstate
+        and this will lead to undefined behaviour. The standard approach is
+        to call this method on an empty telstate.
+
+        If there is an error reading or parsing the RDB file (indicating either
+        a broken file or a non-RDB file), an `RdbParseError` is raised. Errors
+        raised while opening the file (like `OSError`) and errors raised by the
+        backend itself (like redis errors) can also occur.
+
+        Parameters
+        ----------
+        file : str or file object
+            Filename or file object representing RDB file
+
+        Returns
+        -------
+        keys_loaded : int
+            Number of keys loaded from RDB file into telstate
+
+        Raises
+        ------
+        ImportError
+            If the rdbtools package is not installed
+        RdbParseError
+            If the file could not be parsed (truncated / malformed / not RDB)
         """
         keys_loaded = self._backend.load_from_file(file)
         logger.info("Loading {} keys from {}".format(keys_loaded, file))
