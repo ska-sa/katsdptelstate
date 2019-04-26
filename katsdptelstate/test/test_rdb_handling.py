@@ -27,7 +27,7 @@ import redis
 import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
-from katsdptelstate.rdb_reader import load_from_file, Callback
+from katsdptelstate.rdb_reader import load_from_file, RedisCallback
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend
@@ -59,14 +59,14 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'), keys=['does_not_exist'])[0], 0)
 
         local_tr = TabloidRedis()
-        self.assertEqual(load_from_file(Callback(local_tr), self.base('all.rdb')), 2)
+        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 2)
         self.assertEqual(set(local_tr.keys()), {b'write', b'writezl'})
         self.assertEqual(local_tr.get('write'), test_str)
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
         local_tr = TabloidRedis()
-        load_from_file(Callback(local_tr), self.base('one.rdb'))
+        load_from_file(RedisCallback(local_tr), self.base('one.rdb'))
         self.assertEqual(local_tr.keys(), [b'writezl'])
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
@@ -76,7 +76,7 @@ class TestRDBHandling(unittest.TestCase):
         self.rdb_writer.save(self.base('zset.rdb'))
 
         local_tr = TabloidRedis()
-        load_from_file(Callback(local_tr), self.base('zset.rdb'))
+        load_from_file(RedisCallback(local_tr), self.base('zset.rdb'))
         self.assertEqual(local_tr.keys(), [b'my_zset'])
         vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
         self.assertEqual(vec, [(item, 0.0) for item in items])

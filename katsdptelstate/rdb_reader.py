@@ -29,15 +29,22 @@ from .telescope_state import RdbParseError
 logger = logging.getLogger(__name__)
 
 
-class Callback(RdbCallback):
-    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
-    def __init__(self, client):
-        super(Callback, self).__init__(string_escape=None)
-        self.client = client
-        self._zset = {}
+class BackendCallback(RdbCallback):
+    """A callback adapter that stores keys in backend as RDB file is parsed."""
+    def __init__(self):
+        super(BackendCallback, self).__init__(string_escape=None)
+        # Counter keeping track of number of keys inserted into backend
         self.n_keys = 0
         # Flag that helps to disambiguate callback errors from parser errors
         self.client_busy = False
+
+
+class RedisCallback(BackendCallback):
+    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
+    def __init__(self, client):
+        super(RedisCallback, self).__init__()
+        self.client = client
+        self._zset = {}
 
     def set(self, key, value, expiry, info):
         self.client_busy = True
@@ -71,22 +78,19 @@ def _parse_rdb_file(parser, callback, fd, filename=None):
 
 
 def load_from_file(callback, file):
-    """Load keys from the specified RDB-compatible dump file.
+    """Load keys from the specified RDB-compatible dump file into backend.
 
     Parameters
     ----------
-    callback : :class:`rdbtools.RdbCallback`-like with `n_keys` attribute
-        Backend-specific callback that stores keys as RDB file is parsed. In
-        addition to the interface of :class:`rdbtools.RdbCallback` it should
-        have an `n_keys` attribute that reflects the number of keys loaded from
-        the RDB file.
+    callback : :class:`katsdptelstate.rdb_reader.BackendCallback`
+        Backend-specific callback that stores keys as RDB file is parsed
     file : str or file-like object
         Filename of .rdb file to import, or object representing contents of RDB
 
     Returns
     -------
     int
-        Number of keys loaded (obtained from :attr:`callback.n_keys`)
+        Number of keys loaded into backend
 
     Raises
     ------

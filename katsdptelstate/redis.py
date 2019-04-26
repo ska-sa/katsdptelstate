@@ -60,7 +60,7 @@ class RedisBackend(Backend):
     def load_from_file(self, file):
         if rdb_reader is None:
             raise _rdb_reader_import_error
-        callback = rdb_reader.Callback(self.client)
+        callback = rdb_reader.RedisCallback(self.client)
         return rdb_reader.load_from_file(callback, file)
 
     def __contains__(self, key):
