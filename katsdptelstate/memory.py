@@ -25,7 +25,7 @@ from .rdb_utility import dump_string, dump_zset
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
-except ImportError as _rdb_reader_import_error:
+except ImportError as _rdb_reader_import_error:   # noqa: F841
     rdb_reader = None
     BackendCallback = object     # So that MemoryCallback can still be defined
 
@@ -105,7 +105,7 @@ def _compile_pattern(pattern):
 
 
 class MemoryCallback(BackendCallback):
-    """Callback that stores keys in :class:`MemoryBackend` data structure."""
+    """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
     def __init__(self, data):
         super(MemoryCallback, self).__init__()
         self.data = data
@@ -142,7 +142,7 @@ class MemoryBackend(Backend):
 
     def load_from_file(self, file):
         if rdb_reader is None:
-            raise _rdb_reader_import_error
+            raise _rdb_reader_import_error   # noqa: F821
         return rdb_reader.load_from_file(MemoryCallback(self._data), file)
 
     def __contains__(self, key):

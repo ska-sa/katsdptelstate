@@ -25,7 +25,7 @@ from . import compat
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
-except ImportError as _rdb_reader_import_error:
+except ImportError as _rdb_reader_import_error:   # noqa: F841
     rdb_reader = None
     BackendCallback = object     # So that RedisCallback can still be defined
 
@@ -35,7 +35,7 @@ _MESSAGE_CHANNEL = b'tm_info'
 
 
 class RedisCallback(BackendCallback):
-    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
+    """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
         super(RedisCallback, self).__init__()
         self.client = client
@@ -88,7 +88,7 @@ class RedisBackend(Backend):
 
     def load_from_file(self, file):
         if rdb_reader is None:
-            raise _rdb_reader_import_error
+            raise _rdb_reader_import_error   # noqa: F821
         return rdb_reader.load_from_file(RedisCallback(self.client), file)
 
     def __contains__(self, key):
