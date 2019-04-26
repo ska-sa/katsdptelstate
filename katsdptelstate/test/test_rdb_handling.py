@@ -27,10 +27,10 @@ import redis
 import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
-from katsdptelstate.rdb_reader import load_from_file, RedisCallback
+from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.tabloid_redis import TabloidRedis
 from katsdptelstate.compat import zadd
-from katsdptelstate.redis import RedisBackend
+from katsdptelstate.redis import RedisBackend, RedisCallback
 from katsdptelstate import TelescopeState, RdbParseError
 
 

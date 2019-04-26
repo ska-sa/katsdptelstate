@@ -22,7 +22,6 @@ import os.path
 
 from rdbtools import RdbParser, RdbCallback
 
-from . import compat
 from .telescope_state import RdbParseError
 
 
@@ -37,33 +36,6 @@ class BackendCallback(RdbCallback):
         self.n_keys = 0
         # Flag that helps to disambiguate callback errors from parser errors
         self.client_busy = False
-
-
-class RedisCallback(BackendCallback):
-    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
-    def __init__(self, client):
-        super(RedisCallback, self).__init__()
-        self.client = client
-        self._zset = {}
-
-    def set(self, key, value, expiry, info):
-        self.client_busy = True
-        self.client.set(key, value, expiry)
-        self.client_busy = False
-        self.n_keys += 1
-
-    def start_sorted_set(self, key, length, expiry, info):
-        self._zset = {}
-        self.n_keys += 1
-
-    def zadd(self, key, score, member):
-        self._zset[member] = score
-
-    def end_sorted_set(self, key):
-        self.client_busy = True
-        compat.zadd(self.client, key, self._zset)
-        self.client_busy = False
-        self._zset = {}
 
 
 def _parse_rdb_file(parser, callback, fd, filename=None):

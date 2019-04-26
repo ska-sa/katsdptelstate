@@ -26,8 +26,8 @@ try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
 except ImportError as _rdb_reader_import_error:
-    BackendCallback = object     # So that MemoryCallback can still be defined
     rdb_reader = None
+    BackendCallback = object     # So that MemoryCallback can still be defined
 
 
 _INF = float('inf')

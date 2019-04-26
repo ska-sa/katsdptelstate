@@ -21,15 +21,44 @@ import contextlib
 import redis
 
 from .telescope_state import ConnectionError, ImmutableKeyError, Backend
-from .compat import zadd
+from . import compat
 try:
     from . import rdb_reader
+    from .rdb_reader import BackendCallback
 except ImportError as _rdb_reader_import_error:
     rdb_reader = None
+    BackendCallback = object     # So that RedisCallback can still be defined
 
 
 _INF = float('inf')
 _MESSAGE_CHANNEL = b'tm_info'
+
+
+class RedisCallback(BackendCallback):
+    """Callback that stores keys in :class:`redis.StrictRedis`-like client."""
+    def __init__(self, client):
+        super(RedisCallback, self).__init__()
+        self.client = client
+        self._zset = {}
+
+    def set(self, key, value, expiry, info):
+        self.client_busy = True
+        self.client.set(key, value, expiry)
+        self.client_busy = False
+        self.n_keys += 1
+
+    def start_sorted_set(self, key, length, expiry, info):
+        self._zset = {}
+        self.n_keys += 1
+
+    def zadd(self, key, score, member):
+        self._zset[member] = score
+
+    def end_sorted_set(self, key):
+        self.client_busy = True
+        compat.zadd(self.client, key, self._zset)
+        self.client_busy = False
+        self._zset = {}
 
 
 @contextlib.contextmanager
@@ -60,8 +89,7 @@ class RedisBackend(Backend):
     def load_from_file(self, file):
         if rdb_reader is None:
             raise _rdb_reader_import_error
-        callback = rdb_reader.RedisCallback(self.client)
-        return rdb_reader.load_from_file(callback, file)
+        return rdb_reader.load_from_file(RedisCallback(self.client), file)
 
     def __contains__(self, key):
         return self.client.exists(key)
@@ -103,7 +131,7 @@ class RedisBackend(Backend):
     def add_mutable(self, key, value, timestamp):
         str_val = self.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            zadd(self.client, key, {str_val: 0})
+            compat.zadd(self.client, key, {str_val: 0})
         self.client.publish(b'update/' + key, str_val)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
