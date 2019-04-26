@@ -661,6 +661,17 @@ class TelescopeState(object):
     def load_from_file(self, file):
         """Load keys from a Redis-compatible RDB snapshot file.
 
+        Redis keys are extracted sequentially from the RDB file and inserted
+        directly into the backend without any checks and ignoring the view.
+        It is therefore a bad idea to insert keys that already exist in telstate
+        and this will lead to undefined behaviour. The standard approach is
+        to call this method on an empty telstate.
+
+        If there is an error reading or parsing the RDB file (indicating either
+        a broken file or a non-RDB file), an `RdbParseError` is raised. Errors
+        raised while opening the file (like `OSError`) and errors raised by the
+        backend itself (like redis errors) can also occur.
+
         Parameters
         ----------
         file : str or file object

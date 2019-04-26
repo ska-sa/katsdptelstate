@@ -59,13 +59,13 @@ class Callback(RdbCallback):
         self._zset = {}
 
 
-def _parse_rdb_file(parser, fd, filename=None):
+def _parse_rdb_file(parser, callback, fd, filename=None):
     """Apply RDB parser to file descriptor, raising RdbParseError on error."""
     try:
         parser.parse_fd(fd)
     except Exception as exc:
         # Don't remap exception to RdbParseError if it originates from callback
-        if parser._callback.client_busy:
+        if callback.client_busy:
             raise
         raise_from(RdbParseError(filename), exc)
 
@@ -103,8 +103,8 @@ def load_from_file(callback, file):
     try:
         fd = open(file, 'rb')
     except TypeError:
-        _parse_rdb_file(parser, file)
+        _parse_rdb_file(parser, callback, file)
     else:
         with fd:
-            _parse_rdb_file(parser, fd, file)
+            _parse_rdb_file(parser, callback, fd, file)
     return callback.n_keys
