@@ -18,6 +18,7 @@ import logging
 import os
 
 from .rdb_utility import encode_len
+from .telescope_state import _ensure_binary, _display_str
 
 # Basic RDB header. First 5 bytes are the standard REDIS magic
 # Next 4 bytes store the RDB format version number (6 in this case)
@@ -46,9 +47,8 @@ class RDBWriter(object):
         self.client = client
         self.logger = logging.getLogger(__name__)
 
-    def save(self, filename, keys=None, supplemental_dumps=[]):
-        """Encodes specified keys from the RDB file into binary
-        string representation and writes these to a file.
+    def save(self, filename, keys=None, supplemental_dumps=None):
+        """Extract some keys from Redis DB as RDB-encoded bytes and save to RDB file.
 
         Parameters
         ----------
@@ -82,12 +82,13 @@ class RDBWriter(object):
                     enc_str = self.encode_item(key)
                 except (ValueError, KeyError) as e:
                     keys_failed += 1
-                    self.logger.error("Failed to save key: {}".format(e))
+                    self.logger.error("Failed to save key %s: %s", _display_str(key), e)
                     continue
                 f.write(enc_str)
                 keys_written += 1
-            for dump in supplemental_dumps:
-                f.write(dump)
+            if supplemental_dumps is not None:
+                for dump in supplemental_dumps:
+                    f.write(dump)
             f.write(RDB_TERMINATOR + RDB_CHECKSUM)
         if not keys_written:
             self.logger.error("No valid keys found - removing empty file")
@@ -95,11 +96,11 @@ class RDBWriter(object):
         return (keys_written, keys_failed)
 
     def encode_supplemental_keys(self, client, keys):
-        """Helper class to encode a specific set of keys on a non-prime Redis like client."""
-        return [self._encode_item(key, client.dump(key)) for key in keys]
+        """RDB-encode a specific set of keys extracted from a redis-like client."""
+        return [self._encode_item(key, client.dump(_ensure_binary(key))) for key in keys]
 
     def encode_item(self, key):
-        return self._encode_item(key, self.client.dump(key))
+        return self._encode_item(key, self.client.dump(_ensure_binary(key)))
 
     def _encode_item(self, key, key_dump):
         """Returns a binary string containing an RDB encoded key and value.
@@ -119,14 +120,14 @@ class RDBWriter(object):
 
         Note: Redis provides a mechanism for optional key expiry, which we ignore here.
         """
+        key = _ensure_binary(key)
+        key_str = _display_str(key)
         if not key_dump:
-            raise KeyError('Key {} not found in Redis'.format(key))
-        if not isinstance(key, bytes):
-            key = key.encode('utf-8')
+            raise KeyError('Key {} not found in Redis'.format(key_str))
         try:
             key_len = encode_len(len(key))
         except ValueError as e:
-            raise ValueError('Failed to encode key length: {}'.format(e))
+            raise ValueError('Failed to encode key {} length: {}'.format(key_str, e))
         # The DUMPed value includes a leading type descriptor,
         # the encoded value itself (including length specifier),
         # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
