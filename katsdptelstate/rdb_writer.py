@@ -31,6 +31,8 @@ RDB_TERMINATOR = b'\xFF'
 # RDB is happy with zero checksum - we will protect the RDB dump in other ways
 RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 
+logger = logging.getLogger(__name__)
+
 
 class RDBWriter(object):
     """Dump a specified subset of keys from a Redis DB to an RDB dump file.
@@ -45,7 +47,6 @@ class RDBWriter(object):
     """
     def __init__(self, client):
         self.client = client
-        self.logger = logging.getLogger(__name__)
 
     def save(self, filename, keys=None, supplemental_dumps=None):
         """Extract some keys from Redis DB as RDB-encoded bytes and save to RDB file.
@@ -70,7 +71,7 @@ class RDBWriter(object):
             Number of keys that failed to be written.
         """
         if keys is None:
-            self.logger.warning("No keys specified - dumping entire database")
+            logger.warning("No keys specified - dumping entire database")
             keys = self.client.keys(b'*')
 
         with open(filename, 'wb') as f:
@@ -82,7 +83,7 @@ class RDBWriter(object):
                     enc_str = self.encode_item(key)
                 except (ValueError, KeyError) as e:
                     keys_failed += 1
-                    self.logger.error("Failed to save key %s: %s", _display_str(key), e)
+                    logger.error("Failed to save key %s: %s", _display_str(key), e)
                     continue
                 f.write(enc_str)
                 keys_written += 1
@@ -91,7 +92,7 @@ class RDBWriter(object):
                     f.write(dump)
             f.write(RDB_TERMINATOR + RDB_CHECKSUM)
         if not keys_written:
-            self.logger.error("No valid keys found - removing empty file")
+            logger.error("No valid keys found - removing empty file")
             os.remove(filename)
         return (keys_written, keys_failed)
 
