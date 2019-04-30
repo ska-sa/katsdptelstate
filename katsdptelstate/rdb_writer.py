@@ -16,6 +16,7 @@
 
 import logging
 import os
+from contextlib import contextmanager
 
 from .rdb_utility import encode_len
 from .telescope_state import _ensure_binary, _display_str
@@ -34,108 +35,117 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 logger = logging.getLogger(__name__)
 
 
-class RDBWriter(object):
-    """Dump a specified subset of keys from a Redis DB to an RDB dump file.
+def encode_item(key, key_dump):
+    """Encode key and corresponding DUMPed value to RDB format.
 
-    This is a very limited RDB dump utility. Either a compatible redis client
-    or a :class:`katsdptelstate.Backend` must be provided.
+    First byte is used to indicate the encoding used for the value of this key.
+    This is essentially just the Redis type.
+
+    Subsequent bytes represent the name of the key, which consists of a length
+    encoding followed by the actual byte representation of the string. For this simple
+    writer we only provide two length encoding schemas:
+
+    - String length up to 63 - single byte, 6 LSB encode number directly
+    - String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
+
+    Thereafter the value, encoding according to its appropriate schema is appended.
+    As a shortcut, the Redis DUMP command is used to generate the encoded value string.
+
+    Note: Redis provides a mechanism for optional key expiry, which we ignore here.
+    """
+    try:
+        key_len = encode_len(len(key))
+    except ValueError as e:
+        raise ValueError('Failed to encode key length: {}'.format(e))
+    # The DUMPed value includes a leading type descriptor,
+    # the encoded value itself (including length specifier),
+    # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
+    # The version specified and checksum are discarded.
+    key_type = key_dump[:1]
+    encoded_val = key_dump[1:-10]
+    return key_type + key_len + key + encoded_val
+
+
+@contextmanager
+def _rdb_file(filename):
+    """Create new RDB file and ensure that header and trailer are in place."""
+    with open(filename, 'wb') as f:
+        f.write(RDB_HEADER)
+        try:
+            yield f
+        finally:
+            f.write(RDB_TERMINATOR + RDB_CHECKSUM)
+
+
+class RDBWriter(object):
+    """RDB file resource that stores keys from one (or more) Redis DBs.
 
     Parameters
     ----------
-    client : :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
-        A Redis-compatible client instance. Must support keys() and dump().
-    """
-    def __init__(self, client):
-        self.client = client
+    filename : str
+        Destination filename. Will be opened in 'wb'.
 
-    def save(self, filename, keys=None, supplemental_dumps=None):
-        """Extract some keys from Redis DB as RDB-encoded bytes and save to RDB file.
+    Attributes
+    ----------
+    keys_written : int
+        Number of keys written to the file.
+    keys_failed : int
+        Number of keys that failed to be written.
+    """
+    def __init__(self, filename):
+        self.filename = filename
+        self.keys_written = 0
+        self.keys_failed = 0
+        self._rdb_context = _rdb_file(self.filename)
+        self._fileobj = None
+
+    def __enter__(self):
+        """Enter RDB writer context, opening RDB file and writing header."""
+        self._fileobj = self._rdb_context.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Exit RDB writer context, closing off file and deleting it if empty."""
+        try:
+            self._rdb_context.__exit__(exc_type, exc_value, traceback)
+        finally:
+            if not self.keys_written:
+                logger.error("No valid keys found - removing empty file")
+                os.remove(self.filename)
+        return False
+
+    def save(self, client, keys=None):
+        """Save a specified subset of keys from a Redis DB to the RDB dump file.
+
+        This is a very limited RDB dump utility. Either a compatible redis client
+        or a :class:`katsdptelstate.Backend` must be provided. Missing or broken
+        keys are skipped and logged without raising an exception.
 
         Parameters
         ----------
-        filename : str
-            Destination filename. Will be opened in 'wb'.
+        client : :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
+            A Redis-compatible client instance. Must support keys() and dump().
         keys : sequence of str or bytes, optional
             The keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
-        supplemental_dumps : sequence of bytes, optional
-            A list of encoded supplemental key/values in string form to be included
-            in the RDB dump.
-
-        Returns
-        -------
-        keys_written : int
-            Number of keys written to the file.
-        keys_failed : int
-            Number of keys that failed to be written.
         """
         if keys is None:
             logger.warning("No keys specified - dumping entire database")
-            keys = self.client.keys(b'*')
-
-        with open(filename, 'wb') as f:
-            f.write(RDB_HEADER)
-            keys_written = 0
-            keys_failed = 0
-            for key in keys:
-                try:
-                    enc_str = self.encode_item(key)
-                except (ValueError, KeyError) as e:
-                    keys_failed += 1
-                    logger.error("Failed to save key %s: %s", _display_str(key), e)
-                    continue
-                f.write(enc_str)
-                keys_written += 1
-            if supplemental_dumps is not None:
-                for dump in supplemental_dumps:
-                    f.write(dump)
-            f.write(RDB_TERMINATOR + RDB_CHECKSUM)
-        if not keys_written:
-            logger.error("No valid keys found - removing empty file")
-            os.remove(filename)
-        return (keys_written, keys_failed)
-
-    def encode_supplemental_keys(self, client, keys):
-        """RDB-encode a specific set of keys extracted from a redis-like client."""
-        return [self._encode_item(key, client.dump(_ensure_binary(key))) for key in keys]
-
-    def encode_item(self, key):
-        return self._encode_item(key, self.client.dump(_ensure_binary(key)))
-
-    def _encode_item(self, key, key_dump):
-        """Returns a binary string containing an RDB-encoded key and value.
-
-        First byte is used to indicate the encoding used for the value of this key.
-        This is essentially just the Redis type.
-
-        Subsequent bytes represent the name of the key, which consists of a length
-        encoding followed by the actual byte representation of the string. For this simple
-        writer we only provide two length encoding schemas:
-
-        - String length up to 63 - single byte, 6 LSB encode number directly
-        - String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
-
-        Thereafter the value, encoding according to its appropriate schema is appended.
-        As a shortcut, the Redis DUMP command is used to generate the encoded value string.
-
-        Note: Redis provides a mechanism for optional key expiry, which we ignore here.
-        """
-        key = _ensure_binary(key)
-        key_str = _display_str(key)
-        if not key_dump:
-            raise KeyError('Key {} not found in Redis'.format(key_str))
-        try:
-            key_len = encode_len(len(key))
-        except ValueError as e:
-            raise ValueError('Failed to encode key {} length: {}'.format(key_str, e))
-        # The DUMPed value includes a leading type descriptor,
-        # the encoded value itself (including length specifier),
-        # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
-        # The version specified and checksum are discarded.
-        key_type = key_dump[:1]
-        encoded_val = key_dump[1:-10]
-        return key_type + key_len + key + encoded_val
+            keys = client.keys(b'*')
+        for key in keys:
+            key = _ensure_binary(key)
+            key_dump = client.dump(key)
+            try:
+                if not key_dump:
+                    raise KeyError('Key not found in Redis')
+                encoded_str = encode_item(key, key_dump)
+            except (ValueError, KeyError) as e:
+                self.keys_failed += 1
+                logger.error("Failed to save key %s: %s", _display_str(key), e)
+                continue
+            self._fileobj.write(encoded_str)
+            self.keys_written += 1
 
 
 if __name__ == '__main__':
@@ -165,14 +175,14 @@ if __name__ == '__main__':
     endpoint = args.redis
     logger.info("Connecting to Redis instance at %s", endpoint)
     client = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
-    rdb_writer = RDBWriter(client)
     logger.info("Saving keys to RDB file %s", args.outfile)
     keys = args.keys
     if keys is not None:
         keys = keys.split(",")
-    keys_written, keys_failed = rdb_writer.save(args.outfile, keys)
-    if keys_failed > 0:
+    with RDBWriter(args.outfile) as rdb_writer:
+        rdb_writer.save(client, keys)
+    if rdb_writer.keys_failed > 0:
         logger.warning("Done - Warning %d keys failed to be written (%d succeeded)",
-                       keys_failed, keys_written)
+                       rdb_writer.keys_failed, rdb_writer.keys_written)
     else:
-        logger.info("Done - %d keys written", keys_written)
+        logger.info("Done - %d keys written", rdb_writer.keys_written)
