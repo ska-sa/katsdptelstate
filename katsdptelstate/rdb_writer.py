@@ -19,7 +19,6 @@ from six import raise_from
 
 import logging
 import os
-from contextlib import contextmanager
 
 from .rdb_utility import encode_len
 from .telescope_state import _ensure_binary, _display_str, TelescopeState
@@ -64,17 +63,6 @@ def encode_item(key, dumped_value):
     return key_type + key_len + key + encoded_value
 
 
-@contextmanager
-def _rdb_file(filename):
-    """Create new RDB file and ensure that header and trailer are in place."""
-    with open(filename, 'wb') as f:
-        f.write(RDB_HEADER)
-        try:
-            yield f
-        finally:
-            f.write(RDB_TERMINATOR + RDB_CHECKSUM)
-
-
 class RDBWriter(object):
     """RDB file resource that stores keys from one (or more) Redis DBs.
 
@@ -98,8 +86,13 @@ class RDBWriter(object):
         self.filename = filename
         self.keys_written = 0
         self.keys_failed = 0
-        self._rdb_context = _rdb_file(self.filename)
-        self._fileobj = self._rdb_context.__enter__()
+        self._fileobj = open(filename, 'wb')
+        try:
+            self._fileobj.write(RDB_HEADER)
+        except Exception:
+            # Make sure that file is at least closed if header failed
+            self._fileobj.close()
+            raise
 
     def __enter__(self):
         return self
@@ -110,8 +103,9 @@ class RDBWriter(object):
     def close(self):
         """Close off RDB file and delete it if it contains no keys."""
         try:
-            self._rdb_context.__exit__(None, None, None)
+            self._fileobj.write(RDB_TERMINATOR + RDB_CHECKSUM)
         finally:
+            self._fileobj.close()
             if not self.keys_written:
                 logger.error("No valid keys found - removing empty file")
                 os.remove(self.filename)
@@ -126,13 +120,13 @@ class RDBWriter(object):
 
         Parameters
         ----------
-        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.StrictRedis`-like   # noqa: E501
+        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.StrictRedis`-like
             A telstate, backend, or Redis-compatible client instance supporting keys() and dump()
         keys : sequence of str or bytes, optional
             The keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
-        """
+        """  # noqa: E501
         if isinstance(client, TelescopeState):
             client = client.backend
         if keys is None:
