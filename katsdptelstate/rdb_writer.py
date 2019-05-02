@@ -44,14 +44,9 @@ def encode_item(key, dumped_value):
     The first byte indicates the encoding used for the value of this key. This
     is essentially just the Redis type. Subsequent bytes represent the key name,
     which consists of a length encoding followed by the actual byte
-    representation of the string. For this simple writer we only provide two
-    length encoding schemas:
-
-    - String length up to 63: a single byte - the 6 LSBs encode number directly
-    - String length 64 - 16383: two bytes, using 6 LSBs of byte 1, all of byte 2
-
-    Thereafter follows the value, encoded according to its appropriate schema.
-    As a shortcut, the Redis DUMP command is used to generate the encoded value.
+    representation of the string. Thereafter follows the value, encoded
+    according to its appropriate schema. As a shortcut, the Redis DUMP command
+    is used to generate the encoded value.
 
     Note: Redis provides a mechanism for optional key expiry, which we ignore here.
     """
@@ -83,6 +78,10 @@ def _rdb_file(filename):
 class RDBWriter(object):
     """RDB file resource that stores keys from one (or more) Redis DBs.
 
+    Upon initialisation this opens the RDB file and writes the header.
+    It is necessary to call :meth:`close` to write the trailer of the file
+    and to close it properly (or use this object as a context manager).
+
     Parameters
     ----------
     filename : str
@@ -100,22 +99,22 @@ class RDBWriter(object):
         self.keys_written = 0
         self.keys_failed = 0
         self._rdb_context = _rdb_file(self.filename)
-        self._fileobj = None
+        self._fileobj = self._rdb_context.__enter__()
 
     def __enter__(self):
-        """Enter RDB writer context, opening RDB file and writing header."""
-        self._fileobj = self._rdb_context.__enter__()
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        """Exit RDB writer context, closing off file and deleting it if empty."""
+    def __exit__(self, *exc_info):
+        self.close()
+
+    def close(self):
+        """Close off RDB file and delete it if it contains no keys."""
         try:
-            self._rdb_context.__exit__(exc_type, exc_value, traceback)
+            self._rdb_context.__exit__(None, None, None)
         finally:
             if not self.keys_written:
                 logger.error("No valid keys found - removing empty file")
                 os.remove(self.filename)
-        return False
 
     def save(self, client, keys=None):
         """Save a specified subset of keys from a Redis DB to the RDB dump file.

@@ -61,8 +61,10 @@ class TestRDBHandling(unittest.TestCase):
             rdbw.save(local_tr)
         self.assertEqual(rdbw.keys_written, 3)
         self.assertEqual(rdbw.keys_failed, 0)
-        with RDBWriter(self.base('one.rdb')) as rdbw:
-            rdbw.save(self.tr, keys=['writezl'])
+        # Also test that RDBWriter can work without a with-statement
+        rdbw = RDBWriter(self.base('one.rdb'))
+        rdbw.save(self.tr, keys=['writezl'])
+        rdbw.close()
         self.assertEqual(rdbw.keys_written, 1)
         self.assertEqual(rdbw.keys_failed, 0)
         with RDBWriter(self.base('broken.rdb')) as rdbw:
