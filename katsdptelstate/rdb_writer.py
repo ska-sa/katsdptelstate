@@ -35,7 +35,7 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 logger = logging.getLogger(__name__)
 
 
-def encode_item(key, key_dump):
+def encode_item(key, dumped_value):
     """Encode key and corresponding DUMPed value to RDB format.
 
     First byte is used to indicate the encoding used for the value of this key.
@@ -61,9 +61,9 @@ def encode_item(key, key_dump):
     # the encoded value itself (including length specifier),
     # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
     # The version specified and checksum are discarded.
-    key_type = key_dump[:1]
-    encoded_val = key_dump[1:-10]
-    return key_type + key_len + key + encoded_val
+    key_type = dumped_value[:1]
+    encoded_value = dumped_value[1:-10]
+    return key_type + key_len + key + encoded_value
 
 
 @contextmanager
@@ -135,11 +135,11 @@ class RDBWriter(object):
             keys = client.keys(b'*')
         for key in keys:
             key = _ensure_binary(key)
-            key_dump = client.dump(key)
+            dumped_value = client.dump(key)
             try:
-                if not key_dump:
+                if not dumped_value:
                     raise KeyError('Key not found in Redis')
-                encoded_str = encode_item(key, key_dump)
+                encoded_str = encode_item(key, dumped_value)
             except (ValueError, KeyError) as e:
                 self.keys_failed += 1
                 logger.error("Failed to save key %s: %s", _display_str(key), e)
