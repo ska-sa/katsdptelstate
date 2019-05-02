@@ -22,7 +22,7 @@ import os
 from contextlib import contextmanager
 
 from .rdb_utility import encode_len
-from .telescope_state import _ensure_binary, _display_str
+from .telescope_state import _ensure_binary, _display_str, TelescopeState
 
 # Basic RDB header. First 5 bytes are the standard REDIS magic
 # Next 4 bytes store the RDB format version number (6 in this case)
@@ -119,19 +119,22 @@ class RDBWriter(object):
     def save(self, client, keys=None):
         """Save a specified subset of keys from a Redis DB to the RDB dump file.
 
-        This is a very limited RDB dump utility. Either a compatible redis client
-        or a :class:`katsdptelstate.Backend` must be provided. Missing or broken
+        This is a very limited RDB dump utility. It takes a Redis database
+        either from a high-level :class:`~katsdptelstate.TelescopeState` object,
+        its low-level backend or a compatible redis client. Missing or broken
         keys are skipped and logged without raising an exception.
 
         Parameters
         ----------
-        client : :class:`~redis.StrictRedis` or :class:`~katsdptelstate.telescope_state.Backend`
-            A Redis-compatible client instance. Must support keys() and dump().
+        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.StrictRedis`-like   # noqa: E501
+            A telstate, backend, or Redis-compatible client instance supporting keys() and dump()
         keys : sequence of str or bytes, optional
             The keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
         """
+        if isinstance(client, TelescopeState):
+            client = client.backend
         if keys is None:
             logger.info("No keys specified - dumping entire database")
             keys = client.keys(b'*')

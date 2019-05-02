@@ -133,7 +133,7 @@ class TestLoadFromFile(unittest.TestCase):
         write_ts.add('mutable', 'second', 15.5)
         # Write data to file
         with RDBWriter(file) as rdbw:
-            rdbw.save(write_ts.backend)
+            rdbw.save(write_ts)
 
     def load_from_file_and_check(self, file):
         # Load RDB file back into some backend
