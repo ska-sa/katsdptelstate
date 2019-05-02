@@ -14,6 +14,9 @@
 # limitations under the License.
 ################################################################################
 
+from __future__ import print_function, division, absolute_import
+from six import raise_from
+
 import logging
 import os
 from contextlib import contextmanager
@@ -38,25 +41,25 @@ logger = logging.getLogger(__name__)
 def encode_item(key, dumped_value):
     """Encode key and corresponding DUMPed value to RDB format.
 
-    First byte is used to indicate the encoding used for the value of this key.
-    This is essentially just the Redis type.
+    The first byte indicates the encoding used for the value of this key. This
+    is essentially just the Redis type. Subsequent bytes represent the key name,
+    which consists of a length encoding followed by the actual byte
+    representation of the string. For this simple writer we only provide two
+    length encoding schemas:
 
-    Subsequent bytes represent the name of the key, which consists of a length
-    encoding followed by the actual byte representation of the string. For this simple
-    writer we only provide two length encoding schemas:
+    - String length up to 63: a single byte - the 6 LSBs encode number directly
+    - String length 64 - 16383: two bytes, using 6 LSBs of byte 1, all of byte 2
 
-    - String length up to 63 - single byte, 6 LSB encode number directly
-    - String length from 64 to 16383 - two bytes, 6 LSB of byte 1 + 8 from byte 2 encode number
-
-    Thereafter the value, encoding according to its appropriate schema is appended.
-    As a shortcut, the Redis DUMP command is used to generate the encoded value string.
+    Thereafter follows the value, encoded according to its appropriate schema.
+    As a shortcut, the Redis DUMP command is used to generate the encoded value.
 
     Note: Redis provides a mechanism for optional key expiry, which we ignore here.
     """
     try:
         key_len = encode_len(len(key))
-    except ValueError as e:
-        raise ValueError('Failed to encode key length: {}'.format(e))
+    except ValueError as exc:
+        err = ValueError('Failed to encode key length: {}'.format(exc))
+        raise_from(err, None)
     # The DUMPed value includes a leading type descriptor,
     # the encoded value itself (including length specifier),
     # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
@@ -131,7 +134,7 @@ class RDBWriter(object):
             None (default) includes all keys.
         """
         if keys is None:
-            logger.warning("No keys specified - dumping entire database")
+            logger.info("No keys specified - dumping entire database")
             keys = client.keys(b'*')
         for key in keys:
             key = _ensure_binary(key)
@@ -169,7 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT),
                         default=endpoint_parser(DEFAULT_PORT)('localhost'),
                         help='host[:port] of the Redis instance to connect to. '
-                             '[default=localhost:{}]'.format(DEFAULT_PORT))
+                             '[default=%(default)s]'.format(DEFAULT_PORT))
     args = parser.parse_args()
 
     endpoint = args.redis
