@@ -28,40 +28,32 @@ import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
+from katsdptelstate.rdb_utility import dump_string, dump_zset
 from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend, RedisCallback
 from katsdptelstate import TelescopeState, RdbParseError
 
 
-import logging
+class TabloidRedis(fakeredis.FakeStrictRedis):
+    """A Redis-like class that is a very superficial simulacrum of a real server.
 
-from fakeredis import FakeStrictRedis
-
-from .rdb_utility import dump_string, dump_zset
-
-
-class TabloidRedis(FakeStrictRedis):
-    """A Redis-like class that provides a very superficial
-    simulacrum of a real Redis server. Designed specifically to
-    support the read cases in use by katsdptelstate.
-
+    Designed specifically to support the read cases in use by katsdptelstate.
     The Redis-like functionality is almost entirely derived from FakeStrictRedis,
     we only add a dump function.
     """
     def __init__(self, **kwargs):
-        self.logger = logging.getLogger(__name__)
         super(TabloidRedis, self).__init__(**kwargs)
 
     def dump(self, key):
         """Encode Redis key value in an RDB compatible format.
-           Note: This follows the DUMP command in Redis itself which produces output
-           that is similarly encoded to an RDB, but not exactly the same.
 
-           ZSet scores are ignored and encoded as zero.
+        Note: This follows the DUMP command in Redis itself which produces
+        output that is similarly encoded to an RDB, but not exactly the same.
 
-           Returns None if `key` not found.
+        ZSet scores are ignored and encoded as zero.
+
+        Returns None if `key` not found.
         """
-
         key_type = self.type(key)
         if key_type == b'none':
             return None
@@ -70,7 +62,8 @@ class TabloidRedis(FakeStrictRedis):
             return dump_zset(data)
         if key_type == b'string':
             return dump_string(self.get(key))
-        raise NotImplementedError("Unsupported key type {}. Must be either string or zset".format(key_type))
+        raise NotImplementedError("Unsupported key type {}. Must be either "
+                                  "string or zset".format(key_type))
 
 
 class TestRDBHandling(unittest.TestCase):
