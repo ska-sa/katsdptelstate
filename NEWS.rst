@@ -1,7 +1,7 @@
 History
 =======
 
-0.8 (2019-05-03)
+0.8 (2019-05-06)
 ----------------
 * The default encoding is now msgpack; warn on loading pickles (#75, #79)
 * The default backend is now in-memory (#76)
