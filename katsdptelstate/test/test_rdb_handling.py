@@ -28,10 +28,42 @@ import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
-from katsdptelstate.tabloid_redis import TabloidRedis
+from katsdptelstate.rdb_utility import dump_string, dump_zset
 from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend, RedisCallback
 from katsdptelstate import TelescopeState, RdbParseError
+
+
+class TabloidRedis(fakeredis.FakeStrictRedis):
+    """A Redis-like class that is a very superficial simulacrum of a real server.
+
+    Designed specifically to support the read cases in use by katsdptelstate.
+    The Redis-like functionality is almost entirely derived from FakeStrictRedis,
+    we only add a dump function.
+    """
+    def __init__(self, **kwargs):
+        super(TabloidRedis, self).__init__(**kwargs)
+
+    def dump(self, key):
+        """Encode Redis key value in an RDB compatible format.
+
+        Note: This follows the DUMP command in Redis itself which produces
+        output that is similarly encoded to an RDB, but not exactly the same.
+
+        ZSet scores are ignored and encoded as zero.
+
+        Returns None if `key` not found.
+        """
+        key_type = self.type(key)
+        if key_type == b'none':
+            return None
+        if key_type == b'zset':
+            data = self.zrange(key, 0, -1)
+            return dump_zset(data)
+        if key_type == b'string':
+            return dump_string(self.get(key))
+        raise NotImplementedError("Unsupported key type {}. Must be either "
+                                  "string or zset".format(key_type))
 
 
 class TestRDBHandling(unittest.TestCase):

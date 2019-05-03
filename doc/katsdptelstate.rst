@@ -67,14 +67,6 @@ katsdptelstate.redis module
     :undoc-members:
     :show-inheritance:
 
-katsdptelstate.tabloid\_redis module
-------------------------------------
-
-.. automodule:: katsdptelstate.tabloid_redis
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 katsdptelstate.telescope\_state module
 --------------------------------------
 
