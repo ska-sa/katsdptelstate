@@ -39,7 +39,6 @@ class TestRDBHandling(unittest.TestCase):
     def setUp(self):
         # an empty tabloid redis instance
         self.tr = TabloidRedis()
-        self.rdb_writer = RDBWriter(client=self.tr)
         self.base_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.base_dir)
 
@@ -54,14 +53,30 @@ class TestRDBHandling(unittest.TestCase):
         self._add_test_vec('writezl')
         test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
         self.tr.set('write', test_str)
-        self.assertEqual(self.rdb_writer.save(self.base('all.rdb'))[0], 2)
-        self.assertEqual(self.rdb_writer.save(self.base('one.rdb'), keys=['writezl'])[0], 1)
-        self.assertEqual(self.rdb_writer.save(self.base('broken.rdb'), keys=['does_not_exist'])[0], 0)
+        local_tr = TabloidRedis()
+        local_tr.set('extra', test_str)
+
+        with RDBWriter(self.base('all.rdb')) as rdbw:
+            rdbw.save(self.tr)
+            rdbw.save(local_tr)
+        self.assertEqual(rdbw.keys_written, 3)
+        self.assertEqual(rdbw.keys_failed, 0)
+        # Also test that RDBWriter can work without a with-statement
+        rdbw = RDBWriter(self.base('one.rdb'))
+        rdbw.save(self.tr, keys=['writezl'])
+        rdbw.close()
+        self.assertEqual(rdbw.keys_written, 1)
+        self.assertEqual(rdbw.keys_failed, 0)
+        with RDBWriter(self.base('broken.rdb')) as rdbw:
+            rdbw.save(self.tr, keys=['does_not_exist'])
+        self.assertEqual(rdbw.keys_written, 0)
+        self.assertEqual(rdbw.keys_failed, 1)
 
         local_tr = TabloidRedis()
-        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 2)
-        self.assertEqual(set(local_tr.keys()), {b'write', b'writezl'})
+        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 3)
+        self.assertEqual(set(local_tr.keys()), {b'write', b'writezl', b'extra'})
         self.assertEqual(local_tr.get('write'), test_str)
+        self.assertEqual(local_tr.get('extra'), test_str)
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
@@ -73,7 +88,8 @@ class TestRDBHandling(unittest.TestCase):
 
     def _test_zset(self, items):
         zadd(self.tr, 'my_zset', {x: 0.0 for x in items})
-        self.rdb_writer.save(self.base('zset.rdb'))
+        with RDBWriter(self.base('zset.rdb')) as rdbw:
+            rdbw.save(self.tr)
 
         local_tr = TabloidRedis()
         load_from_file(RedisCallback(local_tr), self.base('zset.rdb'))
@@ -116,8 +132,8 @@ class TestLoadFromFile(unittest.TestCase):
         write_ts.add('mutable', 'first', 12.0)
         write_ts.add('mutable', 'second', 15.5)
         # Write data to file
-        rdb_writer = RDBWriter(client=write_ts.backend)
-        rdb_writer.save(file)
+        with RDBWriter(file) as rdbw:
+            rdbw.save(write_ts)
 
     def load_from_file_and_check(self, file):
         # Load RDB file back into some backend
