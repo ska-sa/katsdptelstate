@@ -1,8 +1,6 @@
-fakeredis==1.0.1
 ipaddress; python_version<'3'
 msgpack
 netifaces
 numpy
 redis
-six                        # via fakeredis
-sortedcontainers==2.1.0    # via fakeredis
+six
