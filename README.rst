@@ -11,7 +11,8 @@ ordered set. An attribute (or *immutable* key) has a single value without a
 timestamp that is not allowed to change.
 
 The keys are strings and the values are Python objects serialised via
-MessagePack_. Older versions of the database stored the values as pickles, and
+MessagePack_, which has been extended to support tuples, complex numbers and
+NumPy arrays. Older versions of the database stored the values as pickles, and
 the package warns the user if that's the case. Keys can be retrieved from the
 telstate object using attribute syntax or dict syntax.
 
@@ -34,9 +35,11 @@ namespace while the rest are supplementary read-only namespaces.
 
   **WARNING**: The standard warning about Python pickles applies. Never
   retrieve data from an untrusted telstate database with values encoded as
-  pickles, or connect to such a database over an untrusted network.
-  This should only be an issue with older telstates stored in RDB files.
-
+  pickles, or connect to such a database over an untrusted network. Pickle
+  support can be disabled by setting KATSDPTELSTATE_ALLOW_PICKLE=0 in the
+  environment, which should make it safe to connect to untrusted telstates.
+  On the other hand, the package warning can be disabled for trusted databases
+  by setting the environment variable KATSDPTELSTATE_ALLOW_PICKLE=1.
 
 Getting Started
 ---------------
