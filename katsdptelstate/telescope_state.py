@@ -478,14 +478,6 @@ class Backend(object):
         """
         raise NotImplementedError
 
-    def send_message(self, data):
-        """Same as :meth:`TelescopeState.send_message`"""
-        raise NotImplementedError
-
-    def get_message(self):
-        """Same as :meth:`TelescopeState.get_message`"""
-        raise NotImplementedError
-
     def dump(self, key):
         """Return a key in the same format as the Redis DUMP command, or None if not present"""
         raise NotImplementedError
@@ -747,14 +739,6 @@ class TelescopeState(object):
             if prefix + key in self._backend:
                 return True
         return False
-
-    def send_message(self, data):
-        """Broadcast a message to all telescope model users."""
-        self._backend.send_message(data)
-
-    def get_message(self):
-        """Get the oldest unread telescope model message."""
-        return self._backend.get_message()
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""

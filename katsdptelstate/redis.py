@@ -31,7 +31,6 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
 
 
 _INF = float('inf')
-_MESSAGE_CHANNEL = b'tm_info'
 
 
 class RedisCallback(BackendCallback):
@@ -80,7 +79,7 @@ class RedisBackend(Backend):
         try:
             # This is the first command to the server and therefore
             # the first test of its availability
-            self._ps.subscribe(_MESSAGE_CHANNEL)
+            self.client.ping()
         except (redis.TimeoutError, redis.ConnectionError) as e:
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
@@ -152,15 +151,6 @@ class RedisBackend(Backend):
         if not ans and not self.client.exists(key):
             return None
         return ans
-
-    def send_message(self, data):
-        self.client.publish(_MESSAGE_CHANNEL, data)
-
-    def get_message(self):
-        msg = self._ps.get_message(_MESSAGE_CHANNEL)
-        if msg is not None:
-            msg = msg['data']
-        return msg
 
     def monitor_keys(self, keys):
         p = self.client.pubsub()
