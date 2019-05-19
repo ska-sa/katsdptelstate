@@ -131,8 +131,8 @@ class MemoryBackend(Backend):
     It is optimised for read-only use, loading data from a .rdb file.
     Write operations are supported only to facilitate testing, but are not
     intended for production use. For that, use a :class:`.RedisBackend`
-    with an in-memory Redis emulation. The :meth:`monitor_keys`,
-    :meth:`send_message` and :meth:`get_message` methods are not implemented.
+    with an in-memory Redis emulation. The :meth:`monitor_keys` method is not
+    implemented.
 
     Mutable keys are stored as sorted lists, and encode timestamps in-place
     using the same packing as :class:`.RedisBackend`.
