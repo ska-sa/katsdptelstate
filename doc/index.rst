@@ -1,5 +1,5 @@
 .. katsdptelstate documentation master file, created by
-   sphinx-quickstart on Thu Jan 25 09:45:29 2018.
+   sphinx-quickstart on Mon Jun  3 14:08:13 2019.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
@@ -7,10 +7,11 @@ Welcome to katsdptelstate's documentation!
 ==========================================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
-   modules.rst
+   User manual <intro.rst>
+   Reference manual <modules.rst>
 
 
 Indices and tables
