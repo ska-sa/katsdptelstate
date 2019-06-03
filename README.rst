@@ -46,7 +46,7 @@ Getting Started
 
 The simplest way to test out `katsdptelstate` is to use the in-memory backend.
 If you want to run a real Redis server you will need to install Redis (version
-2.8.9 or newer) on a suitable machine on the network. For example, do this::
+2.8.9 or newer) on a suitable machine on the network. For example, do this:
 
 - macOS: ``brew install redis``
 - Ubuntu: ``apt-get install redis-server``
