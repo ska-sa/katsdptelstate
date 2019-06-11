@@ -534,3 +534,26 @@ class TestTelescopeStateRedisUrl(TestTelescopeState):
             ts = TelescopeState('redis://example.com', db=1)
             mock_redis.assert_called_with('redis://example.com', db=1, socket_timeout=mock.ANY)
         return ts
+
+
+class TestTelescopeStateAltSeparator(unittest.TestCase):
+    def setUp(self):
+        def make_fakeredis(**kwargs):
+            r = fakeredis.FakeStrictRedis()
+            r.set(TelescopeState._SEPARATOR_KEY, b'+')
+            return r
+
+        with mock.patch('redis.StrictRedis', side_effect=make_fakeredis):
+            self.ts = TelescopeState('example.com', 1)
+
+    def test_join(self):
+        self.assertEqual(self.ts.join('hello', 'world'), 'hello+world')
+
+    def test_view(self):
+        ns = self.ts.view('hello')
+        self.ts['hello+world'] = 'abc'
+        self.assertEqual(ns.get('world'), 'abc')
+
+    def test_separator(self):
+        self.assertEqual(self.ts.SEPARATOR, '+')
+        self.assertEqual(self.ts.SEPARATOR_BYTES, b'+')

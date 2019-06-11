@@ -21,7 +21,7 @@ import logging
 import os
 
 from .rdb_utility import encode_len
-from .telescope_state import _ensure_binary, _display_str, TelescopeState
+from .telescope_state import _ensure_binary, _display_str, TelescopeState, Backend
 
 # Basic RDB header. First 5 bytes are the standard REDIS magic
 # Next 4 bytes store the RDB format version number (6 in this case)
@@ -87,6 +87,7 @@ class RDBWriter(object):
         self.keys_written = 0
         self.keys_failed = 0
         self._fileobj = open(filename, 'wb')
+        self._separator = None     # Set based on the first client added
         try:
             self._fileobj.write(RDB_HEADER)
         except Exception:
@@ -129,11 +130,29 @@ class RDBWriter(object):
         """  # noqa: E501
         if isinstance(client, TelescopeState):
             client = client.backend
+
         if keys is None:
             logger.info("No keys specified - dumping entire database")
             keys = client.keys(b'*')
+        else:
+            keys = list(keys)
+
+        if isinstance(client, Backend):
+            separator = client.get_immutable(TelescopeState._SEPARATOR_KEY)
+        else:
+            # It's a redis.StrictRedis or equivalent
+            separator = client.get(TelescopeState._SEPARATOR_KEY)
+        if separator is not None:
+            if self._separator is not None and self._separator != separator:
+                    raise RuntimeError('Mismatched separators: {} != {}'.format(
+                        _display_str(separator), _display_str(self._separator)))
+            if TelescopeState._SEPARATOR_KEY not in keys:
+                keys.append(TelescopeState._SEPARATOR_KEY)
+
         for key in keys:
             key = _ensure_binary(key)
+            if key == TelescopeState._SEPARATOR_KEY and self._separator is not None:
+                continue       # It was already written
             dumped_value = client.dump(key)
             try:
                 if not dumped_value:
@@ -144,7 +163,10 @@ class RDBWriter(object):
                 logger.error("Failed to save key %s: %s", _display_str(key), e)
                 continue
             self._fileobj.write(encoded_str)
-            self.keys_written += 1
+            if key == TelescopeState._SEPARATOR_KEY:
+                self._separator = separator
+            else:
+                self.keys_written += 1
 
 
 if __name__ == '__main__':

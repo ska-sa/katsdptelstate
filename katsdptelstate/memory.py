@@ -20,7 +20,7 @@ import bisect
 import re
 import logging
 
-from .telescope_state import Backend, ImmutableKeyError
+from .telescope_state import TelescopeState, Backend, ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
     from . import rdb_reader
@@ -112,11 +112,13 @@ class MemoryCallback(BackendCallback):
 
     def set(self, key, value, expiry, info):
         self.data[key] = value
-        self.n_keys += 1
+        if not key.startswith(TelescopeState._INTERNAL_MARKER):
+            self.n_keys += 1
 
     def start_sorted_set(self, key, length, expiry, info):
         self.data[key] = []
-        self.n_keys += 1
+        if not key.startswith(TelescopeState._INTERNAL_MARKER):
+            self.n_keys += 1
 
     def zadd(self, key, score, member):
         self.data[key].append(member)

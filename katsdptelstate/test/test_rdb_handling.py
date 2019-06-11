@@ -69,8 +69,10 @@ class TabloidRedis(fakeredis.FakeStrictRedis):
 class TestRDBHandling(unittest.TestCase):
     """Test that data can be written by :class:`~.TabloidRedis` then read back"""
     def setUp(self):
-        # an empty tabloid redis instance
+        # An empty tabloid redis instance
         self.tr = TabloidRedis()
+        # Give it a non-standard separator to test that it passes through
+        self.tr.set(TelescopeState._SEPARATOR_KEY, b'+')
         self.base_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.base_dir)
 
@@ -106,17 +108,20 @@ class TestRDBHandling(unittest.TestCase):
 
         local_tr = TabloidRedis()
         self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 3)
-        self.assertEqual(set(local_tr.keys()), {b'write', b'writezl', b'extra'})
+        self.assertEqual(set(local_tr.keys()),
+                         {TelescopeState._SEPARATOR_KEY, b'write', b'writezl', b'extra'})
         self.assertEqual(local_tr.get('write'), test_str)
         self.assertEqual(local_tr.get('extra'), test_str)
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
+        self.assertEqual(local_tr.get(TelescopeState._SEPARATOR_KEY), b'+')
 
         local_tr = TabloidRedis()
         load_from_file(RedisCallback(local_tr), self.base('one.rdb'))
-        self.assertEqual(local_tr.keys(), [b'writezl'])
+        self.assertEqual(set(local_tr.keys()), {TelescopeState._SEPARATOR_KEY, b'writezl'})
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
+        self.assertEqual(local_tr.get(TelescopeState._SEPARATOR_KEY), b'+')
 
     def _test_zset(self, items):
         zadd(self.tr, 'my_zset', {x: 0.0 for x in items})
@@ -125,7 +130,7 @@ class TestRDBHandling(unittest.TestCase):
 
         local_tr = TabloidRedis()
         load_from_file(RedisCallback(local_tr), self.base('zset.rdb'))
-        self.assertEqual(local_tr.keys(), [b'my_zset'])
+        self.assertEqual(set(local_tr.keys()), {TelescopeState._SEPARATOR_KEY, b'my_zset'})
         vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
         self.assertEqual(vec, [(item, 0.0) for item in items])
 

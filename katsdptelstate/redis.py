@@ -20,7 +20,7 @@ import contextlib
 
 import redis
 
-from .telescope_state import ConnectionError, ImmutableKeyError, Backend
+from .telescope_state import TelescopeState, ConnectionError, ImmutableKeyError, Backend
 from . import compat
 try:
     from . import rdb_reader
@@ -44,11 +44,13 @@ class RedisCallback(BackendCallback):
         self.client_busy = True
         self.client.set(key, value, expiry)
         self.client_busy = False
-        self.n_keys += 1
+        if not key.startswith(TelescopeState._INTERNAL_MARKER):
+            self.n_keys += 1
 
     def start_sorted_set(self, key, length, expiry, info):
         self._zset = {}
-        self.n_keys += 1
+        if not key.startswith(TelescopeState._INTERNAL_MARKER):
+            self.n_keys += 1
 
     def zadd(self, key, score, member):
         self._zset[member] = score

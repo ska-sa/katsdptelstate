@@ -596,6 +596,10 @@ class TelescopeState(object):
         Existing telescope state instance, from which the backend will be
         taken. This allows new views to be created by specifying `prefixes`,
         without creating new backends.
+    default_separator : str or bytes
+        If this client is the first to connect to the telescope state, this
+        value will be used as the namespace separator. Otherwise, the
+        separator provided by the first client is used.
 
     Raises
     ------
@@ -608,8 +612,11 @@ class TelescopeState(object):
     """
     SEPARATOR = '_'
     SEPARATOR_BYTES = b'_'
+    _INTERNAL_MARKER = b'\xff'
+    _SEPARATOR_KEY = _INTERNAL_MARKER + b'separator'
 
-    def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None):
+    def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None,
+                 default_separator=SEPARATOR_BYTES):
         if base is not None:
             if endpoint != '':
                 raise ValueError('Cannot specify both base and endpoint')
@@ -640,6 +647,15 @@ class TelescopeState(object):
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes internally for consistency
         self._prefixes = tuple(_ensure_binary(prefix) for prefix in prefixes)
+
+        # Determine the separator. It's stored in a key that starts with \xff
+        # to avoid conflict with any UTF-encoded string.
+        separator = _ensure_binary(default_separator)
+        old_separator = self._backend.set_immutable(self._SEPARATOR_KEY, separator)
+        if old_separator is not None:
+            separator = old_separator
+        self.SEPARATOR_BYTES = separator
+        self.SEPARATOR = _ensure_str(separator)
 
     @property
     def prefixes(self):
@@ -685,10 +701,9 @@ class TelescopeState(object):
         logger.info("Loading {} keys from {}".format(keys_loaded, file))
         return keys_loaded
 
-    @classmethod
-    def join(cls, *names):
+    def join(self, *names):
         """Join string components of key with supported separator."""
-        return cls.SEPARATOR.join(names)
+        return self.SEPARATOR.join(names)
 
     def view(self, name, add_separator=True, exclusive=False):
         """Create a view with an extra name in the list of namespaces.
@@ -721,7 +736,7 @@ class TelescopeState(object):
         return self._get(key)
 
     def __setattr__(self, key, value):
-        if key.startswith('_'):
+        if key.startswith('_') or key in {'SEPARATOR', 'SEPARATOR_BYTES'}:
             super(TelescopeState, self).__setattr__(key, value)
         elif key in self.__class__.__dict__:
             raise AttributeError("The specified key already exists as a "
@@ -767,7 +782,8 @@ class TelescopeState(object):
             The key names, in sorted order
         """
         keys = self._backend.keys(_ensure_binary(filter))
-        return sorted(_ensure_str(key) for key in keys)
+        return sorted(_ensure_str(key) for key in keys
+                      if not key.startswith(self._INTERNAL_MARKER))
 
     def _ipython_key_completions_(self):
         """List of keys used in IPython (version >= 5) tab completion.
@@ -778,7 +794,8 @@ class TelescopeState(object):
         keys_b = self._backend.keys(b'*')
         for prefix_b in self._prefixes:
             keys.extend(_ensure_str(k[len(prefix_b):])
-                        for k in keys_b if k.startswith(prefix_b))
+                        for k in keys_b
+                        if k.startswith(prefix_b) and not k.startswith(self._INTERNAL_MARKER))
         return keys
 
     def delete(self, key):
