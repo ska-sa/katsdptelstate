@@ -383,7 +383,13 @@ class Backend(object):
       :class:`bytes`.
     """
     def load_from_file(self, file):
-        """Implements :meth:`TelescopeState.load_from_file`."""
+        """Implements :meth:`TelescopeState.load_from_file`.
+
+        Returns
+        -------
+        keys_loaded : int
+            Number of keys loaded, not counting internal keys
+        """
         raise NotImplementedError
 
     def __contains__(self, key):
@@ -647,9 +653,14 @@ class TelescopeState(object):
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes internally for consistency
         self._prefixes = tuple(_ensure_binary(prefix) for prefix in prefixes)
+        self._init_separator(default_separator)
 
-        # Determine the separator. It's stored in a key that starts with \xff
-        # to avoid conflict with any UTF-encoded string.
+    def _init_separator(self, default_separator):
+        """Determine the separator.
+
+        It's stored in a special key, and the first client to connect
+        determines the shared value.
+        """
         separator = _ensure_binary(default_separator)
         old_separator = self._backend.set_immutable(self._SEPARATOR_KEY, separator)
         if old_separator is not None:
@@ -673,7 +684,9 @@ class TelescopeState(object):
         directly into the backend without any checks and ignoring the view.
         It is therefore a bad idea to insert keys that already exist in telstate
         and this will lead to undefined behaviour. The standard approach is
-        to call this method on an empty telstate.
+        to call this method on an empty telstate. For similar reasons, having
+        a second client connected while the load is occurring has undefined
+        behaviour.
 
         If there is an error reading or parsing the RDB file (indicating either
         a broken file or a non-RDB file), an `RdbParseError` is raised. Errors
@@ -697,9 +710,20 @@ class TelescopeState(object):
         RdbParseError
             If the file could not be parsed (truncated / malformed / not RDB)
         """
-        keys_loaded = self._backend.load_from_file(file)
-        logger.info("Loading {} keys from {}".format(keys_loaded, file))
-        return keys_loaded
+        has_keys = bool(self.keys())
+        old_separator_bytes = self.SEPARATOR_BYTES
+        if has_keys:
+            logger.warning('load_from_file into a non-empty database has undefined behaviour')
+        try:
+            keys_loaded, separator_bytes = self._backend.load_from_file(file)
+            logger.info("Loading {} keys from {}".format(keys_loaded, file))
+            if has_keys and separator_bytes != old_separator_bytes:
+                logger.warning('load_from_file changed the separator from %s to %s',
+                               _display_str(old_separator_bytes), _display_str(separator_bytes))
+            return keys_loaded
+        finally:
+            # Sync SEPARATOR and SEPARATOR_BYTES with whatever is in the backend
+            self._init_separator(self.SEPARATOR_BYTES)
 
     def join(self, *names):
         """Join string components of key with supported separator."""
@@ -809,6 +833,8 @@ class TelescopeState(object):
             violates the immutability of keys added with ``immutable=True``.
         """
         key = _ensure_binary(key)
+        if self._INTERNAL_MARKER in key:
+            raise InvalidKeyError("Cannot delete reserved keys")
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 
@@ -819,8 +845,12 @@ class TelescopeState(object):
 
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
+            It is also possible for the separator to change if another client
+            connects with a different default separator between clearing the
+            backend and restoring the separator.
         """
-        return self._backend.clear()
+        self._backend.clear()
+        self._init_separator(self.SEPARATOR_BYTES)
 
     def add(self, key, value, ts=None, immutable=False, encoding=ENCODING_DEFAULT):
         """Add a new key / value pair to the model.
@@ -860,6 +890,8 @@ class TelescopeState(object):
                                   "class method and thus cannot be used.")
          # check that we are not going to munge a class method
         key = _ensure_binary(key)
+        if self._INTERNAL_MARKER in key:
+            raise InvalidKeyError("Cannot set reserved keys")
         full_key = self._prefixes[0] + key
         key_str = _display_str(full_key)
         str_val = encode_value(value, encoding)

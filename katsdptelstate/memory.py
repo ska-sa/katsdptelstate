@@ -20,7 +20,7 @@ import bisect
 import re
 import logging
 
-from .telescope_state import TelescopeState, Backend, ImmutableKeyError
+from .telescope_state import TelescopeState, Backend, ImmutableKeyError, RdbParseError
 from .rdb_utility import dump_string, dump_zset
 try:
     from . import rdb_reader
@@ -114,17 +114,26 @@ class MemoryCallback(BackendCallback):
         self.data[key] = value
         if not key.startswith(TelescopeState._INTERNAL_MARKER):
             self.n_keys += 1
+        elif key == TelescopeState._SEPARATOR_KEY:
+            self.separator = value
 
     def start_sorted_set(self, key, length, expiry, info):
         self.data[key] = []
         if not key.startswith(TelescopeState._INTERNAL_MARKER):
             self.n_keys += 1
+        elif key == TelescopeState._SEPARATOR_KEY:
+            raise TypeError('Separator must be immutable')  # Will be remapped to RdbParseError
 
     def zadd(self, key, score, member):
         self.data[key].append(member)
 
     def end_sorted_set(self, key):
         self.data[key].sort()
+
+    def end_rdb(self):
+        if self.separator is None:
+            self.separator = b'_'
+            self.data[TelescopeState._SEPARATOR_KEY] = self.separator
 
 
 class MemoryBackend(Backend):

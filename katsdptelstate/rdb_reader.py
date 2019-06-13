@@ -36,6 +36,8 @@ class BackendCallback(RdbCallback):
         self.n_keys = 0
         # Flag that helps to disambiguate callback errors from parser errors
         self.client_busy = False
+        # _SEPARATOR_KEY loaded from the file, if any
+        self.separator = None
 
 
 def _parse_rdb_file(parser, callback, fd, filename=None):
@@ -61,8 +63,11 @@ def load_from_file(callback, file):
 
     Returns
     -------
-    int
+    n_keys : int
         Number of keys loaded into backend
+    separator : bytes
+        Value of :const:`TelescopeState._SEPARATOR_KEY` if present, or the
+        old default (``_``) if not.
 
     Raises
     ------
@@ -83,4 +88,4 @@ def load_from_file(callback, file):
     else:
         with fd:
             _parse_rdb_file(parser, callback, fd, file)
-    return callback.n_keys
+    return callback.n_keys, callback.separator

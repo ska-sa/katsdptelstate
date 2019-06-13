@@ -107,7 +107,7 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(rdbw.keys_failed, 1)
 
         local_tr = TabloidRedis()
-        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), 3)
+        self.assertEqual(load_from_file(RedisCallback(local_tr), self.base('all.rdb')), (3, b'+'))
         self.assertEqual(set(local_tr.keys()),
                          {TelescopeState._SEPARATOR_KEY, b'write', b'writezl', b'extra'})
         self.assertEqual(local_tr.get('write'), test_str)
@@ -160,53 +160,67 @@ class TestLoadFromFile(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.base_dir)
         self.filename = os.path.join(self.base_dir, 'dump.rdb')
 
-    def make_telescope_state(self):
-        return TelescopeState()
+    def make_telescope_state(self, default_separator):
+        return TelescopeState(default_separator=default_separator)
 
-    def save_to_file(self, file):
-        write_ts = self.make_telescope_state()
+    def save_to_file(self, file, write_separator):
+        write_ts = self.make_telescope_state('+')
         write_ts['immutable'] = ['some value']
         write_ts.add('mutable', 'first', 12.0)
         write_ts.add('mutable', 'second', 15.5)
+        if not write_separator:
+            write_ts._backend.delete(TelescopeState._SEPARATOR_KEY)
         # Write data to file
         with RDBWriter(file) as rdbw:
             rdbw.save(write_ts)
 
-    def load_from_file_and_check(self, file):
+    def load_from_file_and_check(self, file, expected_separator):
         # Load RDB file back into some backend
-        read_ts = self.make_telescope_state()
+        read_ts = self.make_telescope_state('/')
         read_ts.load_from_file(file)
         self.assertEqual(read_ts.keys(), ['immutable', 'mutable'])
         self.assertTrue(read_ts.is_immutable('immutable'))
         self.assertEqual(read_ts['immutable'], ['some value'])
         self.assertEqual(read_ts.get_range('mutable', st=0),
                          [('first', 12.0), ('second', 15.5)])
+        self.assertEqual(read_ts.SEPARATOR, expected_separator)
 
-    def test_load_from_file(self):
-        self.save_to_file(self.filename)
+    def _test_load_from_file(self, write_separator):
+        self.save_to_file(self.filename, write_separator)
+        separator = '+' if write_separator else '_'
         # Check loading from filenames and file-like objects
-        self.load_from_file_and_check(self.filename)
-        self.load_from_file_and_check(open(self.filename, 'rb'))
+        self.load_from_file_and_check(self.filename, separator)
+        self.load_from_file_and_check(open(self.filename, 'rb'), separator)
         # Check that malformed RDB file raises the appropriate exception
         file = open(self.filename, 'rb')
         file.read(1)
         with self.assertRaises(RdbParseError):
-            self.load_from_file_and_check(file)
+            self.load_from_file_and_check(file, separator)
+
+    def test_load_from_file(self):
+        self._test_load_from_file(True)
+
+    def test_load_from_file_no_separator(self):
+        """If the .RDB file does not contain a separator, assume ``_``"""
+        self._test_load_from_file(False)
+
+    def test_load_from_file_does_not_exist(self):
         # Check what happens if file does not exist
         with self.assertRaises(OSError):
-            self.load_from_file_and_check(self.filename + '.nonexistent')
+            self.load_from_file_and_check(self.filename + '.nonexistent', '+')
 
 
 class TestLoadFromFileRedis(TestLoadFromFile):
     """Test :meth:`TelescopeState.load_from_file` with redis backend."""
-    def make_telescope_state(self, **kwargs):
-        return TelescopeState(RedisBackend(TabloidRedis(**kwargs)))
+    def make_telescope_state(self, default_separator, **kwargs):
+        return TelescopeState(RedisBackend(TabloidRedis(**kwargs)),
+                              default_separator=default_separator)
 
     def test_callback_errors_are_preserved(self):
         """Check that a redis.ConnectionError doesn't mutate into RdbParseError."""
-        self.save_to_file(self.filename)
+        self.save_to_file(self.filename, True)
         server = fakeredis.FakeServer()
-        read_ts = self.make_telescope_state(server=server)
+        read_ts = self.make_telescope_state('+', server=server)
         server.connected = False
         with self.assertRaises(redis.ConnectionError):
             read_ts.load_from_file(self.filename)

@@ -557,3 +557,9 @@ class TestTelescopeStateAltSeparator(unittest.TestCase):
     def test_separator(self):
         self.assertEqual(self.ts.SEPARATOR, '+')
         self.assertEqual(self.ts.SEPARATOR_BYTES, b'+')
+
+    def test_clear(self):
+        # Make sure clear doesn't wipe out the separator
+        self.ts.clear()
+        ts2 = TelescopeState(self.ts.backend)
+        self.assertEqual(ts2.SEPARATOR, '+')

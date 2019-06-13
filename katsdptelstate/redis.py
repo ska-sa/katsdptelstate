@@ -46,11 +46,15 @@ class RedisCallback(BackendCallback):
         self.client_busy = False
         if not key.startswith(TelescopeState._INTERNAL_MARKER):
             self.n_keys += 1
+        elif key == TelescopeState._SEPARATOR_KEY:
+            self.separator = value
 
     def start_sorted_set(self, key, length, expiry, info):
         self._zset = {}
         if not key.startswith(TelescopeState._INTERNAL_MARKER):
             self.n_keys += 1
+        elif key == TelescopeState._SEPARATOR_KEY:
+            raise TypeError('Separator must be immutable')  # Will be remapped to RdbParseError
 
     def zadd(self, key, score, member):
         self._zset[member] = score
@@ -60,6 +64,13 @@ class RedisCallback(BackendCallback):
         compat.zadd(self.client, key, self._zset)
         self.client_busy = False
         self._zset = {}
+
+    def end_rdb(self):
+        if self.separator is None:
+            self.separator = b'_'
+            self.client_busy = True
+            self.client.set(TelescopeState._SEPARATOR_KEY, self.separator)
+            self.client_busy = False
 
 
 @contextlib.contextmanager
