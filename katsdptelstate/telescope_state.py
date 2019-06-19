@@ -834,7 +834,8 @@ class TelescopeState(object):
         """
         key = _ensure_binary(key)
         if self._INTERNAL_MARKER in key:
-            raise InvalidKeyError("Cannot delete reserved keys")
+            raise InvalidKeyError("Cannot delete reserved keys ({!r} contains {!r})"
+                                  .format(key, self._INTERNAL_MARKER))
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 

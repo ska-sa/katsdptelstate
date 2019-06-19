@@ -144,13 +144,15 @@ class RDBWriter(object):
             separator = client.get(TelescopeState._SEPARATOR_KEY)
         if separator is not None:
             if self._separator is not None and self._separator != separator:
-                    raise RuntimeError('Mismatched separators: {} != {}'.format(
-                        _display_str(separator), _display_str(self._separator)))
+                raise RuntimeError('Mismatched separators: {} != {}'.format(
+                    _display_str(separator), _display_str(self._separator)))
             if TelescopeState._SEPARATOR_KEY not in keys:
                 keys.append(TelescopeState._SEPARATOR_KEY)
 
         for key in keys:
             key = _ensure_binary(key)
+            # If save is called more than once, each call would write the
+            # separator. Ensure it is written only the first time.
             if key == TelescopeState._SEPARATOR_KEY and self._separator is not None:
                 continue       # It was already written
             dumped_value = client.dump(key)
@@ -165,7 +167,7 @@ class RDBWriter(object):
             self._fileobj.write(encoded_str)
             if key == TelescopeState._SEPARATOR_KEY:
                 self._separator = separator
-            else:
+            if TelescopeState._INTERNAL_MARKER not in key:
                 self.keys_written += 1
 
 
