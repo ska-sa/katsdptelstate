@@ -62,16 +62,18 @@ MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
 
 _INF = float('inf')
 
-_allow_pickle = True
-_warn_on_pickle = True
+_allow_pickle = False
+_warn_on_pickle = False
 _pickle_lock = threading.Lock()       # Protects _allow_pickle, _warn_on_pickle
 
 
 PICKLE_WARNING = ('The telescope state contains pickled values. This is a security risk, '
-                  'but is allowed because MeerKAT data up to March 2019 uses it. '
-                  'You can suppress this warning by setting KATSDPTELSTATE_ALLOW_PICKLE=1 '
-                  'in the environment, or disable pickles by setting '
-                  'KATSDPTELSTATE_ALLOW_PICKLE=0.')
+                  'but you have enabled it with set_allow_pickle.')
+PICKLE_ERROR = ('The telescope state contains pickled values. This is a security risk, '
+                'so is disabled by default. If you trust the source of the data, you '
+                'can allow the pickles to be loaded by setting '
+                'KATSDPTELSTATE_ALLOW_PICKLE=1 in the environment. This is needed for '
+                'MeerKAT data up to March 2019.')
 
 
 def set_allow_pickle(allow, warn):
@@ -96,17 +98,14 @@ def set_allow_pickle(allow, warn):
 
 def _init_allow_pickle():
     env = os.environ.get('KATSDPTELSTATE_ALLOW_PICKLE')
-    allow = True
-    warn = True
+    allow = False
     if env == '1':
         allow = True
-        warn = False
     elif env == '0':
         allow = False
-        warn = False
     elif env is not None:
         warnings.warn('Unknown value {!r} for KATSDPTELSTATE_ALLOW_PICKLE'.format(env))
-    set_allow_pickle(allow, warn)
+    set_allow_pickle(allow, False)
 
 
 _init_allow_pickle()
@@ -306,12 +305,11 @@ def decode_value(value, allow_pickle=None):
     value : bytes
         Encoded value to decode
     allow_pickle : bool, optional
-        If false, :const:`ENCODING_PICKLE` is disabled. This may be useful for
+        If false, :const:`ENCODING_PICKLE` is disabled. This is useful for
         security as pickle decoding can execute arbitrary code. If the default
         of ``None`` is used, it is controlled by the
         KATSDPTELSTATE_ALLOW_PICKLE environment variable. If that is not set,
-        the default is true (with a warning), but it may change to false in
-        future. The default may also be overridden with
+        the default is false. The default may also be overridden with
         :func:`set_allow_pickle`.
 
     Raises
@@ -343,7 +341,7 @@ def decode_value(value, allow_pickle=None):
             except Exception as error:
                 raise DecodeError(str(error))
         else:
-            raise DecodeError('value is a pickle but unpickling is disabled')
+            raise DecodeError(PICKLE_ERROR)
     else:
         raise DecodeError('value starts with unrecognised header byte {!r} '
                           '(katsdptelstate may need to be updated)'.format(value[:1]))
