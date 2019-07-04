@@ -498,7 +498,7 @@ class TestTelescopeState(unittest.TestCase):
     def test_undecodable_bytes_in_key(self):
         """Gracefully handle non-UTF-8 bytes in keys."""
         key_b = b'undecodable\xff'
-        self.ts.backend.set_immutable(key_b, b"S'hello'\np1\n.")
+        self.ts.backend.set_immutable(key_b, encode_value('hello'))
         key = [k for k in self.ts.keys() if k.startswith('undecodable')][0]
         self.assertEqual(self.ts.get(key), 'hello')
         self.assertEqual(self.ts.get(key_b), 'hello')
