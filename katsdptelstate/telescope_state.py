@@ -76,7 +76,7 @@ PICKLE_ERROR = ('The telescope state contains pickled values. This is a security
                 'MeerKAT data up to March 2019.')
 
 
-def set_allow_pickle(allow, warn):
+def set_allow_pickle(allow, warn=False):
     """Control whether pickles are allowed.
 
     This overrides the defaults which are determined from the environment.
@@ -105,7 +105,7 @@ def _init_allow_pickle():
         allow = False
     elif env is not None:
         warnings.warn('Unknown value {!r} for KATSDPTELSTATE_ALLOW_PICKLE'.format(env))
-    set_allow_pickle(allow, False)
+    set_allow_pickle(allow)
 
 
 _init_allow_pickle()
