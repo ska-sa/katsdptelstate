@@ -83,6 +83,7 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError(f"could not connect to redis server: {e}")
         self._set_immutable_script = self._register_script('set_immutable.lua')
+        self._add_mutable_script = self._register_script('add_mutable.lua')
 
     def _register_script(self, basename):
         script = pkg_resources.resource_string('katsdptelstate', 'lua_scripts/' + basename)
@@ -125,8 +126,7 @@ class RedisBackend(Backend):
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            compat.zadd(self.client, key, {str_val: 0})
-        self.client.publish(b'update/' + key, str_val)
+            self._add_mutable_script([key], [str_val])
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         # TODO: use a transaction to avoid race conditions and multiple
