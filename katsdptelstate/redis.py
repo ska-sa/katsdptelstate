@@ -89,6 +89,7 @@ class RedisBackend(Backend):
             raise ConnectionError(f"could not connect to redis server: {e}")
         self._set_immutable_script = self._register_script('set_immutable.lua')
         self._add_mutable_script = self._register_script('add_mutable.lua')
+        self._get_range_script = self._register_script('get_range.lua')
 
     def _register_script(self, basename):
         script = pkg_resources.resource_string('katsdptelstate', 'lua_scripts/' + basename)
@@ -134,23 +135,13 @@ class RedisBackend(Backend):
             self._add_mutable_script([key], [str_val])
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
-        # TODO: use a transaction to avoid race conditions and multiple
-        # round trips.
+        packed_st = utils.pack_query_timestamp(start_time, False)
+        packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
-            packed_st = utils.pack_query_timestamp(start_time, False)
-            packed_et = utils.pack_query_timestamp(end_time, True, include_end)
-            ret_vals = []
-            if include_previous and packed_st != b'-':
-                ret_vals += self.client.zrevrangebylex(key, packed_st, b'-', 0, 1)
-            # Avoid talking to Redis if it is going to be futile
-            if packed_st != packed_et:
-                ret_vals += self.client.zrangebylex(key, packed_st, packed_et)
-            ans = [utils.split_timestamp(val) for val in ret_vals]
-        # We can't immediately distinguish between there being nothing in
-        # range versus the key not existing.
-        if not ans and not self.client.exists(key):
-            return None
-        return ans
+            ret_vals = self._get_range_script([key], [packed_st, packed_et, int(include_previous)])
+        if ret_vals is None:
+            return None     # Key does not exist
+        return [utils.split_timestamp(val) for val in ret_vals]
 
     def monitor_keys(self, keys):
         p = self.client.pubsub()
