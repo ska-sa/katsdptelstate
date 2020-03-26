@@ -22,7 +22,7 @@ from katsdptelstate.endpoint import (
     Endpoint, endpoint_parser, endpoint_list_parser, endpoints_to_str)
 
 
-class TestEndpoint(object):
+class TestEndpoint:
     def test_str(self):
         assert_equal('test.me:80', str(Endpoint('test.me', 80)))
         assert_equal('[1080::8:800:200C:417A]:12345', str(Endpoint('1080::8:800:200C:417A', 12345)))
@@ -60,7 +60,7 @@ class TestEndpoint(object):
         assert_not_equal(hash(Endpoint('hello', 80)), hash(Endpoint('hello', 90)))
 
 
-class TestEndpointList(object):
+class TestEndpointList:
     def test_parser(self):
         parser = endpoint_list_parser(1234)
         endpoints = parser('hello:80,world,[1080::8:800:200C:417A],192.168.0.255+4,10.0.255.255+3:60')

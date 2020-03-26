@@ -1,5 +1,3 @@
-# coding: utf-8
-
 ################################################################################
 # Copyright (c) 2015-2019, National Research Foundation (Square Kilometre Array)
 #
@@ -18,7 +16,6 @@
 
 """Tests for the sdp telescope state client."""
 
-from __future__ import print_function, division, absolute_import
 
 import threading
 import time
@@ -220,7 +217,7 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(x_pickled, encode_value(x))
 
     def test_return_encoded_range(self):
-        test_values = ['Test Value: {}'.format(x) for x in range(5)]
+        test_values = [f'Test Value: {x}' for x in range(5)]
         for i, test_value in enumerate(test_values):
             self.ts.add('test_key', test_value, i)
         stored_values = self.ts.get_range('test_key', st=0)
@@ -248,18 +245,18 @@ class TestTelescopeState(unittest.TestCase):
     def test_immutable_same_value_str(self):
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
-        self.ts.add('test_bytes', u'café', immutable=True)
+        self.ts.add('test_bytes', 'café', immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_bytes', b'cafe', immutable=True)
         with self.assertRaises(ImmutableKeyError):
-            self.ts.add('test_bytes', u'cafe', immutable=True)
-        self.ts.add('test_unicode', u'ümlaut', immutable=True)
-        self.ts.add('test_unicode', u'ümlaut', immutable=True)
+            self.ts.add('test_bytes', 'cafe', immutable=True)
+        self.ts.add('test_unicode', 'ümlaut', immutable=True)
+        self.ts.add('test_unicode', 'ümlaut', immutable=True)
         self.ts.add('test_unicode', b'\xc3\xbcmlaut', immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_unicode', b'umlaut', immutable=True)
         with self.assertRaises(ImmutableKeyError):
-            self.ts.add('test_unicode', u'umlaut', immutable=True)
+            self.ts.add('test_unicode', 'umlaut', immutable=True)
         # Test with a binary string that isn't valid UTF-8
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
@@ -490,8 +487,8 @@ class TestTelescopeState(unittest.TestCase):
         ns.wait_key(key)
 
     def test_mixed_unicode_bytes(self):
-        self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
-        self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
+        self._test_mixed_unicode_bytes(self.ts.view(b'ns'), 'test_key')
+        self._test_mixed_unicode_bytes(self.ts.view('ns'), b'test_key')
 
     def test_undecodable_bytes_in_key(self):
         """Gracefully handle non-UTF-8 bytes in keys."""

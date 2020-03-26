@@ -14,7 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
 
 import logging
 import os.path
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 class BackendCallback(RdbCallback):
     """A callback adapter that stores keys in backend as RDB file is parsed."""
     def __init__(self):
-        super(BackendCallback, self).__init__(string_escape=None)
+        super().__init__(string_escape=None)
         # Counter keeping track of number of keys inserted into backend
         self.n_keys = 0
         # Flag that helps to disambiguate callback errors from parser errors

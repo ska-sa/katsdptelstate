@@ -29,7 +29,7 @@ def encode_len(length):
        For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length encoded only in the lowest 32 bits.
     """
     if length > (2**32 - 1):
-        raise ValueError("Cannot encode item of length {} as it is greater than 2^32 -1".format(length))
+        raise ValueError(f"Cannot encode item of length {length} as it is greater than 2^32 -1")
     if length < 64:
         return struct.pack('B', length)
     if length < 16384:

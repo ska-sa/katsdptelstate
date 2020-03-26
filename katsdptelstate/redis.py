@@ -14,7 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
 
 import contextlib
 
@@ -36,7 +35,7 @@ _INF = float('inf')
 class RedisCallback(BackendCallback):
     """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
-        super(RedisCallback, self).__init__()
+        super().__init__()
         self.client = client
         self._zset = {}
 
@@ -83,7 +82,7 @@ class RedisBackend(Backend):
         except (redis.TimeoutError, redis.ConnectionError) as e:
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
-            raise ConnectionError("could not connect to redis server: {}".format(e))
+            raise ConnectionError(f"could not connect to redis server: {e}")
 
     def load_from_file(self, file):
         if rdb_reader is None:

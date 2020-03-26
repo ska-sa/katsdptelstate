@@ -14,7 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
 
 import socket
 import struct
@@ -23,7 +22,7 @@ import ipaddress
 import netifaces
 
 
-class Endpoint(object):
+class Endpoint:
     """A TCP or UDP endpoint consisting of a host and a port"""
 
     def __init__(self, host, port):
@@ -42,12 +41,12 @@ class Endpoint(object):
     def __str__(self):
         if ':' in self.host:
             # IPv6 address - escape it
-            return '[{0}]:{1}'.format(self.host, self.port)
+            return f'[{self.host}]:{self.port}'
         else:
-            return '{0}:{1}'.format(self.host, self.port)
+            return f'{self.host}:{self.port}'
 
     def __repr__(self):
-        return 'Endpoint({0!r}, {1!r})'.format(self.host, self.port)
+        return f'Endpoint({self.host!r}, {self.port!r})'
 
     def __iter__(self):
         """Support `tuple(endpoint)` for passing to a socket function"""
@@ -59,7 +58,7 @@ class Endpoint(object):
         """
         try:
             raw = socket.inet_aton(self.host)
-        except socket.error:
+        except OSError:
             return False
         else:
             # IPv4 multicast is the range 224.0.0.0 - 239.255.255.255
@@ -105,7 +104,7 @@ def endpoint_parser(default_port):
             host = host[1:-1]
             try:
                 socket.inet_pton(socket.AF_INET6, host)
-            except socket.error as e:
+            except OSError as e:
                 raise ValueError(str(e))
         return Endpoint(host, port)
     return parser
@@ -134,14 +133,14 @@ def endpoint_list_parser(default_port, single_port=False):
                 start = endpoint.host[:pos]
                 count = int(endpoint.host[pos+1:])
                 if count < 0:
-                    raise ValueError('bad count {0}'.format(count))
+                    raise ValueError(f'bad count {count}')
                 try:
                     start_raw = struct.unpack('>I', socket.inet_aton(start))[0]
                     for i in range(start_raw, start_raw + count + 1):
                         host = socket.inet_ntoa(struct.pack('>I', i))
                         endpoints.append(Endpoint(host, endpoint.port))
-                except socket.error:
-                    raise ValueError('invalid IPv4 address in {0}'.format(start))
+                except OSError:
+                    raise ValueError(f'invalid IPv4 address in {start}')
             else:
                 endpoints.append(endpoint)
         if single_port:
@@ -196,11 +195,11 @@ def endpoints_to_str(endpoints):
             if num > 1:
                 s += '+{}'.format(num - 1)
             if port is not None:
-                s += ':{}'.format(port)
+                s += f':{port}'
             parts.append(s)
     for endpoint in other:
         s = str(endpoint.host)
         if endpoint.port is not None:
-            s += ':{}'.format(endpoint.port)
+            s += f':{endpoint.port}'
         parts.append(s)
     return ','.join(parts)

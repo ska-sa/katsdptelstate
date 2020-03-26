@@ -102,7 +102,7 @@ def _init_allow_pickle():
     elif env == '0':
         allow = False
     elif env is not None:
-        warnings.warn('Unknown value {!r} for KATSDPTELSTATE_ALLOW_PICKLE'.format(env))
+        warnings.warn(f'Unknown value {env!r} for KATSDPTELSTATE_ALLOW_PICKLE')
     set_allow_pickle(allow)
 
 
@@ -124,7 +124,7 @@ class RdbParseError(TelstateError):
 
     def __str__(self):
         name = repr(self.filename) if self.filename else 'object'
-        return 'Invalid RDB file {}'.format(name)
+        return f'Invalid RDB file {name}'
 
 
 class InvalidKeyError(TelstateError):
@@ -167,7 +167,7 @@ def _display_str(s):
     try:
         return '{!r}'.format(six.ensure_str(s))
     except UnicodeDecodeError:
-        return '{!r}'.format(s)
+        return f'{s!r}'
 
 
 def _encode_ndarray(value):
@@ -241,7 +241,7 @@ def _msgpack_ext_hook(code, data):
     elif code == MSGPACK_EXT_NUMPY_SCALAR:
         return _decode_numpy_scalar(data)
     else:
-        raise DecodeError('unknown extension type {}'.format(code))
+        raise DecodeError(f'unknown extension type {code}')
 
 
 def _msgpack_encode(value):
@@ -360,7 +360,7 @@ def equal_encoded_values(a, b):
         return False
 
 
-class Backend(object):
+class Backend:
     """Low-level interface for telescope state backends.
 
     The backend interface does not deal with namespaces or encodings, which are
@@ -541,7 +541,7 @@ class Backend(object):
         return (packed[8:], timestamp)
 
 
-class TelescopeState(object):
+class TelescopeState:
     """Interface to attributes and sensors stored in a Redis database.
 
     There are two types of keys permitted: single immutable values, and mutable
@@ -673,7 +673,7 @@ class TelescopeState(object):
             If the file could not be parsed (truncated / malformed / not RDB)
         """
         keys_loaded = self._backend.load_from_file(file)
-        logger.info("Loading {} keys from {}".format(keys_loaded, file))
+        logger.info(f"Loading {keys_loaded} keys from {file}")
         return keys_loaded
 
     @classmethod
@@ -713,7 +713,7 @@ class TelescopeState(object):
 
     def __setattr__(self, key, value):
         if key.startswith('_'):
-            super(TelescopeState, self).__setattr__(key, value)
+            super().__setattr__(key, value)
         elif key in self.__class__.__dict__:
             raise AttributeError("The specified key already exists as a "
                                  "class method and thus cannot be used.")
@@ -952,7 +952,7 @@ class TelescopeState(object):
 
         def check_cancelled():
             if cancel_future is not None and cancel_future.done():
-                raise CancelledError('Wait for {} cancelled'.format(key_str))
+                raise CancelledError(f'Wait for {key_str} cancelled')
 
         check_cancelled()
         monitor = self._backend.monitor_keys([prefix + key

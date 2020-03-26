@@ -14,7 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
 
 import logging
 import os
@@ -51,7 +50,7 @@ def encode_item(key, dumped_value):
     try:
         key_len = encode_len(len(key))
     except ValueError as exc:
-        err = ValueError('Failed to encode key length: {}'.format(exc))
+        err = ValueError(f'Failed to encode key length: {exc}')
         raise err from None
     # The DUMPed value includes a leading type descriptor,
     # the encoded value itself (including length specifier),
@@ -62,7 +61,7 @@ def encode_item(key, dumped_value):
     return key_type + key_len + key + encoded_value
 
 
-class RDBWriter(object):
+class RDBWriter:
     """RDB file resource that stores keys from one (or more) Redis DBs.
 
     Upon initialisation this opens the RDB file and writes the header.

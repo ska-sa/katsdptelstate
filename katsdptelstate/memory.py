@@ -14,7 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
 
 import bisect
 import re
@@ -107,7 +106,7 @@ def _compile_pattern(pattern):
 class MemoryCallback(BackendCallback):
     """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
     def __init__(self, data):
-        super(MemoryCallback, self).__init__()
+        super().__init__()
         self.data = data
 
     def set(self, key, value, expiry, info):
