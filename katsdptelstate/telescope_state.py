@@ -487,7 +487,7 @@ class Backend:
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller
-        takes care not use a low timeout and retry rather than blocking for
+        takes care to use a low timeout and retry rather than blocking for
         long periods.
 
         The generator runs until it is closed.

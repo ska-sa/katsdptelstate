@@ -71,6 +71,7 @@ def _handle_wrongtype():
 
 class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
+
     def __init__(self, client):
         self.client = client
         self._ps = self.client.pubsub(ignore_subscribe_messages=True)
