@@ -122,9 +122,7 @@ class RedisBackend(Backend):
 
     def set_immutable(self, key, value):
         with _handle_wrongtype():
-            result = self._set_immutable_script([key], [value])
-            if isinstance(result, bytes):
-                return result
+            return self._set_immutable_script([key], [value])
 
     def get_immutable(self, key):
         with _handle_wrongtype():
