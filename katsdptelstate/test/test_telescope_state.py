@@ -276,6 +276,11 @@ class TestTelescopeState(unittest.TestCase):
         self.assertIsNone(self.ts.test_none)
         self.assertIsNone(self.ts['test_none'])
 
+    def test_immutable_wrong_type(self):
+        self.ts.add('test_mutable', 5)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_mutable', 5, immutable=True)
+
     def test_namespace_immutable(self):
         self.ts.add('parent_immutable', 1234.5, immutable=True)
         self.ns.add('child_immutable', 2345.5, immutable=True)

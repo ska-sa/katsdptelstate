@@ -32,6 +32,7 @@ setup(name='katsdptelstate',
       author='MeerKAT SDP team',
       author_email='sdpdev+katsdptelstate@ska.ac.za',
       packages=find_packages(),
+      package_data={'': ['lua_scripts/*.lua']},
       url='https://github.com/ska-sa/katsdptelstate',
       license='Modified BSD',
       classifiers=[

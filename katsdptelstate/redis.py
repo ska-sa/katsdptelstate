@@ -16,6 +16,7 @@
 
 import contextlib
 
+import pkg_resources
 import redis
 
 from . import utils
@@ -81,6 +82,11 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError(f"could not connect to redis server: {e}")
+        self._set_immutable_script = self._register_script('set_immutable.lua')
+
+    def _register_script(self, basename):
+        script = pkg_resources.resource_string('katsdptelstate', 'lua_scripts/' + basename)
+        return self.client.register_script(script)
 
     def load_from_file(self, file):
         if rdb_reader is None:
@@ -107,18 +113,10 @@ class RedisBackend(Backend):
             return type_ == b'string'
 
     def set_immutable(self, key, value):
-        while True:
-            result = self.client.setnx(key, value)
-            if result:
-                self.client.publish(b'update/' + key, value)
-                return None
-            with _handle_wrongtype():
-                old = self.client.get(key)
-                # If someone deleted the key between SETNX and GET, we will
-                # get None here, in which case we can just try again. This
-                # race condition could be eliminated with a Lua script.
-                if old is not None:
-                    return old
+        with _handle_wrongtype():
+            result = self._set_immutable_script([key], [value])
+            if isinstance(result, bytes):
+                return result
 
     def get_immutable(self, key):
         with _handle_wrongtype():
