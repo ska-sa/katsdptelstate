@@ -15,7 +15,6 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
-from six import raise_from
 
 import logging
 import os
@@ -53,7 +52,7 @@ def encode_item(key, dumped_value):
         key_len = encode_len(len(key))
     except ValueError as exc:
         err = ValueError('Failed to encode key length: {}'.format(exc))
-        raise_from(err, None)
+        raise err from None
     # The DUMPed value includes a leading type descriptor,
     # the encoded value itself (including length specifier),
     # a trailing version specifier (2 bytes) and finally an 8 byte checksum.

@@ -25,7 +25,6 @@ import time
 import unittest
 
 import mock
-import six
 import numpy as np
 import fakeredis
 
@@ -271,8 +270,7 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
         self.ts.backend.set_immutable(b'test_failed_decode', b'')  # Empty string is never valid encoding
-        with six.assertRaisesRegex(self, ImmutableKeyError,
-                                   'failed to decode the previous value'):
+        with self.assertRaisesRegex(ImmutableKeyError, 'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
 
     def test_immutable_none(self):

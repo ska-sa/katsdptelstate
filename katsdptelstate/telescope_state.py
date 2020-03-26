@@ -14,10 +14,7 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
-import six
-from six.moves import cPickle as pickle
-
+import pickle
 import struct
 import time
 import math
@@ -29,6 +26,7 @@ import os
 import warnings
 import threading
 
+import six
 import redis
 import msgpack
 import numpy as np
@@ -157,16 +155,11 @@ class EncodeError(ValueError, TelstateError):
     """A value could not be encoded"""
 
 
-if six.PY2:
-    _pickle_loads = pickle.loads
-    _ensure_str = six.ensure_str
-    _ensure_binary = six.ensure_binary
-else:
-    # See https://stackoverflow.com/questions/11305790
-    _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
-    # Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
-    _ensure_str = functools.partial(six.ensure_str, errors='surrogateescape')
-    _ensure_binary = functools.partial(six.ensure_binary, errors='surrogateescape')
+# See https://stackoverflow.com/questions/11305790
+_pickle_loads = functools.partial(pickle.loads, encoding='latin1')
+# Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
+_ensure_str = functools.partial(six.ensure_str, errors='surrogateescape')
+_ensure_binary = functools.partial(six.ensure_binary, errors='surrogateescape')
 
 
 def _display_str(s):

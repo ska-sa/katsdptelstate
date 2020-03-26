@@ -16,23 +16,12 @@
 
 import warnings
 
-import six
-
 from .telescope_state import (TelescopeState, ConnectionError, InvalidKeyError,
                               ImmutableKeyError, TimeoutError, CancelledError,
                               DecodeError, EncodeError, RdbParseError,
                               PICKLE_PROTOCOL, encode_value, decode_value, set_allow_pickle,
                               ALLOWED_ENCODINGS, ENCODING_DEFAULT,
                               ENCODING_PICKLE, ENCODING_MSGPACK)
-
-
-if six.PY2:
-    _PY2_WARNING = (
-        "Python 2 has reached End-of-Life, and a future version of "
-        "katsdptelstate will remove support for it. Please update your "
-        "scripts to Python 3 as soon as possible."
-    )
-    warnings.warn(_PY2_WARNING, FutureWarning)
 
 
 # BEGIN VERSION CHECK

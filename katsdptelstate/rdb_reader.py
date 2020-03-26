@@ -15,7 +15,6 @@
 ################################################################################
 
 from __future__ import print_function, division, absolute_import
-from six import raise_from
 
 import logging
 import os.path
@@ -46,7 +45,7 @@ def _parse_rdb_file(parser, callback, fd, filename=None):
         # Don't remap exception to RdbParseError if it originates from callback
         if callback.client_busy:
             raise
-        raise_from(RdbParseError(filename), exc)
+        raise RdbParseError(filename) from exc
 
 
 def load_from_file(callback, file):
