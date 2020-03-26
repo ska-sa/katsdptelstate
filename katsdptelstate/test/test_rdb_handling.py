@@ -16,7 +16,6 @@
 
 """Tests for the RDB handling (reading and writing) functionality."""
 
-
 import unittest
 import shutil
 import os

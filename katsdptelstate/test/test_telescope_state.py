@@ -16,7 +16,6 @@
 
 """Tests for the sdp telescope state client."""
 
-
 import threading
 import time
 import unittest
