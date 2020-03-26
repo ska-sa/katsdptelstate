@@ -59,13 +59,18 @@ class RedisCallback(BackendCallback):
 
 @contextlib.contextmanager
 def _handle_wrongtype():
-    """Map redis WRONGTYPE error to ImmutableKeyError"""
+    """Map redis WRONGTYPE error to ImmutableKeyError.
+
+    It also handles WRONGTYPE errors from inside scripts.
+    """
     try:
         yield
     except redis.ResponseError as error:
-        if not error.args[0].startswith('WRONGTYPE '):
-            raise
-        raise ImmutableKeyError
+        if (error.args[0].startswith('WRONGTYPE ')
+                or (error.args[0].startswith('Error running script')
+                    and 'WRONGTYPE ' in error.args[0])):
+            raise ImmutableKeyError
+        raise
 
 
 class RedisBackend(Backend):
