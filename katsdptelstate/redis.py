@@ -18,6 +18,7 @@ import contextlib
 
 import redis
 
+from . import utils
 from .telescope_state import ConnectionError, ImmutableKeyError, Backend
 from . import compat
 try:
@@ -124,7 +125,7 @@ class RedisBackend(Backend):
             return self.client.get(key)
 
     def add_mutable(self, key, value, timestamp):
-        str_val = self.pack_timestamp(timestamp) + value
+        str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
             compat.zadd(self.client, key, {str_val: 0})
         self.client.publish(b'update/' + key, str_val)
@@ -133,15 +134,15 @@ class RedisBackend(Backend):
         # TODO: use a transaction to avoid race conditions and multiple
         # round trips.
         with _handle_wrongtype():
-            packed_st = self.pack_query_timestamp(start_time, False)
-            packed_et = self.pack_query_timestamp(end_time, True, include_end)
+            packed_st = utils.pack_query_timestamp(start_time, False)
+            packed_et = utils.pack_query_timestamp(end_time, True, include_end)
             ret_vals = []
             if include_previous and packed_st != b'-':
                 ret_vals += self.client.zrevrangebylex(key, packed_st, b'-', 0, 1)
             # Avoid talking to Redis if it is going to be futile
             if packed_st != packed_et:
                 ret_vals += self.client.zrangebylex(key, packed_st, packed_et)
-            ans = [self.split_timestamp(val) for val in ret_vals]
+            ans = [utils.split_timestamp(val) for val in ret_vals]
         # We can't immediately distinguish between there being nothing in
         # range versus the key not existing.
         if not ans and not self.client.exists(key):
@@ -174,7 +175,7 @@ class RedisBackend(Backend):
                         if type_ == b'string':
                             timeout = yield (key, message['data'])
                         else:
-                            value, timestamp = self.split_timestamp(message['data'])
+                            value, timestamp = utils.split_timestamp(message['data'])
                             timeout = yield (key, value, timestamp)
 
     def dump(self, key):

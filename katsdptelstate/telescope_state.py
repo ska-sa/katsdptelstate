@@ -496,48 +496,6 @@ class Backend:
             time.sleep(timeout)
             timeout = yield (keys[0],)
 
-    @staticmethod
-    def pack_query_timestamp(time, is_end, include_end=False):
-        """Create a query value for a ZRANGEBYLEX query.
-
-        When packing the time for the start of a range, set `is_end` and
-        `include_end` to False. When packing the time for the end of a range,
-        set `is_end` to True, and `include_end` indicates whether the endpoint
-        is inclusive. The latter is implemented by incrementing the time by the
-        smallest possible amount and then treating it as exclusive.
-        """
-        if time == math.inf:
-            # The special positively infinite string represents the end of time
-            return b'+'
-        elif time < 0.0 or (time == 0.0 and not include_end):
-            # The special negatively infinite string represents the dawn of time
-            return b'-'
-        else:
-            packed_time = Backend.pack_timestamp(time)
-            if include_end:
-                # Increment to the next possible encoded value. Note that this
-                # cannot overflow because the sign bit is initially clear.
-                packed_time = struct.pack('>Q', struct.unpack('>Q', packed_time)[0] + 1)
-            return (b'(' if is_end else b'[') + packed_time
-
-    @staticmethod
-    def pack_timestamp(timestamp):
-        """Encode a timestamp to a bytes that sorts correctly"""
-        assert timestamp >= 0
-        # abs forces -0 to +0, which encodes differently
-        return struct.pack('>d', abs(timestamp))
-
-    @staticmethod
-    def split_timestamp(packed):
-        """Split out the value and timestamp from a packed item.
-
-        The item contains 8 bytes with the timestamp in big-endian IEEE-754
-        double precision, followed by the value.
-        """
-        assert len(packed) >= 8
-        timestamp = struct.unpack('>d', packed[:8])[0]
-        return (packed[8:], timestamp)
-
 
 class TelescopeState:
     """Interface to attributes and sensors stored in a Redis database.

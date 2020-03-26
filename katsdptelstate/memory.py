@@ -18,6 +18,7 @@ import bisect
 import re
 import logging
 
+from . import utils
 from .telescope_state import Backend, ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
@@ -178,7 +179,7 @@ class MemoryBackend(Backend):
         return value
 
     def add_mutable(self, key, value, timestamp):
-        str_val = self.pack_timestamp(timestamp) + value
+        str_val = utils.pack_timestamp(timestamp) + value
         items = self._data.get(key)
         if items is None:
             self._data[key] = [str_val]
@@ -193,7 +194,7 @@ class MemoryBackend(Backend):
 
     @classmethod
     def _bisect(cls, items, timestamp, is_end, include_end=False):
-        packed = cls.pack_query_timestamp(timestamp, is_end, include_end)
+        packed = utils.pack_query_timestamp(timestamp, is_end, include_end)
         if packed == b'-':
             return 0
         elif packed == b'+':
@@ -213,7 +214,7 @@ class MemoryBackend(Backend):
         if include_previous and start_pos > 0:
             start_pos -= 1
         end_pos = self._bisect(items, end_time, True, include_end)
-        return [self.split_timestamp(value) for value in items[start_pos:end_pos]]
+        return [utils.split_timestamp(value) for value in items[start_pos:end_pos]]
 
     def dump(self, key):
         value = self._data.get(key)
