@@ -87,6 +87,7 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError(f"could not connect to redis server: {e}")
+        self._get_script = self._register_script('get.lua')
         self._set_immutable_script = self._register_script('set_immutable.lua')
         self._add_mutable_script = self._register_script('add_mutable.lua')
         self._get_range_script = self._register_script('get_range.lua')
@@ -128,6 +129,9 @@ class RedisBackend(Backend):
     def get_immutable(self, key):
         with _handle_wrongtype():
             return self.client.get(key)
+
+    def get(self, key):
+        return self._get_script([key])
 
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value

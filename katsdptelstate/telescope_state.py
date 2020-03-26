@@ -430,6 +430,14 @@ class Backend:
         """
         raise NotImplementedError
 
+    def get(self, key):
+        """Get the value of a key.
+
+        If the key is mutable, returns the most recent value.
+        Returns ``None`` if the key does not exist.
+        """
+        raise NotImplementedError
+
     def add_mutable(self, key, value, timestamp):
         """Set a (timestamp, value) pair in a mutable key.
 
@@ -940,33 +948,16 @@ class TelescopeState:
                 if self._check_condition(key, condition, message):
                     return
 
-    def _get_immutable(self, full_key, return_encoded=False):
-        """Return a fully-qualified key of string type."""
-        str_val = self._backend.get_immutable(full_key)
-        if str_val is None:
-            raise KeyError
-        if return_encoded:
-            return str_val
-        return decode_value(str_val)
-
     def _get(self, key, return_encoded=False):
         key = _ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
-            try:
-                return self._get_immutable(full_key, return_encoded)
-                 # assume simple string type for immutable
-            except KeyError:
-                pass     # Key does not exist at all - try next prefix
-            except ImmutableKeyError:
-                # It's a mutable; get the latest value
-                values = self._backend.get_range(full_key, math.inf, math.inf, True, False)
-                assert values is not None, "key was deleting during _get"
-                assert values, "key is mutable but has no value???"
-                value = values[0][0]
+            str_val = self._backend.get(full_key)
+            if str_val is not None:
                 if return_encoded:
-                    return value
-                return decode_value(value)
+                    return str_val
+                else:
+                    return decode_value(str_val)
         raise KeyError('{} not found'.format(_display_str(key)))
 
     def get(self, key, default=None, return_encoded=False):

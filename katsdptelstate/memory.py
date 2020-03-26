@@ -178,6 +178,13 @@ class MemoryBackend(Backend):
             raise ImmutableKeyError
         return value
 
+    def get(self, key):
+        value = self._data.get(key)
+        if isinstance(value, list):
+            return utils.split_timestamp(value[-1])[0]
+        else:
+            return value
+
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value
         items = self._data.get(key)
