@@ -58,8 +58,6 @@ MSGPACK_EXT_COMPLEX128 = 2
 MSGPACK_EXT_NDARRAY = 3           # .npy format
 MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
 
-_INF = float('inf')
-
 _allow_pickle = False
 _warn_on_pickle = False
 _pickle_lock = threading.Lock()       # Protects _allow_pickle, _warn_on_pickle
@@ -508,7 +506,7 @@ class Backend:
         is inclusive. The latter is implemented by incrementing the time by the
         smallest possible amount and then treating it as exclusive.
         """
-        if time == _INF:
+        if time == math.inf:
             # The special positively infinite string represents the end of time
             return b'+'
         elif time < 0.0 or (time == 0.0 and not include_end):
@@ -905,7 +903,7 @@ class TelescopeState:
                         continue      # Key does not exist, so try the next one
                     timestamp = None
                 except ImmutableKeyError:
-                    values = self._backend.get_range(full_key, _INF, _INF, True, False)
+                    values = self._backend.get_range(full_key, math.inf, math.inf, True, False)
                     if not values:
                         continue      # Could happen if key is deleted in between
                     value = values[0][0]
@@ -1004,7 +1002,7 @@ class TelescopeState:
                 pass     # Key does not exist at all - try next prefix
             except ImmutableKeyError:
                 # It's a mutable; get the latest value
-                values = self._backend.get_range(full_key, _INF, _INF, True, False)
+                values = self._backend.get_range(full_key, math.inf, math.inf, True, False)
                 assert values is not None, "key was deleting during _get"
                 assert values, "key is mutable but has no value???"
                 value = values[0][0]
@@ -1097,7 +1095,7 @@ class TelescopeState:
         if include_previous is None:
             include_previous = True if st is None else False
         if et is None:
-            et = _INF
+            et = math.inf
         else:
             et = float(et)
         if st is None:

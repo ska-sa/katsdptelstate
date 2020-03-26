@@ -28,7 +28,6 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
     BackendCallback = object     # So that MemoryCallback can still be defined
 
 
-_INF = float('inf')
 logger = logging.getLogger(__name__)
 
 

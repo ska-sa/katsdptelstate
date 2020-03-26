@@ -28,9 +28,6 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
     BackendCallback = object     # So that RedisCallback can still be defined
 
 
-_INF = float('inf')
-
-
 class RedisCallback(BackendCallback):
     """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
