@@ -182,9 +182,9 @@ class MemoryBackend(Backend):
     def get(self, key):
         value = self._data.get(key)
         if isinstance(value, list):
-            return utils.split_timestamp(value[-1])[0]
+            return utils.split_timestamp(value[-1])
         else:
-            return value
+            return value, None
 
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value

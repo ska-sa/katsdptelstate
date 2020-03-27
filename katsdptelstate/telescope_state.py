@@ -107,10 +107,13 @@ class Backend:
         raise NotImplementedError
 
     def get(self, key):
-        """Get the value of a key.
+        """Get the value and timestamp of a key.
 
-        If the key is mutable, returns the most recent value.
-        Returns ``None`` if the key does not exist.
+        If the key is mutable, returns the most recent value. If it
+        is immutable, returns the value with a timestamp of ``None``.
+
+        If the key does not exist, both the value and timestamp will be
+        ``None``.
         """
         raise NotImplementedError
 
@@ -524,7 +527,7 @@ class TelescopeState:
             See :meth:`wait_key`'s docstring for the details
         message : tuple, optional
             A tuple of the form (key, value) or (key, value, timestamp).
-            The first indicates an update to an immutable, and the third an
+            The first indicates an update to an immutable, and the second an
             update to a mutable.
 
             If specified, this is used to find the latest value and timestamp
@@ -539,17 +542,9 @@ class TelescopeState:
                 value = message[1]
                 timestamp = None if len(message) == 2 else message[2]
             else:
-                try:
-                    value = self._backend.get_immutable(full_key)
-                    if value is None:
-                        continue      # Key does not exist, so try the next one
-                    timestamp = None
-                except ImmutableKeyError:
-                    values = self._backend.get_range(full_key, math.inf, math.inf, True, False)
-                    if not values:
-                        continue      # Could happen if key is deleted in between
-                    value = values[0][0]
-                    timestamp = values[0][1]
+                value, timestamp = self._backend.get(full_key)
+                if value is None:
+                    continue      # Key does not exist, so try the next one
             return condition(decode_value(value), timestamp)
         return False    # Key does not exist
 
@@ -628,7 +623,7 @@ class TelescopeState:
         key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
-            str_val = self._backend.get(full_key)
+            str_val = self._backend.get(full_key)[0]
             if str_val is not None:
                 if return_encoded:
                     return str_val

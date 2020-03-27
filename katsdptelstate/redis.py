@@ -130,7 +130,11 @@ class RedisBackend(Backend):
             return self.client.get(key)
 
     def get(self, key):
-        return self._get_script([key])
+        result = self._get_script([key])
+        if result[1]:
+            return utils.split_timestamp(result[0])
+        else:
+            return result[0], None
 
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value
