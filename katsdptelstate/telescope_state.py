@@ -15,303 +15,23 @@
 ################################################################################
 
 import pickle
-import struct
 import time
 import math
 import logging
 import contextlib
 import functools
-import io
-import os
-import warnings
-import threading
 
 import six
 import redis
-import msgpack
-import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
 from .errors import (InvalidKeyError, InvalidTimestampError, ImmutableKeyError, TimeoutError,
-                     CancelledError, DecodeError, EncodeError)
+                     CancelledError, DecodeError)
+from .encoding import ENCODING_DEFAULT, encode_value, decode_value, equal_encoded_values
+from .utils import ensure_str, ensure_binary, display_str
 
 
 logger = logging.getLogger(__name__)
-PICKLE_PROTOCOL = 2
-
-# Header byte indicating a pickle-encoded value. This is present in pickle
-# v2+ (it is the PROTO opcode, which is required to be first). Values below
-# 0x80 are assumed to be pickle as well, since v0 uses only ASCII, and v1
-# was never used in telstate. Values above 0x80 are reserved for future
-# encoding forms.
-ENCODING_PICKLE = b'\x80'
-
-#: Header byte indicating a msgpack-encoded value
-ENCODING_MSGPACK = b'\xff'
-
-#: Default encoding for :func:`encode_value`
-ENCODING_DEFAULT = ENCODING_MSGPACK
-
-#: All encodings that can be used with :func:`encode_value`
-ALLOWED_ENCODINGS = frozenset([ENCODING_PICKLE, ENCODING_MSGPACK])
-
-MSGPACK_EXT_TUPLE = 1
-MSGPACK_EXT_COMPLEX128 = 2
-MSGPACK_EXT_NDARRAY = 3           # .npy format
-MSGPACK_EXT_NUMPY_SCALAR = 4      # dtype descriptor then raw value
-
-_allow_pickle = False
-_warn_on_pickle = False
-_pickle_lock = threading.Lock()       # Protects _allow_pickle, _warn_on_pickle
-
-
-PICKLE_WARNING = ('The telescope state contains pickled values. This is a security risk, '
-                  'but you have enabled it with set_allow_pickle.')
-PICKLE_ERROR = ('The telescope state contains pickled values. This is a security risk, '
-                'so is disabled by default. If you trust the source of the data, you '
-                'can allow the pickles to be loaded by setting '
-                'KATSDPTELSTATE_ALLOW_PICKLE=1 in the environment. This is needed for '
-                'MeerKAT data up to March 2019.')
-
-
-def set_allow_pickle(allow, warn=False):
-    """Control whether pickles are allowed.
-
-    This overrides the defaults which are determined from the environment.
-
-    Parameters
-    ----------
-    allow : bool
-        If true, allow pickles to be loaded.
-    warn : bool
-        If true, warn the user the next time a pickle is loaded (after which
-        it becomes false). This has no effect if `allow` is false.
-    """
-    global _allow_pickle, _warn_on_pickle
-
-    with _pickle_lock:
-        _allow_pickle = allow
-        _warn_on_pickle = warn
-
-
-def _init_allow_pickle():
-    env = os.environ.get('KATSDPTELSTATE_ALLOW_PICKLE')
-    allow = False
-    if env == '1':
-        allow = True
-    elif env == '0':
-        allow = False
-    elif env is not None:
-        warnings.warn(f'Unknown value {env!r} for KATSDPTELSTATE_ALLOW_PICKLE')
-    set_allow_pickle(allow)
-
-
-_init_allow_pickle()
-
-
-# See https://stackoverflow.com/questions/11305790
-_pickle_loads = functools.partial(pickle.loads, encoding='latin1')
-# Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
-_ensure_str = functools.partial(six.ensure_str, errors='surrogateescape')
-_ensure_binary = functools.partial(six.ensure_binary, errors='surrogateescape')
-
-
-def _display_str(s):
-    """Return most human-readable and yet accurate version of *s*."""
-    try:
-        return '{!r}'.format(six.ensure_str(s))
-    except UnicodeDecodeError:
-        return f'{s!r}'
-
-
-def _encode_ndarray(value):
-    fp = io.BytesIO()
-    try:
-        np.save(fp, value, allow_pickle=False)
-    except ValueError as error:
-        # Occurs if value has object type
-        raise EncodeError(str(error))
-    return fp.getvalue()
-
-
-def _decode_ndarray(data):
-    fp = io.BytesIO(data)
-    try:
-        return np.load(fp, allow_pickle=False)
-    except ValueError as error:
-        raise DecodeError(str(error))
-
-
-def _encode_numpy_scalar(value):
-    if value.dtype.hasobject:
-        raise EncodeError('cannot encode dtype {} as it contains objects'
-                          .format(value.dtype))
-    descr = np.lib.format.dtype_to_descr(value.dtype)
-    return _msgpack_encode(descr) + value.tobytes()
-
-
-def _decode_numpy_scalar(data):
-    try:
-        descr = _msgpack_decode(data)
-        raw = b''
-    except msgpack.ExtraData as exc:
-        descr = exc.unpacked
-        raw = exc.extra
-    dtype = np.dtype(descr)
-    if dtype.hasobject:
-        raise DecodeError('cannot decode dtype {} as it contains objects'
-                          .format(dtype))
-    value = np.frombuffer(raw, dtype, 1)
-    return value[0]
-
-
-def _msgpack_default(value):
-    if isinstance(value, tuple):
-        return msgpack.ExtType(MSGPACK_EXT_TUPLE, _msgpack_encode(list(value)))
-    elif isinstance(value, np.ndarray):
-        return msgpack.ExtType(MSGPACK_EXT_NDARRAY, _encode_ndarray(value))
-    elif isinstance(value, np.generic):
-        return msgpack.ExtType(MSGPACK_EXT_NUMPY_SCALAR, _encode_numpy_scalar(value))
-    elif isinstance(value, complex):
-        return msgpack.ExtType(MSGPACK_EXT_COMPLEX128,
-                               struct.pack('>dd', value.real, value.imag))
-    else:
-        raise EncodeError('do not know how to encode type {}'
-                          .format(value.__class__.__name__))
-
-
-def _msgpack_ext_hook(code, data):
-    if code == MSGPACK_EXT_TUPLE:
-        content = _msgpack_decode(data)
-        if not isinstance(content, list):
-            raise DecodeError('incorrectly encoded tuple')
-        return tuple(content)
-    elif code == MSGPACK_EXT_COMPLEX128:
-        if len(data) != 16:
-            raise DecodeError('wrong length for COMPLEX128')
-        return complex(*struct.unpack('>dd', data))
-    elif code == MSGPACK_EXT_NDARRAY:
-        return _decode_ndarray(data)
-    elif code == MSGPACK_EXT_NUMPY_SCALAR:
-        return _decode_numpy_scalar(data)
-    else:
-        raise DecodeError(f'unknown extension type {code}')
-
-
-def _msgpack_encode(value):
-    return msgpack.packb(value, use_bin_type=True, strict_types=True,
-                         default=_msgpack_default)
-
-
-def _msgpack_decode(value):
-    # The max_*_len prevent a corrupted or malicious input from consuming
-    # memory significantly in excess of the input size before it determines
-    # that there isn't actually enough data to back it.
-    max_len = len(value)
-    return msgpack.unpackb(value, raw=False, ext_hook=_msgpack_ext_hook,
-                           max_str_len=max_len,
-                           max_bin_len=max_len,
-                           max_array_len=max_len,
-                           max_map_len=max_len,
-                           max_ext_len=max_len)
-
-
-def encode_value(value, encoding=ENCODING_DEFAULT):
-    """Encode a value to a byte array for storage in redis.
-
-    Parameters
-    ----------
-    value
-        Value to encode
-    encoding
-        Encoding method to use, one of the values in :const:`ALLOWED_ENCODINGS`
-
-    Raises
-    ------
-    ValueError
-        If `encoding` is not a recognised encoding
-    EncodeError
-        EncodeError if the value was not encodable with the chosen encoding.
-    """
-    if encoding == ENCODING_PICKLE:
-        return pickle.dumps(value, protocol=PICKLE_PROTOCOL)
-    elif encoding == ENCODING_MSGPACK:
-        return ENCODING_MSGPACK + _msgpack_encode(value)
-    else:
-        raise ValueError('Unknown encoding {:#x}'.format(ord(encoding)))
-
-
-def decode_value(value, allow_pickle=None):
-    """Decode a value encoded with :func:`encode_value`.
-
-    The encoded value is self-describing, so it is not necessary to specify
-    which encoding was used.
-
-    Parameters
-    ----------
-    value : bytes
-        Encoded value to decode
-    allow_pickle : bool, optional
-        If false, :const:`ENCODING_PICKLE` is disabled. This is useful for
-        security as pickle decoding can execute arbitrary code. If the default
-        of ``None`` is used, it is controlled by the
-        KATSDPTELSTATE_ALLOW_PICKLE environment variable. If that is not set,
-        the default is false. The default may also be overridden with
-        :func:`set_allow_pickle`.
-
-    Raises
-    ------
-    DecodeError
-        if `allow_pickle` is false and `value` is a pickle
-    DecodeError
-        if there was an error in the encoding of `value`
-    """
-    global _warn_on_pickle
-
-    if not value:
-        raise DecodeError('empty value')
-    elif value[:1] == ENCODING_MSGPACK:
-        try:
-            return _msgpack_decode(value[1:])
-        except Exception as error:
-            raise DecodeError(str(error))
-    elif value[:1] <= ENCODING_PICKLE:
-        if allow_pickle is None:
-            with _pickle_lock:
-                allow_pickle = _allow_pickle
-                if _warn_on_pickle:
-                    warnings.warn(PICKLE_WARNING, FutureWarning)
-                    _warn_on_pickle = False
-        if allow_pickle:
-            try:
-                return _pickle_loads(value)
-            except Exception as error:
-                raise DecodeError(str(error))
-        else:
-            raise DecodeError(PICKLE_ERROR)
-    else:
-        raise DecodeError('value starts with unrecognised header byte {!r} '
-                          '(katsdptelstate may need to be updated)'.format(value[:1]))
-
-
-def equal_encoded_values(a, b):
-    """Test whether two encoded values represent the same/equivalent objects.
-
-    This is not a complete implementation. Mostly, it just checks that the
-    encoded representation is the same, but to ease the transition to Python 3,
-    it will also compare the values if both arguments decode to either
-    ``bytes`` or ``str`` (and allows bytes and strings to be equal assuming
-    UTF-8 encoding). However, it will not do this recursively in structured
-    data.
-    """
-    if a == b:
-        return True
-    a = decode_value(a)
-    b = decode_value(b)
-    try:
-        return _ensure_binary(a) == _ensure_binary(b)
-    except TypeError:
-        return False
 
 
 class Backend:
@@ -550,12 +270,12 @@ class TelescopeState:
                 r = redis.StrictRedis(**redis_kwargs)
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes internally for consistency
-        self._prefixes = tuple(_ensure_binary(prefix) for prefix in prefixes)
+        self._prefixes = tuple(ensure_binary(prefix) for prefix in prefixes)
 
     @property
     def prefixes(self):
         """The active key prefixes as a tuple of strings."""
-        return tuple(_ensure_str(prefix) for prefix in self._prefixes)
+        return tuple(ensure_str(prefix) for prefix in self._prefixes)
 
     @property
     def backend(self):
@@ -609,7 +329,7 @@ class TelescopeState:
         end with the separator, it is added (unless `add_separator` is
         false).
         """
-        name = _ensure_binary(name)
+        name = ensure_binary(name)
         if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
             name += self.SEPARATOR_BYTES
         if exclusive:
@@ -645,7 +365,7 @@ class TelescopeState:
 
     def __contains__(self, key):
         """Check to see if the specified key exists in the database."""
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             if prefix + key in self._backend:
                 return True
@@ -653,7 +373,7 @@ class TelescopeState:
 
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable."""
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             try:
                 return self._backend.is_immutable(prefix + key)
@@ -677,8 +397,8 @@ class TelescopeState:
         keys : list of str
             The key names, in sorted order
         """
-        keys = self._backend.keys(_ensure_binary(filter))
-        return sorted(_ensure_str(key) for key in keys)
+        keys = self._backend.keys(ensure_binary(filter))
+        return sorted(ensure_str(key) for key in keys)
 
     def _ipython_key_completions_(self):
         """List of keys used in IPython (version >= 5) tab completion.
@@ -688,7 +408,7 @@ class TelescopeState:
         keys = []
         keys_b = self._backend.keys(b'*')
         for prefix_b in self._prefixes:
-            keys.extend(_ensure_str(k[len(prefix_b):])
+            keys.extend(ensure_str(k[len(prefix_b):])
                         for k in keys_b if k.startswith(prefix_b))
         return keys
 
@@ -702,7 +422,7 @@ class TelescopeState:
             This function should be used rarely, ideally only in tests, as it
             violates the immutability of keys added with ``immutable=True``.
         """
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 
@@ -753,9 +473,9 @@ class TelescopeState:
             raise InvalidKeyError("The specified key already exists as a "
                                   "class method and thus cannot be used.")
          # check that we are not going to munge a class method
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         full_key = self._prefixes[0] + key
-        key_str = _display_str(full_key)
+        key_str = display_str(full_key)
         str_val = encode_value(value, encoding)
         if immutable:
             try:
@@ -814,7 +534,7 @@ class TelescopeState:
             return message is not None or key in self
 
         for prefix in self._prefixes:
-            full_key = prefix + _ensure_binary(key)
+            full_key = prefix + ensure_binary(key)
             if message is not None and full_key == message[0]:
                 value = message[1]
                 timestamp = None if len(message) == 2 else message[2]
@@ -863,12 +583,12 @@ class TelescopeState:
         CancelledError
             if a cancellation future was specified and done
         """
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         # First check if condition is already satisfied, in which case we
         # don't need to create a pubsub connection.
         if self._check_condition(key, condition):
             return
-        key_str = _display_str(key)
+        key_str = display_str(key)
 
         def check_cancelled():
             if cancel_future is not None and cancel_future.done():
@@ -905,7 +625,7 @@ class TelescopeState:
                     return
 
     def _get(self, key, return_encoded=False):
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             str_val = self._backend.get(full_key)
@@ -914,7 +634,7 @@ class TelescopeState:
                     return str_val
                 else:
                     return decode_value(str_val)
-        raise KeyError('{} not found'.format(_display_str(key)))
+        raise KeyError('{} not found'.format(display_str(key)))
 
     def get(self, key, default=None, return_encoded=False):
         """Get a single value from the model.
@@ -1010,7 +730,7 @@ class TelescopeState:
         if math.isnan(st) or math.isnan(et):
             raise InvalidTimestampError('cannot use NaN start or end time')
 
-        key = _ensure_binary(key)
+        key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
             try:
@@ -1018,10 +738,10 @@ class TelescopeState:
                                                    include_previous, include_end)
             except ImmutableKeyError:
                 raise ImmutableKeyError('{} is immutable, cannot use get_range'
-                                        .format(_display_str(full_key)))
+                                        .format(display_str(full_key)))
             if ret_vals is not None:
                 if not return_encoded:
                     ret_vals = [(decode_value(value), timestamp)
                                 for value, timestamp in ret_vals]
                 return ret_vals
-        raise KeyError('{} not found'.format(_display_str(key)))
+        raise KeyError('{} not found'.format(display_str(key)))

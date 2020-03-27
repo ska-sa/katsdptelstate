@@ -17,10 +17,11 @@
 from .errors import (ConnectionError, InvalidKeyError,                  # noqa: F401
                      ImmutableKeyError, TimeoutError, CancelledError,
                      DecodeError, EncodeError, RdbParseError)
-from .telescope_state import (TelescopeState,                           # noqa: F401
-                              PICKLE_PROTOCOL, encode_value, decode_value, set_allow_pickle,
-                              ALLOWED_ENCODINGS, ENCODING_DEFAULT,
-                              ENCODING_PICKLE, ENCODING_MSGPACK)
+from .telescope_state import TelescopeState                             # noqa: F401
+from .encoding import (PICKLE_PROTOCOL, encode_value, decode_value,     # noqa: F401
+                       set_allow_pickle,
+                       ALLOWED_ENCODINGS, ENCODING_DEFAULT,
+                       ENCODING_PICKLE, ENCODING_MSGPACK)
 
 
 # BEGIN VERSION CHECK

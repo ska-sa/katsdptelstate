@@ -25,114 +25,8 @@ import numpy as np
 import fakeredis
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, EncodeError, DecodeError,
-                            encode_value, decode_value,
-                            ENCODING_PICKLE, ENCODING_MSGPACK)
+                            TimeoutError, CancelledError, encode_value)
 from katsdptelstate.memory import MemoryBackend
-
-
-class _TestEncoding(unittest.TestCase):
-    """Test encode_value and decode_value.
-
-    This must be subclassed to specify the encoding type.
-    """
-    def _test_value(self, value):
-        encoded = encode_value(value, encoding=self.encoding)
-        decoded = decode_value(encoded)
-        self.assertEqual(type(value), type(decoded))
-        if isinstance(value, np.ndarray):
-            np.testing.assert_array_equal(value, decoded)
-        else:
-            self.assertEqual(value, decoded)
-
-    def test_list_tuple(self):
-        self._test_value(('a', 'tuple', ['with', ('embedded', 'list')]))
-
-    def test_float(self):
-        self._test_value(1.0)
-        self._test_value(1.23456788901234567890)
-        self._test_value(1e300)
-        self._test_value(-1e-300)
-        self._test_value(float('inf'))
-        self._test_value(np.inf)
-
-    def test_simple(self):
-        self._test_value(True)
-        self._test_value(False)
-        self._test_value(None)
-
-    def test_np_scalar(self):
-        self._test_value(np.float32(5.5))
-        self._test_value(np.float64(5.5))
-        self._test_value(np.complex128(5.5 + 4.2j))
-        self._test_value(np.bool_(True))
-        self._test_value(np.bool_(False))
-        self._test_value(np.int32(12345678))
-
-    def test_complex(self):
-        self._test_value(1.2 + 3.4j)
-
-    def test_ndarray(self):
-        self._test_value(np.array([1, 2, 3]))
-
-    def test_structured_ndarray(self):
-        dtype = np.dtype([('a', np.int32), ('b', np.int16, (3, 3))])
-        self._test_value(np.zeros((2, 3), dtype))
-
-    def test_nan(self):
-        encoded = encode_value(np.nan, encoding=self.encoding)
-        decoded = decode_value(encoded)
-        self.assertTrue(np.isnan(decoded))
-
-    @mock.patch('katsdptelstate.telescope_state._allow_pickle', False)
-    def test_fuzz(self):
-        if self.encoding == ENCODING_PICKLE:
-            raise unittest.SkipTest("Pickles will exhaust memory or crash given a bad pickle")
-        # Create an encoded string with a bit of everything
-        orig = [('a str', b'bytes'), 3, 4.0, 5 + 6j, np.int32(1),
-                True, False, None, np.array([[1, 2, 3]])]
-        encoded = encode_value(orig, encoding=self.encoding)
-        # Mess with it and check that no exceptions except DecodeError come back
-        for i in range(len(encoded)):
-            broken = bytearray(encoded)
-            for j in range(256):
-                broken[i] = j
-                try:
-                    decode_value(bytes(broken))
-                except DecodeError:
-                    pass
-        # Same thing, but now truncate the message rather than mutating it
-        for i in range(len(encoded)):
-            try:
-                decode_value(encoded[:i])
-            except DecodeError:
-                pass
-
-
-@mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
-@mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
-class TestEncodingPickle(_TestEncoding):
-    encoding = ENCODING_PICKLE
-
-
-class TestEncodingMsgpack(_TestEncoding):
-    encoding = ENCODING_MSGPACK
-
-    def setUp(self):
-        self.object_dtype = np.dtype([('a', np.int32), ('b', np.object_)])
-        self.object_array = np.zeros((3,), self.object_dtype)
-
-    def test_ndarray_with_object(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self.object_array, encoding=self.encoding)
-
-    def test_numpy_scalar_with_object(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self.object_array[0], encoding=self.encoding)
-
-    def test_unhandled_type(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self, encoding=self.encoding)
 
 
 class TestTelescopeState(unittest.TestCase):
@@ -239,8 +133,8 @@ class TestTelescopeState(unittest.TestCase):
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 2345.6, immutable=True)
 
-    @mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
-    @mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
+    @mock.patch('katsdptelstate.encoding._allow_pickle', True)
+    @mock.patch('katsdptelstate.encoding._warn_on_pickle', False)
     def test_immutable_same_value_str(self):
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
