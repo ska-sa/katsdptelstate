@@ -20,7 +20,8 @@ import pkg_resources
 import redis
 
 from . import utils
-from .telescope_state import ConnectionError, ImmutableKeyError, Backend
+from .telescope_state import Backend
+from .errors import ConnectionError, ImmutableKeyError
 from . import compat
 try:
     from . import rdb_reader

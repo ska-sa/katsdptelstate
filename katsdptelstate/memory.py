@@ -19,7 +19,8 @@ import re
 import logging
 
 from . import utils
-from .telescope_state import Backend, ImmutableKeyError
+from .telescope_state import Backend
+from .errors import ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
     from . import rdb_reader

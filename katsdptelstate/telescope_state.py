@@ -32,6 +32,8 @@ import msgpack
 import numpy as np
 
 from .endpoint import Endpoint, endpoint_parser
+from .errors import (InvalidKeyError, InvalidTimestampError, ImmutableKeyError, TimeoutError,
+                     CancelledError, DecodeError, EncodeError)
 
 
 logger = logging.getLogger(__name__)
@@ -105,52 +107,6 @@ def _init_allow_pickle():
 
 
 _init_allow_pickle()
-
-
-class TelstateError(RuntimeError):
-    """Base class for errors from this module"""
-
-
-class ConnectionError(TelstateError):
-    """The initial connection to the Redis server failed."""
-
-
-class RdbParseError(TelstateError):
-    """Error parsing RDB file."""
-    def __init__(self, filename=None):
-        self.filename = filename
-
-    def __str__(self):
-        name = repr(self.filename) if self.filename else 'object'
-        return f'Invalid RDB file {name}'
-
-
-class InvalidKeyError(TelstateError):
-    """A key collides with a class attribute"""
-
-
-class InvalidTimestampError(TelstateError):
-    """Negative or non-finite timestamp"""
-
-
-class ImmutableKeyError(TelstateError):
-    """An attempt was made to modify an immutable key"""
-
-
-class TimeoutError(TelstateError):
-    """A wait for a key timed out"""
-
-
-class CancelledError(TelstateError):
-    """A wait for a key was cancelled"""
-
-
-class DecodeError(ValueError, TelstateError):
-    """An encoded value found in telstate could not be decoded"""
-
-
-class EncodeError(ValueError, TelstateError):
-    """A value could not be encoded"""
 
 
 # See https://stackoverflow.com/questions/11305790

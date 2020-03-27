@@ -19,7 +19,7 @@ import os.path
 
 from rdbtools import RdbParser, RdbCallback
 
-from .telescope_state import RdbParseError
+from .errors import RdbParseError
 
 
 logger = logging.getLogger(__name__)
