@@ -63,7 +63,8 @@ class TestEndpoint:
 class TestEndpointList:
     def test_parser(self):
         parser = endpoint_list_parser(1234)
-        endpoints = parser('hello:80,world,[1080::8:800:200C:417A],192.168.0.255+4,10.0.255.255+3:60')
+        endpoints = parser(
+            'hello:80,world,[1080::8:800:200C:417A],192.168.0.255+4,10.0.255.255+3:60')
         expected = [
             Endpoint('hello', 80),
             Endpoint('world', 1234),

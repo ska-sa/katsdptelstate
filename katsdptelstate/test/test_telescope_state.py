@@ -117,8 +117,8 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(stored_values[2][0], test_values[2])
         stored_values_pickled = self.ts.get_range('test_key', st=0, return_encoded=True)
         self.assertEqual(stored_values_pickled[2][0], encode_value(test_values[2]))
+        # check timestamp
         self.assertEqual(stored_values_pickled[2][1], 2)
-         # check timestamp
 
     def test_immutable(self):
         self.ts.add('test_immutable', 1234.5, immutable=True)
@@ -159,7 +159,8 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_2', 'hello', immutable=True)
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
-        self.ts.backend.set_immutable(b'test_failed_decode', b'')  # Empty string is never valid encoding
+        # Empty string is never valid encoding
+        self.ts.backend.set_immutable(b'test_failed_decode', b'')
         with self.assertRaisesRegex(ImmutableKeyError, 'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
 
@@ -243,17 +244,24 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_immutable', 12345, immutable=True)
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key'))
         self.assertEqual([(16384, 2)], self.ts.get_range('test_key', et=3))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=0))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=0, et=3.5))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=0))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=0, et=3.5))
         self.assertEqual([(8192, 1)], self.ts.get_range('test_key', st=-1, et=1.5))
-        self.assertEqual([(16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=2))
+        self.assertEqual([(16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=2))
         self.assertEqual([(8192, 1)], self.ts.get_range('test_key', et=1.5))
         self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
         self.assertEqual([], self.ts.get_range('test_key', et=-0.))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
-        self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=1.5, include_previous=True))
+        self.assertEqual([(2048, 4)],
+                         self.ts.get_range('test_key', st=5, et=6, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=2, et=4, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
         self.assertRaises(ImmutableKeyError, self.ts.get_range, 'test_immutable')
 
@@ -302,7 +310,7 @@ class TestTelescopeState(unittest.TestCase):
             self.ts.wait_key('test_key', lambda value, ts: True, timeout=0.1)
 
     def test_wait_key_delayed(self):
-        """wait_key must succeed when given a timeout that does not expire before the condition is met"""
+        """wait_key must succeed with a timeout that does not expire before the condition is met."""
         def set_key():
             self.ts.add('test_key', 123)
             time.sleep(0.1)
@@ -325,21 +333,21 @@ class TestTelescopeState(unittest.TestCase):
         thread.join()
 
     def test_wait_key_already_cancelled(self):
-        """wait_key must raise :exc:`CancelledError` if the provided `cancel_future` is already done."""
+        """wait_key must raise :exc:`CancelledError` if the `cancel_future` is already done."""
         future = mock.MagicMock()
         future.done.return_value = True
         with self.assertRaises(CancelledError):
             self.ts.wait_key('test_key', cancel_future=future)
 
     def test_wait_key_already_done_and_cancelled(self):
-        """wait_key is successful if both the condition and the cancellation are done on entry"""
+        """wait_key is successful if both the condition and the cancellation are done on entry."""
         future = mock.MagicMock()
         future.done.return_value = True
         self.ts.add('test_key', 123)
         self.ts.wait_key('test_key', lambda value, ts: value == 123, cancel_future=future)
 
     def test_wait_key_cancel(self):
-        """wait_key must return when cancelled"""
+        """wait_key must return when cancelled."""
         def cancel():
             time.sleep(0.1)
             future.done.return_value = True

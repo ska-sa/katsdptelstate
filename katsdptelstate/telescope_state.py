@@ -14,14 +14,11 @@
 # limitations under the License.
 ################################################################################
 
-import pickle
 import time
 import math
 import logging
 import contextlib
-import functools
 
-import six
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
@@ -323,10 +320,10 @@ class TelescopeState:
         redis.ResponseError
             if there is some other error from the Redis server
         """
+        # check that we are not going to munge a class method
         if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a "
                                   "class method and thus cannot be used.")
-         # check that we are not going to munge a class method
         key = ensure_binary(key)
         full_key = self._prefixes[0] + key
         key_str = display_str(full_key)
