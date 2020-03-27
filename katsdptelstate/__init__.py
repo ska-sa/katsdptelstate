@@ -14,8 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-import warnings
-
 from .errors import (ConnectionError, InvalidKeyError,                  # noqa: F401
                      ImmutableKeyError, TimeoutError, CancelledError,
                      DecodeError, EncodeError, RdbParseError)
