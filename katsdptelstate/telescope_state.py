@@ -477,7 +477,7 @@ class TelescopeState:
     prefix lists by automatically adding the trailing underscore to prefixes.
 
     Care should be used when attributes share a suffix. They may shadow
-    shadow each other for some views, causing the attribute to appear to have
+    each other for some views, causing the attribute to appear to have
     changed value. This class does not prevent it, because there is no way to
     know which namespaces may be shared in a view, and because doing it in a
     race-free way would be prohibitively expensive.
