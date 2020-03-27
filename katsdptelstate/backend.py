@@ -14,10 +14,11 @@
 # limitations under the License.
 ################################################################################
 
+from abc import ABC, abstractmethod
 import time
 
 
-class Backend:
+class Backend(ABC):
     """Low-level interface for telescope state backends.
 
     The backend interface does not deal with namespaces or encodings, which are
@@ -30,30 +31,32 @@ class Backend:
       the timestamps are non-negative finite floats and the values are
       :class:`bytes`.
     """
+
+    @abstractmethod
     def load_from_file(self, file):
         """Implements :meth:`TelescopeState.load_from_file`."""
-        raise NotImplementedError
 
+    @abstractmethod
     def __contains__(self, key):
         """Return if `key` is in the backend."""
-        raise NotImplementedError
 
+    @abstractmethod
     def keys(self, filter):
         """Return all keys matching `filter`.
 
         The filter is a redis pattern. Backends might only support ``b'*'`` as
         a filter.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def delete(self, key):
         """Delete a key (no-op if it does not exist)"""
-        raise NotImplementedError
 
+    @abstractmethod
     def clear(self):
         """Remove all keys"""
-        raise NotImplementedError
 
+    @abstractmethod
     def is_immutable(self, key):
         """Whether `key` is an immutable key in the backend.
 
@@ -62,8 +65,8 @@ class Backend:
         KeyError
             If `key` is not present at all
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def set_immutable(self, key, value):
         """Set the value of an immutable key.
 
@@ -75,8 +78,8 @@ class Backend:
         ImmutableKeyError
             If the key exists and is mutable
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def get_immutable(self, key):
         """Get the value of an immutable key.
 
@@ -87,8 +90,8 @@ class Backend:
         ImmutableKeyError
             If the key is mutable
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def get(self, key):
         """Get the value and timestamp of a key.
 
@@ -98,8 +101,8 @@ class Backend:
         If the key does not exist, both the value and timestamp will be
         ``None``.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def add_mutable(self, key, value, timestamp):
         """Set a (timestamp, value) pair in a mutable key.
 
@@ -110,8 +113,8 @@ class Backend:
         ImmutableKeyError
             If the key exists and is immutable
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         """Obtain a range of values from a mutable key.
 
@@ -135,11 +138,10 @@ class Backend:
         ImmutableKeyError
             If the key exists and is immutable
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def dump(self, key):
         """Return a key in the same format as the Redis DUMP command, or None if not present"""
-        raise NotImplementedError
 
     def monitor_keys(self, keys):
         """Report changes to keys in `keys`.
