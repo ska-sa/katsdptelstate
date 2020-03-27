@@ -20,7 +20,7 @@ import pkg_resources
 import redis
 
 from . import utils
-from .telescope_state import Backend
+from .backend import Backend
 from .errors import ConnectionError, ImmutableKeyError
 from . import compat
 try:
