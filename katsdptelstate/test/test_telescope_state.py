@@ -19,8 +19,8 @@
 import threading
 import time
 import unittest
+from unittest import mock
 
-import mock
 import numpy as np
 import fakeredis
 
