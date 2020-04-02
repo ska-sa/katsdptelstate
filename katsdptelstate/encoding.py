@@ -100,7 +100,7 @@ def _init_allow_pickle():
     elif env == '0':
         allow = False
     elif env is not None:
-        warnings.warn(f'Unknown value {env!r} for KATSDPTELSTATE_ALLOW_PICKLE')
+        warnings.warn('Unknown value {!r} for KATSDPTELSTATE_ALLOW_PICKLE'.format(env))
     set_allow_pickle(allow)
 
 
@@ -178,7 +178,7 @@ def _msgpack_ext_hook(code, data):
     elif code == MSGPACK_EXT_NUMPY_SCALAR:
         return _decode_numpy_scalar(data)
     else:
-        raise DecodeError(f'unknown extension type {code}')
+        raise DecodeError('unknown extension type {}'.format(code))
 
 
 def _msgpack_encode(value):

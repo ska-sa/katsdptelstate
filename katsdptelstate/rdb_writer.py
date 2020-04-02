@@ -50,7 +50,7 @@ def encode_item(key, dumped_value):
     try:
         key_len = encode_len(len(key))
     except ValueError as exc:
-        err = ValueError(f'Failed to encode key length: {exc}')
+        err = ValueError('Failed to encode key length: {}'.format(exc))
         raise err from None
     # The DUMPed value includes a leading type descriptor,
     # the encoded value itself (including length specifier),

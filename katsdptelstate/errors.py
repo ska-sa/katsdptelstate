@@ -31,7 +31,7 @@ class RdbParseError(TelstateError):
 
     def __str__(self):
         name = repr(self.filename) if self.filename else 'object'
-        return f'Invalid RDB file {name}'
+        return 'Invalid RDB file {}'.format(name)
 
 
 class InvalidKeyError(TelstateError):

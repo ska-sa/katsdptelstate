@@ -31,7 +31,7 @@ def display_str(s):
     try:
         return '{!r}'.format(six.ensure_str(s))
     except UnicodeDecodeError:
-        return f'{s!r}'
+        return '{!r}'.format(s)
 
 
 def pack_query_timestamp(time, is_end, include_end=False):

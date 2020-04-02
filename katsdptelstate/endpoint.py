@@ -40,12 +40,12 @@ class Endpoint:
     def __str__(self):
         if ':' in self.host:
             # IPv6 address - escape it
-            return f'[{self.host}]:{self.port}'
+            return '[{}]:{}'.format(self.host, self.port)
         else:
-            return f'{self.host}:{self.port}'
+            return '{}:{}'.format(self.host, self.port)
 
     def __repr__(self):
-        return f'Endpoint({self.host!r}, {self.port!r})'
+        return 'Endpoint({!r}, {!r})'.format(self.host, self.port)
 
     def __iter__(self):
         """Support `tuple(endpoint)` for passing to a socket function"""
@@ -132,14 +132,14 @@ def endpoint_list_parser(default_port, single_port=False):
                 start = endpoint.host[:pos]
                 count = int(endpoint.host[pos+1:])
                 if count < 0:
-                    raise ValueError(f'bad count {count}')
+                    raise ValueError('bad count {}'.format(count))
                 try:
                     start_raw = struct.unpack('>I', socket.inet_aton(start))[0]
                     for i in range(start_raw, start_raw + count + 1):
                         host = socket.inet_ntoa(struct.pack('>I', i))
                         endpoints.append(Endpoint(host, endpoint.port))
                 except OSError:
-                    raise ValueError(f'invalid IPv4 address in {start}')
+                    raise ValueError('invalid IPv4 address in {}'.format(start))
             else:
                 endpoints.append(endpoint)
         if single_port:
@@ -194,11 +194,11 @@ def endpoints_to_str(endpoints):
             if num > 1:
                 s += '+{}'.format(num - 1)
             if port is not None:
-                s += f':{port}'
+                s += ':{}'.format(port)
             parts.append(s)
     for endpoint in other:
         s = str(endpoint.host)
         if endpoint.port is not None:
-            s += f':{endpoint.port}'
+            s += ':{}'.format(endpoint.port)
         parts.append(s)
     return ','.join(parts)

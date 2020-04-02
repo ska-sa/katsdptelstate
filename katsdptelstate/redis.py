@@ -87,7 +87,7 @@ class RedisBackend(Backend):
         except (redis.TimeoutError, redis.ConnectionError) as e:
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
-            raise ConnectionError(f"could not connect to redis server: {e}")
+            raise ConnectionError("could not connect to redis server: {}".format(e))
         self._get_script = self._register_script('get.lua')
         self._set_immutable_script = self._register_script('set_immutable.lua')
         self._add_mutable_script = self._register_script('add_mutable.lua')

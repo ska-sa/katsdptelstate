@@ -164,7 +164,7 @@ class TelescopeState:
             If the file could not be parsed (truncated / malformed / not RDB)
         """
         keys_loaded = self._backend.load_from_file(file)
-        logger.info(f"Loading {keys_loaded} keys from {file}")
+        logger.info("Loading {} keys from {}".format(keys_loaded, file))
         return keys_loaded
 
     @classmethod
@@ -435,7 +435,7 @@ class TelescopeState:
 
         def check_cancelled():
             if cancel_future is not None and cancel_future.done():
-                raise CancelledError(f'Wait for {key_str} cancelled')
+                raise CancelledError('Wait for {} cancelled'.format(key_str))
 
         check_cancelled()
         monitor = self._backend.monitor_keys([prefix + key

@@ -110,7 +110,7 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(x_pickled, encode_value(x))
 
     def test_return_encoded_range(self):
-        test_values = [f'Test Value: {x}' for x in range(5)]
+        test_values = ['Test Value: {}'.format(x) for x in range(5)]
         for i, test_value in enumerate(test_values):
             self.ts.add('test_key', test_value, i)
         stored_values = self.ts.get_range('test_key', st=0)
