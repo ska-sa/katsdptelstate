@@ -88,14 +88,14 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
-        self._get_script = self._register_script('get.lua')
-        self._set_immutable_script = self._register_script('set_immutable.lua')
-        self._add_mutable_script = self._register_script('add_mutable.lua')
-        self._get_range_script = self._register_script('get_range.lua')
+        self._scripts = {}
+        for script_name in ['get', 'set_immutable', 'add_mutable', 'get_range']:
+            script = pkg_resources.resource_string(
+                'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
+            self._scripts[script_name] = self.client.register_script(script)
 
-    def _register_script(self, basename):
-        script = pkg_resources.resource_string('katsdptelstate', 'lua_scripts/' + basename)
-        return self.client.register_script(script)
+    def _call(self, script_name, *args, **kwargs):
+        return self._scripts[script_name](*args, **kwargs)
 
     def load_from_file(self, file):
         if rdb_reader is None:
@@ -123,14 +123,14 @@ class RedisBackend(Backend):
 
     def set_immutable(self, key, value):
         with _handle_wrongtype():
-            return self._set_immutable_script([key], [value])
+            return self._call('set_immutable', [key], [value])
 
     def get_immutable(self, key):
         with _handle_wrongtype():
             return self.client.get(key)
 
     def get(self, key):
-        result = self._get_script([key])
+        result = self._call('get', [key])
         if result[1]:
             return utils.split_timestamp(result[0])
         else:
@@ -139,13 +139,13 @@ class RedisBackend(Backend):
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            self._add_mutable_script([key], [str_val])
+            self._call('add_mutable', [key], [str_val])
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
-            ret_vals = self._get_range_script([key], [packed_st, packed_et, int(include_previous)])
+            ret_vals = self._call('get_range', [key], [packed_st, packed_et, int(include_previous)])
         if ret_vals is None:
             return None     # Key does not exist
         return [utils.split_timestamp(val) for val in ret_vals]

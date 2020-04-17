@@ -25,9 +25,10 @@ class Backend(ABC):
     handled by the frontend :class:`TelescopeState` class. A backend must be
     able to store
 
-    - immutables: key-value pairs (both :class:`bytes`);
+    - immutables: key-value pairs (both :class:`bytes`), whose value cannot
+      change once set.
 
-    - mutables: a key associated with a set of (timestamp, value) pairs, where
+    - mutables: a key associated with a set of (value, timestamp) pairs, where
       the timestamps are non-negative finite floats and the values are
       :class:`bytes`.
     """
@@ -104,7 +105,7 @@ class Backend(ABC):
 
     @abstractmethod
     def add_mutable(self, key, value, timestamp):
-        """Set a (timestamp, value) pair in a mutable key.
+        """Set a (value, timestamp) pair in a mutable key.
 
         The `timestamp` will be a non-negative float value.
 
