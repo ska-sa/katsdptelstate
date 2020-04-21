@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2019, National Research Foundation (Square Kilometre Array)
+# Copyright (c) 2019-2020, National Research Foundation (Square Kilometre Array)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -34,6 +34,7 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
 
 class RedisCallback(BackendCallback):
     """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
+
     def __init__(self, client):
         super().__init__()
         self.client = client
@@ -58,6 +59,23 @@ class RedisCallback(BackendCallback):
         self.client_busy = False
         self._zset = {}
 
+    def start_hash(self, key, length, expiry, info):
+        self._hash = []
+        self.n_keys += 1
+
+    def hset(self, key, field, value):
+        self._hash.extend([field, value])
+
+    def end_hash(self, key):
+        self.client_busy = True
+        # redis-py's hset doesn't support multiple key/value pairs, and its
+        # hmset takes a mapping rather than interleaved keys and values. To
+        # avoid the cost of building a dict and then flattening it again,
+        # we execute the raw Redis command directly.
+        self.client.execute_command('HSET', key, *self._hash)
+        self.client_busy = False
+        self._hash = []
+
 
 @contextlib.contextmanager
 def _handle_wrongtype():
@@ -78,6 +96,13 @@ def _handle_wrongtype():
 class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
 
+    _KEY_TYPES = {
+        b'none': None,
+        b'string': KeyType.IMMUTABLE,
+        b'hash': KeyType.INDEXED,
+        b'zset': KeyType.MUTABLE
+    }
+
     def __init__(self, client):
         self.client = client
         self._ps = self.client.pubsub(ignore_subscribe_messages=True)
@@ -90,7 +115,7 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
         self._scripts = {}
-        for script_name in ['get', 'set_immutable', 'add_mutable', 'get_range']:
+        for script_name in ['get', 'set_immutable', 'set_indexed', 'add_mutable', 'get_range']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = self.client.register_script(script)
@@ -117,16 +142,7 @@ class RedisBackend(Backend):
 
     def key_type(self, key):
         type_ = self.client.type(key)
-        if type_ == b'none':
-            raise KeyError
-        elif type_ == b'string':
-            return KeyType.IMMUTABLE
-        elif type_ == b'hash':
-            return KeyType.INDEXED_IMMUTABLE
-        elif type_ == b'zset':
-            return KeyType.MUTABLE
-        else:
-            raise RuntimeError('Unhandled redis key type {}'.format(ensure_str(type_)))
+        return self._KEY_TYPES[type_]
 
     def set_immutable(self, key, value):
         with _handle_wrongtype():
@@ -134,7 +150,9 @@ class RedisBackend(Backend):
 
     def get(self, key):
         result = self._call('get', [key])
-        if result[1] == b'string':
+        if result[1] == b'none':
+            return None, None
+        elif result[1] == b'string':
             return result[0], None
         elif result[1] == b'zset':
             return utils.split_timestamp(result[0])
@@ -152,7 +170,7 @@ class RedisBackend(Backend):
 
     def set_indexed(self, key, sub_key, value):
         with _handle_wrongtype():
-            self.client.hset(key, sub_key, value)
+            return self._call('set_indexed', [key], [sub_key, value])
 
     def get_indexed(self, key, sub_key):
         with _handle_wrongtype():
@@ -188,13 +206,17 @@ class RedisBackend(Backend):
                         timeout = yield (key,)
                     elif message['type'] == 'message':
                         # TODO: eventually change the protocol to indicate
-                        # mutability in the message.
+                        # the key type in the message.
                         type_ = self.client.type(key)
                         if type_ == b'string':
                             timeout = yield (key, message['data'])
-                        else:
+                        elif type_ == b'hash':
+                            timeout = yield (key,)
+                        elif type_ == b'zset':
                             value, timestamp = utils.split_timestamp(message['data'])
                             timeout = yield (key, value, timestamp)
+                        else:
+                            raise RuntimeError('Unhandled key type {}'.format(ensure_str(type_)))
 
     def dump(self, key):
         return self.client.dump(key)

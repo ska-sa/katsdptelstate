@@ -160,8 +160,18 @@ class MemoryBackend(Backend):
     def clear(self):
         self._data.clear()
 
-    def is_immutable(self, key):
-        return isinstance(self._data[key], bytes)
+    def key_type(self, key):
+        value = self._data.get(key)
+        if value is None:
+            return None
+        elif isinstance(value, bytes):
+            return utils.KeyType.IMMUTABLE
+        elif isinstance(value, dict):
+            return utils.KeyType.INDEXED
+        elif isinstance(value, list):
+            return utils.KeyType.MUTABLE
+        else:
+            assert False
 
     def set_immutable(self, key, value):
         old = self._data.get(key)
@@ -193,6 +203,22 @@ class MemoryBackend(Backend):
                 items.insert(pos, str_val)
         else:
             raise ImmutableKeyError
+
+    def set_indexed(self, key, sub_key, value):
+        item = self._data.setdefault(key, {})
+        if not isinstance(item, dict):
+            raise ImmutableKeyError
+        if sub_key in item:
+            return item[sub_key]
+        else:
+            item[sub_key] = value
+            return None
+
+    def get_indexed(self, key, sub_key):
+        item = self._data.get(key, {})
+        if not isinstance(item, dict):
+            raise ImmutableKeyError
+        return item.get(sub_key)
 
     @classmethod
     def _bisect(cls, items, timestamp, is_end, include_end=False):

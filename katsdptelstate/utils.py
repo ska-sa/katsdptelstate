@@ -24,7 +24,7 @@ import six
 
 class KeyType(enum.Enum):
     IMMUTABLE = 1
-    INDEXED_IMMUTABLE = 2
+    INDEXED = 2
     MUTABLE = 3
 
 

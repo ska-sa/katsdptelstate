@@ -41,7 +41,9 @@ class TelescopeState:
     indexed immutable values, and mutable keys where the full history of values
     is stored with timestamps. These are mapped to the Redis string, hash and
     zset types. A Redis database used with this class must *only* be used with
-    this class, as it does not deal with other types of keys.
+    this class, as it does not deal with other types of keys. For clarity,
+    "immutable" refers only to single immutable values unless otherwise
+    specified, while "indexed" refers to the indexed immutable type.
 
     Each instance of this class has an associated list of prefixes. Lookups
     try each key in turn until a match is found. Writes use the first prefix in
@@ -227,15 +229,15 @@ class TelescopeState:
     def is_immutable(self, key):
         """Check to see if the specified key is an immutable.
 
-        This will be true for both plain and indexed immutable keys. It is
-        false if the key does not exist.
+        Note that indexed keys are not considered immutable for this purpose.
+        If the key does not exist, ``False`` is returned.
 
         .. deprecated::
             :meth:`is_immutable` is deprecated and may be removed in a future release.
             Use :meth:`key_type` instead.
         """
         warnings.warn('is_immutable is deprecated; use key_type instead', FutureWarning)
-        return self.key_type(key) in {KeyType.IMMUTABLE, KeyType.INDEXED_IMMUTABLE}
+        return self.key_type(key) == KeyType.IMMUTABLE
 
     def key_type(self, key):
         """Get the type of a key.
@@ -244,10 +246,9 @@ class TelescopeState:
         """
         key = ensure_binary(key)
         for prefix in self._prefixes:
-            try:
-                return self._backend.key_type(prefix + key)
-            except KeyError:
-                pass
+            key_type = self._backend.key_type(prefix + key)
+            if key_type is not None:
+                return key_type
         return None
 
     def keys(self, filter='*'):

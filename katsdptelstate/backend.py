@@ -59,13 +59,7 @@ class Backend(ABC):
 
     @abstractmethod
     def key_type(self, key):
-        """Get type of `key`.
-
-        Raises
-        ------
-        KeyError
-            If `key` is not present at all
-        """
+        """Get type of `key`, or ``None`` if it does not exist."""
 
     @abstractmethod
     def set_immutable(self, key, value):
