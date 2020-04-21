@@ -58,8 +58,8 @@ class Backend(ABC):
         """Remove all keys"""
 
     @abstractmethod
-    def is_immutable(self, key):
-        """Whether `key` is an immutable key in the backend.
+    def key_type(self, key):
+        """Get type of `key`.
 
         Raises
         ------
@@ -77,7 +77,7 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is mutable
+            If the key exists and is not immutable.
         """
 
     @abstractmethod
@@ -101,6 +101,31 @@ class Backend(ABC):
         ------
         ImmutableKeyError
             If the key exists and is immutable
+        """
+
+    @abstractmethod
+    def set_indexed(self, key, sub_key, value):
+        """Add value in an indexed immutable key.
+
+        If the sub-key already exists, returns the existing value and does not
+        update it. Otherwise, returns ``None``.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key exists and is not plain immutable.
+        """
+
+    @abstractmethod
+    def get_indexed(self, key, sub_key):
+        """Get the value of an indexed immutable key.
+
+        Returns ``None`` if the key or sub-key does not exist.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key is mutable
         """
 
     @abstractmethod

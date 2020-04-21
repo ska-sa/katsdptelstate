@@ -22,6 +22,7 @@ import redis
 from . import utils
 from .backend import Backend
 from .errors import ConnectionError, ImmutableKeyError
+from .utils import KeyType, ensure_str
 from . import compat
 try:
     from . import rdb_reader
@@ -114,12 +115,18 @@ class RedisBackend(Backend):
     def clear(self):
         self.client.flushdb()
 
-    def is_immutable(self, key):
+    def key_type(self, key):
         type_ = self.client.type(key)
         if type_ == b'none':
             raise KeyError
+        elif type_ == b'string':
+            return KeyType.IMMUTABLE
+        elif type_ == b'hash':
+            return KeyType.INDEXED_IMMUTABLE
+        elif type_ == b'zset':
+            return KeyType.MUTABLE
         else:
-            return type_ == b'string'
+            raise RuntimeError('Unhandled redis key type {}'.format(ensure_str(type_)))
 
     def set_immutable(self, key, value):
         with _handle_wrongtype():
@@ -127,15 +134,29 @@ class RedisBackend(Backend):
 
     def get(self, key):
         result = self._call('get', [key])
-        if result[1]:
-            return utils.split_timestamp(result[0])
-        else:
+        if result[1] == b'string':
             return result[0], None
+        elif result[1] == b'zset':
+            return utils.split_timestamp(result[0])
+        elif result[1] == b'hash':
+            it = iter(result[0])
+            d = dict(zip(it, it))
+            return d, None
+        else:
+            raise RuntimeError('Unknown key type {}'.format(ensure_str(result[1])))
 
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
             self._call('add_mutable', [key], [str_val])
+
+    def set_indexed(self, key, sub_key, value):
+        with _handle_wrongtype():
+            self.client.hset(key, sub_key, value)
+
+    def get_indexed(self, key, sub_key):
+        with _handle_wrongtype():
+            return self.client.hget(key, sub_key)
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         packed_st = utils.pack_query_timestamp(start_time, False)
