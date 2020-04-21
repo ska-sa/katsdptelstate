@@ -114,12 +114,14 @@ class Backend(ABC):
     def get_indexed(self, key, sub_key):
         """Get the value of an indexed immutable key.
 
-        Returns ``None`` if the key or sub-key does not exist.
+        Returns ``None`` if the key exists but the sub-key does not exist.
 
         Raises
         ------
+        KeyError
+            If the key does not exist.
         ImmutableKeyError
-            If the key is mutable
+            If the key exists and is not indexed.
         """
 
     @abstractmethod

@@ -215,7 +215,7 @@ class MemoryBackend(Backend):
             return None
 
     def get_indexed(self, key, sub_key):
-        item = self._data.get(key, {})
+        item = self._data[key]
         if not isinstance(item, dict):
             raise ImmutableKeyError
         return item.get(sub_key)

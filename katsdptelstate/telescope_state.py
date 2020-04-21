@@ -405,6 +405,10 @@ class TelescopeState:
                                         .format(key_str))
 
     def set_indexed(self, key, sub_key, value, encoding=ENCODING_DEFAULT):
+        # check that we are not going to munge a class method
+        if key in self.__class__.__dict__:
+            raise InvalidKeyError("The specified key already exists as a "
+                                  "class method and thus cannot be used.")
         # Raises a TypeError if it's not hashable, to prevent trouble
         # retrieving it later.
         hash(sub_key)
@@ -431,13 +435,17 @@ class TelescopeState:
         sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
         for prefix in self._prefixes:
             full_key = prefix + key
-            raw_value = self.backend.get_indexed(full_key, sub_key_enc)
-            if raw_value is not None:
-                if return_encoded:
+            try:
+                raw_value = self.backend.get_indexed(full_key, sub_key_enc)
+                if raw_value is None:
+                    return default
+                elif return_encoded:
                     return raw_value
                 else:
                     return decode_value(raw_value)
-        raise KeyError('{}[{!r}] not found'.format(display_str(key), sub_key))
+            except KeyError:
+                pass  # Key does not exist, try the next prefix
+        return default
 
     def _check_condition(self, key, condition, message=None):
         """Check whether key exists and satisfies a condition (if any).

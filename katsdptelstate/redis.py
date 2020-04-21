@@ -115,7 +115,8 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
         self._scripts = {}
-        for script_name in ['get', 'set_immutable', 'set_indexed', 'add_mutable', 'get_range']:
+        for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
+                            'add_mutable', 'get_range']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = self.client.register_script(script)
@@ -174,7 +175,12 @@ class RedisBackend(Backend):
 
     def get_indexed(self, key, sub_key):
         with _handle_wrongtype():
-            return self.client.hget(key, sub_key)
+            result = self._call('get_indexed', [key], [sub_key])
+            if result == 1:
+                # Key does not exist
+                raise KeyError
+            else:
+                return result
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
         packed_st = utils.pack_query_timestamp(start_time, False)
