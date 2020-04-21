@@ -173,12 +173,6 @@ class MemoryBackend(Backend):
         else:
             raise ImmutableKeyError
 
-    def get_immutable(self, key):
-        value = self._data.get(key)
-        if isinstance(value, list):
-            raise ImmutableKeyError
-        return value
-
     def get(self, key):
         value = self._data.get(key)
         if isinstance(value, list):
