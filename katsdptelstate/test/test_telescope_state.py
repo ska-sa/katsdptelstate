@@ -1,5 +1,3 @@
-# coding: utf-8
-
 ################################################################################
 # Copyright (c) 2015-2019, National Research Foundation (Square Kilometre Array)
 #
@@ -18,126 +16,17 @@
 
 """Tests for the sdp telescope state client."""
 
-from __future__ import print_function, division, absolute_import
-
 import threading
 import time
 import unittest
+from unittest import mock
 
-import mock
-import six
 import numpy as np
 import fakeredis
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, EncodeError, DecodeError,
-                            encode_value, decode_value,
-                            ENCODING_PICKLE, ENCODING_MSGPACK)
+                            TimeoutError, CancelledError, encode_value)
 from katsdptelstate.memory import MemoryBackend
-
-
-class _TestEncoding(unittest.TestCase):
-    """Test encode_value and decode_value.
-
-    This must be subclassed to specify the encoding type.
-    """
-    def _test_value(self, value):
-        encoded = encode_value(value, encoding=self.encoding)
-        decoded = decode_value(encoded)
-        self.assertEqual(type(value), type(decoded))
-        if isinstance(value, np.ndarray):
-            np.testing.assert_array_equal(value, decoded)
-        else:
-            self.assertEqual(value, decoded)
-
-    def test_list_tuple(self):
-        self._test_value(('a', 'tuple', ['with', ('embedded', 'list')]))
-
-    def test_float(self):
-        self._test_value(1.0)
-        self._test_value(1.23456788901234567890)
-        self._test_value(1e300)
-        self._test_value(-1e-300)
-        self._test_value(float('inf'))
-        self._test_value(np.inf)
-
-    def test_simple(self):
-        self._test_value(True)
-        self._test_value(False)
-        self._test_value(None)
-
-    def test_np_scalar(self):
-        self._test_value(np.float32(5.5))
-        self._test_value(np.float64(5.5))
-        self._test_value(np.complex128(5.5 + 4.2j))
-        self._test_value(np.bool_(True))
-        self._test_value(np.bool_(False))
-        self._test_value(np.int32(12345678))
-
-    def test_complex(self):
-        self._test_value(1.2 + 3.4j)
-
-    def test_ndarray(self):
-        self._test_value(np.array([1, 2, 3]))
-
-    def test_structured_ndarray(self):
-        dtype = np.dtype([('a', np.int32), ('b', np.int16, (3, 3))])
-        self._test_value(np.zeros((2, 3), dtype))
-
-    def test_nan(self):
-        encoded = encode_value(np.nan, encoding=self.encoding)
-        decoded = decode_value(encoded)
-        self.assertTrue(np.isnan(decoded))
-
-    @mock.patch('katsdptelstate.telescope_state._allow_pickle', False)
-    def test_fuzz(self):
-        if self.encoding == ENCODING_PICKLE:
-            raise unittest.SkipTest("Pickles will exhaust memory or crash given a bad pickle")
-        # Create an encoded string with a bit of everything
-        orig = [('a str', b'bytes'), 3, 4.0, 5 + 6j, np.int32(1),
-                True, False, None, np.array([[1, 2, 3]])]
-        encoded = encode_value(orig, encoding=self.encoding)
-        # Mess with it and check that no exceptions except DecodeError come back
-        for i in range(len(encoded)):
-            broken = bytearray(encoded)
-            for j in range(256):
-                broken[i] = j
-                try:
-                    decode_value(bytes(broken))
-                except DecodeError:
-                    pass
-        # Same thing, but now truncate the message rather than mutating it
-        for i in range(len(encoded)):
-            try:
-                decode_value(encoded[:i])
-            except DecodeError:
-                pass
-
-
-@mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
-@mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
-class TestEncodingPickle(_TestEncoding):
-    encoding = ENCODING_PICKLE
-
-
-class TestEncodingMsgpack(_TestEncoding):
-    encoding = ENCODING_MSGPACK
-
-    def setUp(self):
-        self.object_dtype = np.dtype([('a', np.int32), ('b', np.object_)])
-        self.object_array = np.zeros((3,), self.object_dtype)
-
-    def test_ndarray_with_object(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self.object_array, encoding=self.encoding)
-
-    def test_numpy_scalar_with_object(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self.object_array[0], encoding=self.encoding)
-
-    def test_unhandled_type(self):
-        with self.assertRaises(EncodeError):
-            encode_value(self, encoding=self.encoding)
 
 
 class TestTelescopeState(unittest.TestCase):
@@ -228,8 +117,8 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(stored_values[2][0], test_values[2])
         stored_values_pickled = self.ts.get_range('test_key', st=0, return_encoded=True)
         self.assertEqual(stored_values_pickled[2][0], encode_value(test_values[2]))
+        # check timestamp
         self.assertEqual(stored_values_pickled[2][1], 2)
-         # check timestamp
 
     def test_immutable(self):
         self.ts.add('test_immutable', 1234.5, immutable=True)
@@ -244,23 +133,23 @@ class TestTelescopeState(unittest.TestCase):
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 2345.6, immutable=True)
 
-    @mock.patch('katsdptelstate.telescope_state._allow_pickle', True)
-    @mock.patch('katsdptelstate.telescope_state._warn_on_pickle', False)
+    @mock.patch('katsdptelstate.encoding._allow_pickle', True)
+    @mock.patch('katsdptelstate.encoding._warn_on_pickle', False)
     def test_immutable_same_value_str(self):
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
         self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
-        self.ts.add('test_bytes', u'café', immutable=True)
+        self.ts.add('test_bytes', 'café', immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_bytes', b'cafe', immutable=True)
         with self.assertRaises(ImmutableKeyError):
-            self.ts.add('test_bytes', u'cafe', immutable=True)
-        self.ts.add('test_unicode', u'ümlaut', immutable=True)
-        self.ts.add('test_unicode', u'ümlaut', immutable=True)
+            self.ts.add('test_bytes', 'cafe', immutable=True)
+        self.ts.add('test_unicode', 'ümlaut', immutable=True)
+        self.ts.add('test_unicode', 'ümlaut', immutable=True)
         self.ts.add('test_unicode', b'\xc3\xbcmlaut', immutable=True)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_unicode', b'umlaut', immutable=True)
         with self.assertRaises(ImmutableKeyError):
-            self.ts.add('test_unicode', u'umlaut', immutable=True)
+            self.ts.add('test_unicode', 'umlaut', immutable=True)
         # Test with a binary string that isn't valid UTF-8
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
         self.ts.add('test_binary', b'\x00\xff', immutable=True)
@@ -270,9 +159,9 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_2', 'hello', immutable=True)
         self.ts.add('test_3', 'hello', immutable=True)
         # Test handling of the case where the old value cannot be decoded
-        self.ts.backend.set_immutable(b'test_failed_decode', b'')  # Empty string is never valid encoding
-        with six.assertRaisesRegex(self, ImmutableKeyError,
-                                   'failed to decode the previous value'):
+        # Empty string is never valid encoding
+        self.ts.backend.set_immutable(b'test_failed_decode', b'')
+        with self.assertRaisesRegex(ImmutableKeyError, 'failed to decode the previous value'):
             self.ts.add('test_failed_decode', '', immutable=True)
 
     def test_immutable_none(self):
@@ -281,6 +170,11 @@ class TestTelescopeState(unittest.TestCase):
         self.assertIsNone(self.ts.get('test_none', 'not_none'))
         self.assertIsNone(self.ts.test_none)
         self.assertIsNone(self.ts['test_none'])
+
+    def test_immutable_wrong_type(self):
+        self.ts.add('test_mutable', 5)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_mutable', 5, immutable=True)
 
     def test_namespace_immutable(self):
         self.ts.add('parent_immutable', 1234.5, immutable=True)
@@ -350,17 +244,24 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_immutable', 12345, immutable=True)
         self.assertEqual([(2048, 4)], self.ts.get_range('test_key'))
         self.assertEqual([(16384, 2)], self.ts.get_range('test_key', et=3))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=0))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=0, et=3.5))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=0))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=0, et=3.5))
         self.assertEqual([(8192, 1)], self.ts.get_range('test_key', st=-1, et=1.5))
-        self.assertEqual([(16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=2))
+        self.assertEqual([(16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=2))
         self.assertEqual([(8192, 1)], self.ts.get_range('test_key', et=1.5))
         self.assertEqual([], self.ts.get_range('test_key', 3.5, 1.5))
         self.assertEqual([], self.ts.get_range('test_key', et=-0.))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)], self.ts.get_range('test_key', st=1.5, include_previous=True))
-        self.assertEqual([(2048, 4)], self.ts.get_range('test_key', st=5, et=6, include_previous=True))
-        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)], self.ts.get_range('test_key', st=2, et=4, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3), (2048, 4)],
+                         self.ts.get_range('test_key', st=1.5, include_previous=True))
+        self.assertEqual([(2048, 4)],
+                         self.ts.get_range('test_key', st=5, et=6, include_previous=True))
+        self.assertEqual([(8192, 1), (16384, 2), (4096, 3)],
+                         self.ts.get_range('test_key', st=2, et=4, include_previous=True))
         self.assertRaises(KeyError, self.ts.get_range, 'not_a_key')
         self.assertRaises(ImmutableKeyError, self.ts.get_range, 'test_immutable')
 
@@ -409,7 +310,7 @@ class TestTelescopeState(unittest.TestCase):
             self.ts.wait_key('test_key', lambda value, ts: True, timeout=0.1)
 
     def test_wait_key_delayed(self):
-        """wait_key must succeed when given a timeout that does not expire before the condition is met"""
+        """wait_key must succeed with a timeout that does not expire before the condition is met."""
         def set_key():
             self.ts.add('test_key', 123)
             time.sleep(0.1)
@@ -432,21 +333,21 @@ class TestTelescopeState(unittest.TestCase):
         thread.join()
 
     def test_wait_key_already_cancelled(self):
-        """wait_key must raise :exc:`CancelledError` if the provided `cancel_future` is already done."""
+        """wait_key must raise :exc:`CancelledError` if the `cancel_future` is already done."""
         future = mock.MagicMock()
         future.done.return_value = True
         with self.assertRaises(CancelledError):
             self.ts.wait_key('test_key', cancel_future=future)
 
     def test_wait_key_already_done_and_cancelled(self):
-        """wait_key is successful if both the condition and the cancellation are done on entry"""
+        """wait_key is successful if both the condition and the cancellation are done on entry."""
         future = mock.MagicMock()
         future.done.return_value = True
         self.ts.add('test_key', 123)
         self.ts.wait_key('test_key', lambda value, ts: value == 123, cancel_future=future)
 
     def test_wait_key_cancel(self):
-        """wait_key must return when cancelled"""
+        """wait_key must return when cancelled."""
         def cancel():
             time.sleep(0.1)
             future.done.return_value = True
@@ -492,8 +393,8 @@ class TestTelescopeState(unittest.TestCase):
         ns.wait_key(key)
 
     def test_mixed_unicode_bytes(self):
-        self._test_mixed_unicode_bytes(self.ts.view(b'ns'), u'test_key')
-        self._test_mixed_unicode_bytes(self.ts.view(u'ns'), b'test_key')
+        self._test_mixed_unicode_bytes(self.ts.view(b'ns'), 'test_key')
+        self._test_mixed_unicode_bytes(self.ts.view('ns'), b'test_key')
 
     def test_undecodable_bytes_in_key(self):
         """Gracefully handle non-UTF-8 bytes in keys."""

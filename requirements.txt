@@ -1,4 +1,3 @@
-ipaddress; python_version<'3'
 msgpack
 netifaces
 numpy

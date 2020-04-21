@@ -14,13 +14,13 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
-
 import bisect
 import re
 import logging
 
-from .telescope_state import Backend, ImmutableKeyError
+from . import utils
+from .backend import Backend
+from .errors import ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset
 try:
     from . import rdb_reader
@@ -30,7 +30,6 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
     BackendCallback = object     # So that MemoryCallback can still be defined
 
 
-_INF = float('inf')
 logger = logging.getLogger(__name__)
 
 
@@ -107,7 +106,7 @@ def _compile_pattern(pattern):
 class MemoryCallback(BackendCallback):
     """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
     def __init__(self, data):
-        super(MemoryCallback, self).__init__()
+        super().__init__()
         self.data = data
 
     def set(self, key, value, expiry, info):
@@ -180,8 +179,15 @@ class MemoryBackend(Backend):
             raise ImmutableKeyError
         return value
 
+    def get(self, key):
+        value = self._data.get(key)
+        if isinstance(value, list):
+            return utils.split_timestamp(value[-1])
+        else:
+            return value, None
+
     def add_mutable(self, key, value, timestamp):
-        str_val = self.pack_timestamp(timestamp) + value
+        str_val = utils.pack_timestamp(timestamp) + value
         items = self._data.get(key)
         if items is None:
             self._data[key] = [str_val]
@@ -196,7 +202,7 @@ class MemoryBackend(Backend):
 
     @classmethod
     def _bisect(cls, items, timestamp, is_end, include_end=False):
-        packed = cls.pack_query_timestamp(timestamp, is_end, include_end)
+        packed = utils.pack_query_timestamp(timestamp, is_end, include_end)
         if packed == b'-':
             return 0
         elif packed == b'+':
@@ -216,7 +222,7 @@ class MemoryBackend(Backend):
         if include_previous and start_pos > 0:
             start_pos -= 1
         end_pos = self._bisect(items, end_time, True, include_end)
-        return [self.split_timestamp(value) for value in items[start_pos:end_pos]]
+        return [utils.split_timestamp(value) for value in items[start_pos:end_pos]]
 
     def dump(self, key):
         value = self._data.get(key)

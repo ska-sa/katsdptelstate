@@ -14,14 +14,12 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
-from six import raise_from
-
 import logging
 import os
 
 from .rdb_utility import encode_len
-from .telescope_state import _ensure_binary, _display_str, TelescopeState
+from .utils import ensure_binary, display_str
+from .telescope_state import TelescopeState
 
 # Basic RDB header. First 5 bytes are the standard REDIS magic
 # Next 4 bytes store the RDB format version number (6 in this case)
@@ -53,7 +51,7 @@ def encode_item(key, dumped_value):
         key_len = encode_len(len(key))
     except ValueError as exc:
         err = ValueError('Failed to encode key length: {}'.format(exc))
-        raise_from(err, None)
+        raise err from None
     # The DUMPed value includes a leading type descriptor,
     # the encoded value itself (including length specifier),
     # a trailing version specifier (2 bytes) and finally an 8 byte checksum.
@@ -63,7 +61,7 @@ def encode_item(key, dumped_value):
     return key_type + key_len + key + encoded_value
 
 
-class RDBWriter(object):
+class RDBWriter:
     """RDB file resource that stores keys from one (or more) Redis DBs.
 
     Upon initialisation this opens the RDB file and writes the header.
@@ -133,7 +131,7 @@ class RDBWriter(object):
             logger.info("No keys specified - dumping entire database")
             keys = client.keys(b'*')
         for key in keys:
-            key = _ensure_binary(key)
+            key = ensure_binary(key)
             dumped_value = client.dump(key)
             try:
                 if not dumped_value:
@@ -141,7 +139,7 @@ class RDBWriter(object):
                 encoded_str = encode_item(key, dumped_value)
             except (ValueError, KeyError) as e:
                 self.keys_failed += 1
-                logger.error("Failed to save key %s: %s", _display_str(key), e)
+                logger.error("Failed to save key %s: %s", display_str(key), e)
                 continue
             self._fileobj.write(encoded_str)
             self.keys_written += 1

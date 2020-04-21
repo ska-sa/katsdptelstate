@@ -1,9 +1,7 @@
 coverage
-fakeredis==1.0.1
-funcsigs
-mock
+fakeredis==1.3.1
+lupa==1.9                  # via fakeredis[lua]
 nose
-pbr
 python-lzf==0.2.4
 rdbtools==0.1.12
 sortedcontainers==2.1.0    # via fakeredis

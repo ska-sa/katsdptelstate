@@ -16,8 +16,6 @@
 
 """Tests for the RDB handling (reading and writing) functionality."""
 
-from __future__ import print_function, division, absolute_import
-
 import unittest
 import shutil
 import os
@@ -42,7 +40,7 @@ class TabloidRedis(fakeredis.FakeStrictRedis):
     we only add a dump function.
     """
     def __init__(self, **kwargs):
-        super(TabloidRedis, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def dump(self, key):
         """Encode Redis key value in an RDB compatible format.

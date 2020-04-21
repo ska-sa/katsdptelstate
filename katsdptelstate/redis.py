@@ -14,13 +14,14 @@
 # limitations under the License.
 ################################################################################
 
-from __future__ import print_function, division, absolute_import
-
 import contextlib
 
+import pkg_resources
 import redis
 
-from .telescope_state import ConnectionError, ImmutableKeyError, Backend
+from . import utils
+from .backend import Backend
+from .errors import ConnectionError, ImmutableKeyError
 from . import compat
 try:
     from . import rdb_reader
@@ -30,13 +31,10 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
     BackendCallback = object     # So that RedisCallback can still be defined
 
 
-_INF = float('inf')
-
-
 class RedisCallback(BackendCallback):
     """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
     def __init__(self, client):
-        super(RedisCallback, self).__init__()
+        super().__init__()
         self.client = client
         self._zset = {}
 
@@ -62,17 +60,23 @@ class RedisCallback(BackendCallback):
 
 @contextlib.contextmanager
 def _handle_wrongtype():
-    """Map redis WRONGTYPE error to ImmutableKeyError"""
+    """Map redis WRONGTYPE error to ImmutableKeyError.
+
+    It also handles WRONGTYPE errors from inside scripts.
+    """
     try:
         yield
     except redis.ResponseError as error:
-        if not error.args[0].startswith('WRONGTYPE '):
-            raise
-        raise ImmutableKeyError
+        if (error.args[0].startswith('WRONGTYPE ')
+                or (error.args[0].startswith('Error running script')
+                    and 'WRONGTYPE ' in error.args[0])):
+            raise ImmutableKeyError
+        raise
 
 
 class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
+
     def __init__(self, client):
         self.client = client
         self._ps = self.client.pubsub(ignore_subscribe_messages=True)
@@ -84,6 +88,14 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
+        self._scripts = {}
+        for script_name in ['get', 'set_immutable', 'add_mutable', 'get_range']:
+            script = pkg_resources.resource_string(
+                'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
+            self._scripts[script_name] = self.client.register_script(script)
+
+    def _call(self, script_name, *args, **kwargs):
+        return self._scripts[script_name](*args, **kwargs)
 
     def load_from_file(self, file):
         if rdb_reader is None:
@@ -110,47 +122,33 @@ class RedisBackend(Backend):
             return type_ == b'string'
 
     def set_immutable(self, key, value):
-        while True:
-            result = self.client.setnx(key, value)
-            if result:
-                self.client.publish(b'update/' + key, value)
-                return None
-            with _handle_wrongtype():
-                old = self.client.get(key)
-                # If someone deleted the key between SETNX and GET, we will
-                # get None here, in which case we can just try again. This
-                # race condition could be eliminated with a Lua script.
-                if old is not None:
-                    return old
+        with _handle_wrongtype():
+            return self._call('set_immutable', [key], [value])
 
     def get_immutable(self, key):
         with _handle_wrongtype():
             return self.client.get(key)
 
+    def get(self, key):
+        result = self._call('get', [key])
+        if result[1]:
+            return utils.split_timestamp(result[0])
+        else:
+            return result[0], None
+
     def add_mutable(self, key, value, timestamp):
-        str_val = self.pack_timestamp(timestamp) + value
+        str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            compat.zadd(self.client, key, {str_val: 0})
-        self.client.publish(b'update/' + key, str_val)
+            self._call('add_mutable', [key], [str_val])
 
     def get_range(self, key, start_time, end_time, include_previous, include_end):
-        # TODO: use a transaction to avoid race conditions and multiple
-        # round trips.
+        packed_st = utils.pack_query_timestamp(start_time, False)
+        packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
-            packed_st = self.pack_query_timestamp(start_time, False)
-            packed_et = self.pack_query_timestamp(end_time, True, include_end)
-            ret_vals = []
-            if include_previous and packed_st != b'-':
-                ret_vals += self.client.zrevrangebylex(key, packed_st, b'-', 0, 1)
-            # Avoid talking to Redis if it is going to be futile
-            if packed_st != packed_et:
-                ret_vals += self.client.zrangebylex(key, packed_st, packed_et)
-            ans = [self.split_timestamp(val) for val in ret_vals]
-        # We can't immediately distinguish between there being nothing in
-        # range versus the key not existing.
-        if not ans and not self.client.exists(key):
-            return None
-        return ans
+            ret_vals = self._call('get_range', [key], [packed_st, packed_et, int(include_previous)])
+        if ret_vals is None:
+            return None     # Key does not exist
+        return [utils.split_timestamp(val) for val in ret_vals]
 
     def monitor_keys(self, keys):
         p = self.client.pubsub()
@@ -178,7 +176,7 @@ class RedisBackend(Backend):
                         if type_ == b'string':
                             timeout = yield (key, message['data'])
                         else:
-                            value, timestamp = self.split_timestamp(message['data'])
+                            value, timestamp = utils.split_timestamp(message['data'])
                             timeout = yield (key, value, timestamp)
 
     def dump(self, key):
