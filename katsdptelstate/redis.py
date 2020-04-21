@@ -125,10 +125,6 @@ class RedisBackend(Backend):
         with _handle_wrongtype():
             return self._call('set_immutable', [key], [value])
 
-    def get_immutable(self, key):
-        with _handle_wrongtype():
-            return self.client.get(key)
-
     def get(self, key):
         result = self._call('get', [key])
         if result[1]:

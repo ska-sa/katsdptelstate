@@ -81,18 +81,6 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get_immutable(self, key):
-        """Get the value of an immutable key.
-
-        Returns ``None`` if the key does not exist.
-
-        Raises
-        ------
-        ImmutableKeyError
-            If the key is mutable
-        """
-
-    @abstractmethod
     def get(self, key):
         """Get the value and timestamp of a key.
 
