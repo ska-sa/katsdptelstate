@@ -14,6 +14,12 @@
 # limitations under the License.
 ################################################################################
 
+"""Implements encoding to the RDB file format.
+
+Some documentation is included here, but for a more complete reference, see
+https://github.com/sripathikrishnan/redis-rdb-tools/wiki/Redis-RDB-Dump-File-Format
+"""
+
 import struct
 import itertools
 
@@ -31,7 +37,7 @@ def encode_len(length):
     - For values less than 16384 use two bytes, leading MSBs are 01 followed by
       14 bits encoding the value
 
-    - For values less than (2^32 -1) use 5 bytes, leading MSBs are 10. Length
+    - For values less than (2^32 - 1) use 5 bytes, leading MSBs are 10. Length
       encoded only in the lowest 32 bits.
     """
     if length > (2**32 - 1):
@@ -46,9 +52,10 @@ def encode_len(length):
 
 def encode_prev_length(length):
     """Special helper for zset previous entry lengths.
-       If length < 253 then use 1 byte directly, otherwise
-       set first byte to 254 and add 4 trailing bytes as an
-       unsigned integer.
+
+    If length < 253 then use 1 byte directly, otherwise
+    set first byte to 254 and add 4 trailing bytes as an
+    unsigned integer.
     """
     if length < 254:
         return struct.pack('B', length)
@@ -62,10 +69,10 @@ def dump_string(data):
     return type_specifier + encoded_length + data + DUMP_POSTFIX
 
 
-def encode_ziplist(items):
+def encode_ziplist(entries):
     """Create an RDB ziplist, including the envelope.
 
-    The items can either be byte strings or integers, and any iterable can
+    The entries can either be byte strings or integers, and any iterable can
     be used.
 
     The ziplist string envelope itself is an RDB-encoded string with the
@@ -89,7 +96,7 @@ def encode_ziplist(items):
     zl_len = 10           # Header is 10 bytes
     zl_entries = 0
     zl_last = zl_len      # Offset to previous entry
-    for entry in items:
+    for entry in entries:
         previous_length = zl_len - zl_last
         zl_last = zl_len
         zl_entries += 1
@@ -113,32 +120,32 @@ def encode_ziplist(items):
     return b''.join(raw_entries)
 
 
+def dump_iterable(prefix, suffix, entries):
+    """Output a sequence of strings, bracketed by a prefix and suffix.
+
+    This is an internal function used to implement :func:`dump_zset` and
+    :func:`dump_hash`.
+    """
+    enc = [prefix]
+    for entry in entries:
+        enc.extend([encode_len(len(entry)), entry])
+    enc.append(suffix)
+    return b''.join(enc)
+
+
 def dump_zset(data):
-    """Encode a set of values as a redis zset, as per redis DUMP command
-       All scores are assumed to be zero.
+    """Encode a set of values as a redis zset, as per redis DUMP command.
 
-       Redis uses both LZF and Ziplist format depending on various arcane heuristics.
-       For maximum compatibility we use LZF and Ziplist as this supports really
-       large values well, at the expense of additional overhead for small values.
+    All scores are assumed to be zero and encoded in the most efficient way
+    possible.
 
-       A zset dump thus takes the following form:
+    Redis uses both LZF and Ziplist format depending on various arcane heuristics.
+    For maximum compatibility we use Ziplist for small lists.
 
-            (length encoding)(ziplist string envelope)
+    There are two possible ways to encode the zset:
 
-       The ziplist string envelope itself is an LZF compressed string with the
-       following form:
-       (format descriptions are provided in the description for each component)
-
-            (bytes in list '<i')(offset to tail '<i')
-            (number of entries '<h')(entry 1)(entry 2)(entry 2N)(terminator 0xFF)
-
-       The entries themselves are encoded as follows:
-
-            (previous entry length 1byte or 5bytes)
-            (entry length - up to 5 bytes as per length encoding)(value)
-
-       The entries alternate between zset values and scores, so there should
-       always be 2N entries in the decode.
+      1. Using a ziplist: (0c)(ziplist) where (ziplist) is string-encoded.
+      2. Using a simple list (03)(num entries)(entry)(entry)...
     """
     entry_count = 2 * len(data)
 
@@ -150,16 +157,14 @@ def dump_zset(data):
     if entry_count > 127 or sum(len(entry) for entry in data) >= 2**31:
         # for inscrutable reasons the length here is half the number of actual
         # entries (i.e. scores are ignored)
-        enc = [b'\x03' + encode_len(len(data))]
-        for entry in data:
+        return dump_iterable(
+            b'\x03' + encode_len(len(data)),
+            DUMP_POSTFIX,
             # interleave entries and scores directly
             # for now, scores are kept fixed at integer zero since float
             # encoding is breaking for some reason and is not needed for telstate
-            enc.append(encode_len(len(entry)) + entry + b'\x010')
-        enc.append(DUMP_POSTFIX)
-        return b"".join(enc)
-
-    # All scores are assumed to be 0 (since they're not used by telstate), and integer
-    # zero has a more compact encoding.
-    zl_envelope = encode_ziplist(itertools.chain.from_iterable((x, 0) for x in data))
-    return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
+            itertools.chain.from_iterable((entry, b'0') for entry in data)
+        )
+    else:
+        zl_envelope = encode_ziplist(itertools.chain.from_iterable((x, 0) for x in data))
+        return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
