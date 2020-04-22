@@ -448,6 +448,44 @@ class TestTelescopeState(unittest.TestCase):
         keys = self.ts._ipython_key_completions_()
         self.assertEqual(sorted(keys), ['ns_a', 'ns_b', 'z'])
 
+    def test_get_indexed(self):
+        self.ts.set_indexed('test_indexed', 'a', 1)
+        self.ts.set_indexed('test_indexed', (2, 3j), 2)
+        self.assertEqual(self.ts.get_indexed('test_indexed', 'a'), 1)
+        self.assertEqual(self.ts.get_indexed('test_indexed', (2, 3j)), 2)
+        self.assertIsNone(self.ts.get_indexed('test_indexed', 'missing'))
+        self.assertIsNone(self.ts.get_indexed('not_a_key', 'missing'))
+        self.assertEqual(self.ts.get('test_indexed'), {'a': 1, (2, 3j): 2})
+
+    def test_set_indexed_immutable(self):
+        self.ts.set_indexed('test_indexed', 'a', 1)
+        self.ts.set_indexed('test_indexed', 'a', 1)  # Same value is okay
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.set_indexed('test_indexed', 'a', 2)
+        self.assertEqual(self.ts.get_indexed('test_indexed', 'a'), 1)
+
+    def test_indexed_wrong_type(self):
+        self.ts['test_immutable'] = 1
+        self.ts.add('test_mutable', 2)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.set_indexed('test_immutable', 'a', 1)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.set_indexed('test_mutable', 'a', 1)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.get_indexed('test_immutable', 'a')
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.get_indexed('test_mutable', 'a')
+
+    def test_namespace_indexed(self):
+        self.ts.set_indexed('test_indexed', 'a', 1)
+        self.assertEqual(self.ns.get('test_indexed'), {'a': 1})
+        self.assertEqual(self.ns.get_indexed('test_indexed', 'a'), 1)
+        self.ns.set_indexed('test_indexed', 'b', 2)
+        self.assertEqual(self.ns.get('test_indexed'), {'b': 2})
+        self.assertEqual(self.ns.get_indexed('test_indexed', 'b'), 2)
+        # Namespace key must completely shadow root
+        self.assertIsNone(self.ns.get_indexed('test_indexed', 'a'))
+
 
 class TestTelescopeStateRedis(TestTelescopeState):
     def make_telescope_state(self):
