@@ -25,7 +25,8 @@ import numpy as np
 import fakeredis
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, encode_value, KeyType)
+                            TimeoutError, CancelledError, encode_value, KeyType,
+                            ENCODING_MSGPACK)
 from katsdptelstate.memory import MemoryBackend
 
 
@@ -455,7 +456,18 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ts.get_indexed('test_indexed', (2, 3j)), 2)
         self.assertIsNone(self.ts.get_indexed('test_indexed', 'missing'))
         self.assertIsNone(self.ts.get_indexed('not_a_key', 'missing'))
+        self.assertEqual(self.ts.get_indexed('test_indexed', 'missing', 'default'), 'default')
+        self.assertEqual(self.ts.get_indexed('not_a_key', 'missing', 'default'), 'default')
         self.assertEqual(self.ts.get('test_indexed'), {'a': 1, (2, 3j): 2})
+
+    def test_indexed_return_encoded(self):
+        self.ts.set_indexed('test_indexed', 'a', 1)
+        values = self.ts.get('test_indexed', return_encoded=True)
+        self.assertEqual(values, {
+            encode_value('a', encoding=ENCODING_MSGPACK): encode_value(1)
+        })
+        self.assertEqual(self.ts.get_indexed('test_indexed', 'a', return_encoded=True),
+                         encode_value(1))
 
     def test_set_indexed_immutable(self):
         self.ts.set_indexed('test_indexed', 'a', 1)
@@ -463,6 +475,10 @@ class TestTelescopeState(unittest.TestCase):
         with self.assertRaises(ImmutableKeyError):
             self.ts.set_indexed('test_indexed', 'a', 2)
         self.assertEqual(self.ts.get_indexed('test_indexed', 'a'), 1)
+
+    def test_set_indexed_unhashable(self):
+        with self.assertRaises(TypeError):
+            self.ts.set_indexed('test_indexed', ['list', 'is', 'not', 'hashable'], 0)
 
     def test_indexed_wrong_type(self):
         self.ts['test_immutable'] = 1
