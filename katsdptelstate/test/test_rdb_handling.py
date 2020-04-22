@@ -39,6 +39,7 @@ class TabloidRedis(fakeredis.FakeStrictRedis):
     The Redis-like functionality is almost entirely derived from FakeStrictRedis,
     we only add a dump function.
     """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -55,11 +56,13 @@ class TabloidRedis(fakeredis.FakeStrictRedis):
         key_type = self.type(key)
         if key_type == b'none':
             return None
-        if key_type == b'zset':
+        elif key_type == b'zset':
             data = self.zrange(key, 0, -1)
             return dump_zset(data)
-        if key_type == b'string':
+        elif key_type == b'string':
             return dump_string(self.get(key))
+        elif key_type == b'hash':
+            return dump_hash(self.get(key))
         raise NotImplementedError("Unsupported key type {}. Must be either "
                                   "string or zset".format(key_type))
 

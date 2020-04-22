@@ -15,6 +15,7 @@
 ################################################################################
 
 import struct
+import itertools
 
 
 # Version 6 (first two bytes), and a zero checksum
@@ -59,6 +60,57 @@ def dump_string(data):
     type_specifier = b'\x00'
     encoded_length = encode_len(len(data))
     return type_specifier + encoded_length + data + DUMP_POSTFIX
+
+
+def encode_ziplist(items):
+    """Create an RDB ziplist, including the envelope.
+
+    The items can either be byte strings or integers, and any iterable can
+    be used.
+
+    The ziplist string envelope itself is an RDB-encoded string with the
+    following form:
+    (format descriptions are provided in the description for each component)
+
+        (bytes in list '<i')(offset to tail '<i')
+        (number of entries '<h')(entry 1)(entry 2)(entry N)(terminator 0xFF)
+
+    The entries themselves are encoded as follows:
+
+        (previous entry length 1byte or 5bytes)
+        (entry length - up to 5 bytes as per length encoding)(value)
+    """
+    def append(raw):
+        nonlocal zl_len
+        raw_entries.append(raw)
+        zl_len += len(raw)
+
+    raw_entries = [b'']   # Later replaced by a header
+    zl_len = 10           # Header is 10 bytes
+    zl_entries = 0
+    zl_last = zl_len      # Offset to previous entry
+    for entry in items:
+        previous_length = zl_len - zl_last
+        zl_last = zl_len
+        zl_entries += 1
+        append(encode_prev_length(previous_length))
+        if isinstance(entry, int):
+            # Special encoding for integers. At present only the value 0 is
+            # used, so we only implement the 4-bit encoding, and otherwise
+            # fall back to string form.
+            if 0 <= entry <= 12:
+                append(struct.pack('<B', 0xf1 + entry))
+                continue
+            else:
+                entry = b'%d' % entry
+        assert isinstance(entry, bytes)
+        append(encode_len(len(entry)))
+        append(entry)
+    append(b'\xff')
+    # Fill in the header
+    raw_entries[0] = (struct.pack('<I', zl_len) + struct.pack('<I', zl_last)
+                      + struct.pack('<H', zl_entries))
+    return b''.join(raw_entries)
 
 
 def dump_zset(data):
@@ -107,20 +159,7 @@ def dump_zset(data):
         enc.append(DUMP_POSTFIX)
         return b"".join(enc)
 
-    raw_entries = []
-    previous_length = b'\x00'
-    # loop through each entry in the data interleaving encoded values and scores (all set to zero)
-    for entry in data:
-        enc = previous_length + encode_len(len(entry)) + entry
-        raw_entries.append(enc)
-        previous_length = encode_prev_length(len(enc))
-        # scores are encoded using a special length schema which supports direct integer addressing
-        # 4 MSB set implies direct unsigned integer in 4 LSB (minus 1). Hence \xf1 is integer 0
-        raw_entries.append(previous_length + b'\xf1')
-        previous_length = b'\x02'
-    encoded_entries = b"".join(raw_entries) + b'\xff'
-    # account for the known 10 bytes worth of length descriptors when calculating envelope length
-    zl_length = 10 + len(encoded_entries)
-    zl_envelope = (struct.pack('<I', zl_length) + struct.pack('<I', zl_length - 3)
-                   + struct.pack('<H', entry_count) + encoded_entries)
+    # All scores are assumed to be 0 (since they're not used by telstate), and integer
+    # zero has a more compact encoding.
+    zl_envelope = encode_ziplist(itertools.chain.from_iterable((x, 0) for x in data))
     return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
