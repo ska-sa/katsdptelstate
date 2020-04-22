@@ -168,3 +168,21 @@ def dump_zset(data):
     else:
         zl_envelope = encode_ziplist(itertools.chain.from_iterable((x, 0) for x in data))
         return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
+
+
+def dump_hash(data):
+    """Encode a dictionary as a redis hash, as per redis DUMP command.
+
+    The encoding is similar to zsets, but using the value instead of the score.
+    """
+    entry_count = 2 * len(data)
+
+    if entry_count > 512 or sum(len(entry[0]) + len(entry[1]) for entry in data.items()) >= 2**31:
+        return dump_iterable(
+            b'\x04' + encode_len(len(data)),
+            DUMP_POSTFIX,
+            itertools.chain.from_iterable(data.items())
+        )
+    else:
+        zl_envelope = encode_ziplist(itertools.chain.from_iterable(data.items()))
+        return b'\x0d' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX

@@ -21,7 +21,7 @@ import logging
 from . import utils
 from .backend import Backend
 from .errors import ImmutableKeyError
-from .rdb_utility import dump_string, dump_zset
+from .rdb_utility import dump_string, dump_zset, dump_hash
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
@@ -122,6 +122,13 @@ class MemoryCallback(BackendCallback):
 
     def end_sorted_set(self, key):
         self.data[key].sort()
+
+    def start_hash(self, key, length, expiry, info):
+        self.data[key] = {}
+        self.n_keys += 1
+
+    def hset(self, key, field, value):
+        self.data[key][field] = value
 
 
 class MemoryBackend(Backend):
@@ -250,5 +257,9 @@ class MemoryBackend(Backend):
             return None
         elif isinstance(value, bytes):
             return dump_string(value)
-        else:
+        elif isinstance(value, list):
             return dump_zset(value)
+        elif isinstance(value, dict):
+            return dump_hash(value)
+        else:
+            assert False
