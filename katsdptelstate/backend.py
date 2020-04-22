@@ -23,14 +23,9 @@ class Backend(ABC):
 
     The backend interface does not deal with namespaces or encodings, which are
     handled by the frontend :class:`TelescopeState` class. A backend must be
-    able to store
-
-    - immutables: key-value pairs (both :class:`bytes`), whose value cannot
-      change once set.
-
-    - mutables: a key associated with a set of (value, timestamp) pairs, where
-      the timestamps are non-negative finite floats and the values are
-      :class:`bytes`.
+    able to store the same types as :class:`~katsdptelstate.TelescopeState`,
+    but keys and values will be :class:`bytes` rather than arbitrary Python
+    objects.
     """
 
     @abstractmethod
@@ -78,11 +73,18 @@ class Backend(ABC):
     def get(self, key):
         """Get the value and timestamp of a key.
 
-        If the key is mutable, returns the most recent value. If it
-        is immutable, returns the value with a timestamp of ``None``.
+        The return value depends on the key type:
 
-        If the key does not exist, both the value and timestamp will be
-        ``None``.
+        immutable
+          The value.
+        mutable
+          The most recent value.
+        indexed
+          A dictionary of all values (with undefined iteration order).
+        absent
+          None
+
+        The timestamp will be ``None`` for types other than mutable.
         """
 
     @abstractmethod
@@ -94,7 +96,7 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is immutable
+            If the key exists and is not mutable
         """
 
     @abstractmethod
@@ -107,7 +109,7 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is not plain immutable.
+            If the key exists and is not indexed.
         """
 
     @abstractmethod
@@ -146,12 +148,12 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is immutable
+            If the key exists and is not mutable
         """
 
     @abstractmethod
     def dump(self, key):
-        """Return a key in the same format as the Redis DUMP command, or None if not present"""
+        """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
     def monitor_keys(self, keys):
         """Report changes to keys in `keys`.

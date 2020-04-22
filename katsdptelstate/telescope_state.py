@@ -366,10 +366,9 @@ class TelescopeState:
         InvalidKeyError
             if `key` collides with a class member name
         ImmutableKeyError
-            if an attempt is made to change the value of an immutable or to
-            change a mutable key to immutable or vice versa
+            if an attempt is made to change the value of an immutable
         ImmutableKeyError
-            if the key is an indexed immutable
+            if the key already exists and is not an immutable
         redis.ResponseError
             if there is some other error from the Redis server
         """
@@ -405,6 +404,30 @@ class TelescopeState:
                                         .format(key_str))
 
     def set_indexed(self, key, sub_key, value, encoding=ENCODING_DEFAULT):
+        """Set a sub-key of an indexed key.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Main key
+        sub_key : object
+            Sub-key within `key` to associate with the value. It must be both
+            hashable and serialisable.
+        encoding : bytes
+            Encoding used for `value` (see :func:`encode_value`). Note that it
+            does not affect the encoding of `sub_key`.
+
+        Raises
+        ------
+        InvalidKeyError
+            if `key` collides with a class member name
+        ImmutableKeyError
+            if the sub-key already exists with a different value
+        ImmutableKeyError
+            if the key already exists and is not indexed
+        redis.ResponseError
+            if there is some other error from the Redis server
+        """
         # check that we are not going to munge a class method
         if key in self.__class__.__dict__:
             raise InvalidKeyError("The specified key already exists as a "
@@ -431,6 +454,20 @@ class TelescopeState:
             self._check_immutable_change(key_descr, old, str_val, value)
 
     def get_indexed(self, key, sub_key, default=None, return_encoded=False):
+        """Retrieve an indexed value set with :meth:`set_indexed`.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Main key
+        sub_key : object
+            Sub-key within `key`, which must be hashable and serialisable
+        default : object
+            Value to return if the sub-key is not found
+        return_encoded : bool, optional
+            Default 'False' - return values are first decoded from internal storage
+            'True' - return values are retained in encoded form.
+        """
         key = ensure_binary(key)
         sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
         for prefix in self._prefixes:
@@ -626,7 +663,7 @@ class TelescopeState:
         KeyError
             if `key` does not exist (with any prefix)
         ImmutableKeyError
-            if `key` refers to an immutable key
+            if `key` refers to an existing key which is not mutable
 
         Notes
         -----
