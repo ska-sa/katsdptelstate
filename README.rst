@@ -36,9 +36,7 @@ namespace while the rest are supplementary read-only namespaces.
   **WARNING**: The standard warning about Python pickles applies. Never
   retrieve data from an untrusted telstate database with values encoded as
   pickles, or connect to such a database over an untrusted network. Pickle
-  support can be disabled by setting KATSDPTELSTATE_ALLOW_PICKLE=0 in the
-  environment, which should make it safe to connect to untrusted telstates.
-  On the other hand, the package warning can be disabled for trusted databases
+  support is disabled by default, but can be enabled for trusted databases
   by setting the environment variable KATSDPTELSTATE_ALLOW_PICKLE=1.
 
 Getting Started
