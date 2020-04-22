@@ -29,7 +29,7 @@ from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.rdb_utility import dump_string, dump_zset
 from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend, RedisCallback
-from katsdptelstate import TelescopeState, RdbParseError
+from katsdptelstate import TelescopeState, RdbParseError, KeyType
 
 
 class TabloidRedis(fakeredis.FakeStrictRedis):
@@ -170,7 +170,7 @@ class TestLoadFromFile(unittest.TestCase):
         read_ts = self.make_telescope_state()
         read_ts.load_from_file(file)
         self.assertEqual(read_ts.keys(), ['immutable', 'mutable'])
-        self.assertTrue(read_ts.is_immutable('immutable'))
+        self.assertEqual(read_ts.key_type('immutable'), KeyType.IMMUTABLE)
         self.assertEqual(read_ts['immutable'], ['some value'])
         self.assertEqual(read_ts.get_range('mutable', st=0),
                          [('first', 12.0), ('second', 15.5)])

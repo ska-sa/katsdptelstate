@@ -22,6 +22,7 @@ from .encoding import (PICKLE_PROTOCOL, encode_value, decode_value,     # noqa: 
                        set_allow_pickle,
                        ALLOWED_ENCODINGS, ENCODING_DEFAULT,
                        ENCODING_PICKLE, ENCODING_MSGPACK)
+from .utils import KeyType                                              # noqa: F401
 
 
 # BEGIN VERSION CHECK

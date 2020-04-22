@@ -25,7 +25,7 @@ import numpy as np
 import fakeredis
 
 from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
-                            TimeoutError, CancelledError, encode_value)
+                            TimeoutError, CancelledError, encode_value, KeyType)
 from katsdptelstate.memory import MemoryBackend
 
 
@@ -76,6 +76,10 @@ class TestTelescopeState(unittest.TestCase):
     def test_method_protection(self):
         with self.assertRaises(InvalidKeyError):
             self.ts.add('get', 1234.5)
+        with self.assertRaises(InvalidKeyError):
+            self.ts['get'] = 1234.5
+        with self.assertRaises(InvalidKeyError):
+            self.ts.set_indexed('get', 'sub', 1)
 
     def test_delete(self):
         self.ts.add('test_key', 1234.5)
@@ -101,15 +105,17 @@ class TestTelescopeState(unittest.TestCase):
         self.assertIsNone(self.ts.get('foo'))
         self.assertEqual(self.ts.get('foo', 'bar'), 'bar')
 
-    def test_return_encoded(self):
-        x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
-        self.ts.add('test_key_rt', x, immutable=True)
-        x_unpickled = self.ts.get('test_key_rt')
-        self.assertTrue((x_unpickled == x).all())
-        x_pickled = self.ts.get('test_key_rt', return_encoded=True)
-        self.assertEqual(x_pickled, encode_value(x))
+    def test_get_return_encoded(self):
+        for immutable in [True, False]:
+            x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
+            self.ts.add('test_key_rt', x, immutable=True)
+            x_decoded = self.ts.get('test_key_rt')
+            self.assertTrue((x_decoded == x).all())
+            x_encoded = self.ts.get('test_key_rt', return_encoded=True)
+            self.assertEqual(x_encoded, encode_value(x))
+            self.ts.delete('test_key_rt')
 
-    def test_return_encoded_range(self):
+    def test_get_range_return_encoded(self):
         test_values = ['Test Value: {}'.format(x) for x in range(5)]
         for i, test_value in enumerate(test_values):
             self.ts.add('test_key', test_value, i)
@@ -126,6 +132,8 @@ class TestTelescopeState(unittest.TestCase):
             self.ts.add('test_immutable', 1234.5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_immutable', 5432.1, immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.set_indexed('test_immutable', 1234.5, 1234.5)
 
     def test_immutable_same_value(self):
         self.ts.add('test_immutable', 1234.5, immutable=True)
@@ -173,8 +181,11 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_immutable_wrong_type(self):
         self.ts.add('test_mutable', 5)
+        self.ts.add('test_indexed', 5, 5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 5, immutable=True)
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.add('test_indexed', 5, immutable=True)
 
     def test_namespace_immutable(self):
         self.ts.add('parent_immutable', 1234.5, immutable=True)
@@ -184,23 +195,28 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ns.get('child_immutable'), 2345.5)
         self.assertEqual(self.ns.get('parent_immutable'), 1234.5)
 
-    def test_is_immutable(self):
+    def test_key_type(self):
         self.ts.add('parent_immutable', 1, immutable=True)
         self.ns.add('child_immutable', 2, immutable=True)
         self.ts.add('parent', 3)
         self.ns.add('child', 4)
+        self.ts.set_indexed('parent_indexed', 'a', 1)
+        self.ns.set_indexed('child_indexed', 'b', 2)
 
-        self.assertTrue(self.ts.is_immutable('parent_immutable'))
-        self.assertFalse(self.ts.is_immutable('parent'))
-        self.assertFalse(self.ts.is_immutable('child_immutable'))  # Unreachable
-        self.assertFalse(self.ts.is_immutable('child'))  # Unreachable
-        self.assertFalse(self.ts.is_immutable('not_a_key'))
+        self.assertEqual(self.ts.key_type('parent_immutable'), KeyType.IMMUTABLE)
+        self.assertEqual(self.ts.key_type('parent'), KeyType.MUTABLE)
+        self.assertEqual(self.ts.key_type('parent_indexed'), KeyType.INDEXED)
+        self.assertEqual(self.ts.key_type('child_immutable'), None)
+        self.assertEqual(self.ts.key_type('child'), None)
+        self.assertEqual(self.ts.key_type('not_a_key'), None)
 
-        self.assertTrue(self.ns.is_immutable('parent_immutable'))
-        self.assertFalse(self.ns.is_immutable('parent'))
-        self.assertTrue(self.ns.is_immutable('child_immutable'))
-        self.assertFalse(self.ns.is_immutable('child'))
-        self.assertFalse(self.ns.is_immutable('not_a_key'))
+        self.assertEqual(self.ns.key_type('parent_immutable'), KeyType.IMMUTABLE)
+        self.assertEqual(self.ns.key_type('parent'), KeyType.MUTABLE)
+        self.assertEqual(self.ns.key_type('parent_indexed'), KeyType.INDEXED)
+        self.assertEqual(self.ns.key_type('child_immutable'), KeyType.IMMUTABLE)
+        self.assertEqual(self.ns.key_type('child'), KeyType.MUTABLE)
+        self.assertEqual(self.ns.key_type('child_indexed'), KeyType.INDEXED)
+        self.assertEqual(self.ns.key_type('not_a_key'), None)
 
     def test_keys(self):
         self.ts.add('key1', 'a')
@@ -212,7 +228,6 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_complex_store(self):
         x = np.array([(1.0, 2), (3.0, 4)], dtype=[('x', float), ('y', int)])
-        self.ts.delete('test_key')
         self.ts.add('test_key', x)
         self.assertTrue((self.ts.test_key == x).all())
 
@@ -224,7 +239,7 @@ class TestTelescopeState(unittest.TestCase):
     def test_setattr(self):
         self.ts.test_key = 'foo'
         self.assertEqual(self.ts['test_key'], 'foo')
-        self.assertTrue(self.ts.is_immutable('test_key'))
+        self.assertEqual(self.ts.key_type('test_key'), KeyType.IMMUTABLE)
         with self.assertRaises(AttributeError):
             self.ts.root = 'root is a method'
         self.ts._internal = 'bar'
@@ -233,7 +248,7 @@ class TestTelescopeState(unittest.TestCase):
     def test_setitem(self):
         self.ts['test_key'] = 'foo'
         self.assertEqual(self.ts['test_key'], 'foo')
-        self.assertTrue(self.ts.is_immutable('test_key'))
+        self.assertEqual(self.ts.key_type('test_key'), KeyType.IMMUTABLE)
 
     def test_time_range(self):
         self.ts.delete('test_key')
@@ -290,16 +305,21 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.add('test_key', 'value', 1234.5)
         self.assertEqual([('value', 1234.5)], self.ts.get_range('test_key', st=0))
 
-    def test_wait_key_already_done_sensor(self):
-        """Calling wait_key with a condition that is met must return (sensor version)."""
+    def test_wait_key_already_done_mutable(self):
+        """Calling wait_key with a condition that is met must return (mutable version)."""
         self.ts.add('test_key', 123)
         value, timestamp = self.ts.get_range('test_key')[0]
         self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
 
-    def test_wait_key_already_done_attr(self):
-        """Calling wait_key with a condition that is met must return (attribute version)."""
+    def test_wait_key_already_done_immutable(self):
+        """Calling wait_key with a condition that is met must return (immutable version)."""
         self.ts.add('test_key', 123, immutable=True)
         self.ts.wait_key('test_key', lambda v, t: v == self.ts['test_key'] and t is None)
+
+    def test_wait_key_already_done_indexed(self):
+        """Calling wait_key with a condition that is met must return (indexed version)."""
+        self.ts.set_indexed('test_key', 'idx', 5)
+        self.ts.wait_key('test_key', lambda v, t: v == {'idx': 5} and t is None)
 
     def test_wait_key_timeout(self):
         """wait_key must time out in the given time if the condition is not met"""
@@ -323,14 +343,28 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_wait_key_delayed_unconditional(self):
         """wait_key must succeed when given a timeout that does not expire before key appears."""
-        def set_key():
+        def set_key_immutable():
             time.sleep(0.1)
-            self.ts.add('test_key', 123, immutable=True)
-        thread = threading.Thread(target=set_key)
-        thread.start()
-        self.ts.wait_key('test_key', timeout=2)
-        self.assertEqual(123, self.ts['test_key'])
-        thread.join()
+            self.ts['test_key'] = 123
+
+        def set_key_mutable():
+            time.sleep(0.1)
+            self.ts.add('test_key', 123)
+
+        def set_key_indexed():
+            time.sleep(0.1)
+            self.ts.set_indexed('test_key', 'idx', 123)
+
+        for set_key, value in [
+                (set_key_mutable, 123),
+                (set_key_immutable, 123),
+                (set_key_indexed, {'idx': 123})]:
+            thread = threading.Thread(target=set_key)
+            thread.start()
+            self.ts.wait_key('test_key', timeout=2)
+            self.assertEqual(value, self.ts['test_key'])
+            thread.join()
+            self.ts.delete('test_key')
 
     def test_wait_key_already_cancelled(self):
         """wait_key must raise :exc:`CancelledError` if the `cancel_future` is already done."""
@@ -384,8 +418,8 @@ class TestTelescopeState(unittest.TestCase):
         self.ts.clear()
         ns.add(key, 'value', immutable=True)
         self.assertEqual(ns.get(key), 'value')
-        self.assertTrue(key in ns)
-        self.assertTrue(ns.is_immutable(key))
+        self.assertIn(key, ns)
+        self.assertEqual(ns.key_type(key), KeyType.IMMUTABLE)
         ns.delete(key)
         ns.add(key, 'value1', ts=1)
         self.assertEqual(

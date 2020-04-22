@@ -476,7 +476,12 @@ class TelescopeState:
                 value, timestamp = self._backend.get(full_key)
                 if value is None:
                     continue      # Key does not exist, so try the next one
-            return condition(decode_value(value), timestamp)
+            if isinstance(value, dict):
+                # Handle indexed items
+                value = {decode_value(k): decode_value(v) for k, v in value.items()}
+            else:
+                value = decode_value(value)
+            return condition(value, timestamp)
         return False    # Key does not exist
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
