@@ -35,15 +35,15 @@ logger = logging.getLogger(__name__)
 
 
 class TelescopeState:
-    """Interface to attributes and sensors stored in a Redis database.
+    """Interface to attributes and sensors stored in a database.
 
-    There are three types of keys permitted: single immutable values,
-    indexed immutable values, and mutable keys where the full history of values
-    is stored with timestamps. These are mapped to the Redis string, hash and
-    zset types. A Redis database used with this class must *only* be used with
-    this class, as it does not deal with other types of keys. For clarity,
-    "immutable" refers only to single immutable values unless otherwise
-    specified, while "indexed" refers to the indexed immutable type.
+    Refer to the README for a description of the types of keys supported.
+
+    A Redis database used with this class must *only* be used with this class,
+    as it assumes that all keys were encoded by this package. It should
+    however be robust to malicious data, failing gracefully rather than
+    executing arbitrary code or consuming unreasonable amounts of time or
+    memory.
 
     Each instance of this class has an associated list of prefixes. Lookups
     try each key in turn until a match is found. Writes use the first prefix in
@@ -232,7 +232,7 @@ class TelescopeState:
         Note that indexed keys are not considered immutable for this purpose.
         If the key does not exist, ``False`` is returned.
 
-        .. deprecated::
+        .. deprecated:: 0.10
             :meth:`is_immutable` is deprecated and may be removed in a future release.
             Use :meth:`key_type` instead.
         """

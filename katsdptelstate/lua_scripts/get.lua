@@ -7,5 +7,6 @@ elseif type_ == 'zset' then
     local last = redis.call('ZREVRANGEBYLEX', KEYS[1], '+', '-', 'LIMIT', 0, 1)
     return {last[1], type_}
 else
+    -- Returns a WRONGTYPE error if type_ is not hash
     return {redis.call('HGETALL', KEYS[1]), type_}
 end

@@ -162,7 +162,8 @@ class RedisBackend(Backend):
             d = dict(zip(it, it))
             return d, None
         else:
-            raise RuntimeError('Unknown key type {}'.format(ensure_str(result[1])))
+            raise RuntimeError('Unknown key type {} for key {}'
+                               .format(ensure_str(result[1]), display_str(key)))
 
     def add_mutable(self, key, value, timestamp):
         str_val = utils.pack_timestamp(timestamp) + value

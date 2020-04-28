@@ -1,23 +1,24 @@
 MeerKAT Science Data Processor Telescope State
 ==============================================
 
-This is a client package that allows connection to the Redis database that
+This is a client package that allows connection to a database that
 stores telescope state information for the Science Data Processor of the
 MeerKAT radio telescope. This database is colloquially known as *telstate*.
 
-The Redis database acts as a key-value store. There are three types of keys:
+The telescope state is a key-value store. There are three types of keys:
 
 immutables (aka *attributes*)
   Stores a single value that is not allowed to change once set.
 
 mutables (aka *sensors*)
-  Stores multiple timestamps values organised into an ordered set.
+  Stores multiple timestamped values organised into an ordered set.
 
 indexed
   Stores a dictionary of key-value pairs, each of which behaves like an
-  immutable. This is useful to avoid the main key-space becoming too large,
-  allows the entire dictionary to be fetched as a single operation, and allows
-  more general keys than just strings.
+  immutable. This is useful to avoid the main key-space becoming too large.
+  It also supports some patterns like incrementally storing values but
+  fetching all values in a single operation. Furthermore, it allows more
+  general keys than just strings.
 
 The keys are strings and the values (and the sub-keys of indexed keys) are
 Python objects serialised via MessagePack_, which has been extended to support
