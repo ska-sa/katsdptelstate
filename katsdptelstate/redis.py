@@ -22,7 +22,7 @@ import redis
 from . import utils
 from .backend import Backend
 from .errors import ConnectionError, ImmutableKeyError
-from .utils import KeyType, ensure_str
+from .utils import KeyType, ensure_str, display_str
 from . import compat
 try:
     from . import rdb_reader
