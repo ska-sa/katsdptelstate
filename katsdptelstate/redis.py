@@ -193,6 +193,24 @@ class RedisBackend(Backend):
         return [utils.split_timestamp(val) for val in ret_vals]
 
     def monitor_keys(self, keys):
+        # Updates trigger pubsub messages to update/<key>. The format depends
+        # on the key type:
+        # immutable: [\x01] <value>
+        # mutable:   [\x02] <timestamp> <value>
+        # indexed:   \x03 <subkey-len> \n <subkey> <value>
+        #            (subkey-len is ASCII text)
+        # The first byte corresponds to the values in the KeyType
+        # enumeration. For immutable and mutable, the leading byte is
+        # currently omitted, and the key type needs to be looked up. This can
+        # only be fixed once the code to handle these bytes is present in all
+        # deployments.
+        #
+        # This can in theory cause ambiguities, because the first byte could
+        # be either the key type or the start of a value or timestamp.
+        # However, values are encoded and the encoding currently in use is
+        # signalled with a \xFF at the start; and timestamps starting with
+        # one of these bytes is infinitesimally close to zero and so will
+        # not arise in practice.
         p = self.client.pubsub()
         with contextlib.closing(p):
             for key in keys:
@@ -210,20 +228,35 @@ class RedisBackend(Backend):
                         # happened. Also, if we lost connection and
                         # reconnected, we will get the subscribe message
                         # again.
-                        timeout = yield (key,)
+                        timeout = yield ()
                     elif message['type'] == 'message':
-                        # TODO: eventually change the protocol to indicate
-                        # the key type in the message.
-                        type_ = self.client.type(key)
-                        if type_ == b'string':
-                            timeout = yield (key, message['data'])
-                        elif type_ == b'hash':
-                            timeout = yield (key,)
-                        elif type_ == b'zset':
-                            value, timestamp = utils.split_timestamp(message['data'])
-                            timeout = yield (key, value, timestamp)
+                        # First check if there is a key type byte in the message.
+                        data = message['data']
+                        try:
+                            key_type = KeyType(data[0])
+                        except (ValueError, IndexError):
+                            # It's the older format lacking a key type byte
+                            key_type = self.key_type(key)
+                            if key_type is None:
+                                continue     # Key was deleted before we could retrieve the type
                         else:
-                            raise RuntimeError('Unhandled key type {}'.format(ensure_str(type_)))
+                            data = data[1:]  # Strip off the key type
+                        if key_type == KeyType.IMMUTABLE:
+                            timeout = yield (key_type, key, data)
+                        elif key_type == KeyType.INDEXED:
+                            # Encoding is <sub-key-length>\n<sub-key><value>
+                            newline = data.find(b'\n')
+                            if newline == -1:
+                                raise RuntimeError('Pubsub message missing newline')
+                            sub_key_len = int(data[1 : newline])
+                            sub_key = data[newline + 1 : newline + 1 + sub_key_len]
+                            value = data[newline + 1 + sub_key_len :]
+                            timeout = yield (key_type, key, value, sub_key)
+                        elif key_type == KeyType.MUTABLE:
+                            value, timestamp = utils.split_timestamp(data)
+                            timeout = yield (key_type, key, value, timestamp)
+                        else:
+                            raise RuntimeError('Unhandled key type {}'.format(key_type))
 
     def dump(self, key):
         return self.client.dump(key)

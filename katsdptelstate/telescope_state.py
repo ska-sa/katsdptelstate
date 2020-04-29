@@ -506,9 +506,9 @@ class TelescopeState:
 
         for prefix in self._prefixes:
             full_key = prefix + ensure_binary(key)
-            if message is not None and full_key == message[0]:
-                value = message[1]
-                timestamp = None if len(message) == 2 else message[2]
+            if message is not None and full_key == message[1] and message[0] != KeyType.MUTABLE:
+                value = message[2]
+                timestamp = None if message[0] != KeyType.MUTABLE else message[3]
             else:
                 value, timestamp = self._backend.get(full_key)
                 if value is None:
@@ -583,9 +583,10 @@ class TelescopeState:
                                            .format(key_str, timeout))
                     get_timeout = min(get_timeout, remain)
                 message = monitor.send(get_timeout)
+                print(message)
                 if message is None:
                     continue
-                if len(message) <= 1:
+                if message == ():
                     # The monitor thinks it's worth checking again, but doesn't
                     # have enough information to be useful.
                     message = None

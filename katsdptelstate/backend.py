@@ -160,12 +160,20 @@ class Backend(ABC):
 
         Returns a generator. The first yield from the generator is a no-op.
         After that, the caller sends a timeout and gets back an update event.
-        Each update event is a tuple, of the form (key, value) or (key, value,
-        timestamp) depending on whether the update is to an immutable or a
-        mutable key; or of the form (key,) to indicate that a key may have
-        been updated but there is insufficient information to provide the
-        latest value. If there is no event within the timeout, returns
-        ``None``.
+        Each update event is a tuple of the form (type, key, value, ...). The
+        extra arguments depend on the type:
+
+        immutable
+          no extra arguments
+        mutable
+          the timestamp
+        indexed
+          the subkey for which the value is being set
+
+        The yielded value may also be an empty tuple to indicate that the
+        caller should check for updates but there is insufficient information
+        to indicate which keys (if any) were updated. If there is no event
+        within the timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller
@@ -178,4 +186,4 @@ class Backend(ABC):
         timeout = yield None
         while True:
             time.sleep(timeout)
-            timeout = yield (keys[0],)
+            timeout = yield ()
