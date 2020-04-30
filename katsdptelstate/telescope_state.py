@@ -114,11 +114,19 @@ class TelescopeState:
         else:
             from .redis import RedisBackend
             if isinstance(endpoint, str) and '://' in endpoint:
-                r = redis.StrictRedis.from_url(endpoint, db=db, socket_timeout=5)
+                r = redis.StrictRedis.from_url(
+                    endpoint,
+                    db=db,
+                    socket_timeout=5,
+                    health_check_interval=30)
             else:
                 if not isinstance(endpoint, Endpoint):
                     endpoint = endpoint_parser(default_port=None)(endpoint)
-                redis_kwargs = dict(host=endpoint.host, db=db, socket_timeout=5)
+                redis_kwargs = dict(
+                    host=endpoint.host,
+                    db=db,
+                    socket_timeout=5,
+                    health_check_interval=30)
                 # If no port is provided, redis will pick its default port
                 if endpoint.port is not None:
                     redis_kwargs['port'] = endpoint.port
