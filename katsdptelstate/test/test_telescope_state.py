@@ -387,7 +387,7 @@ class TestTelescopeState(unittest.TestCase):
             time.sleep(0.1)
             future.done.return_value = True
         future = mock.MagicMock()
-        future.done.return_value = True
+        future.done.return_value = False
         thread = threading.Thread(target=cancel)
         thread.start()
         with self.assertRaises(CancelledError):
@@ -414,6 +414,82 @@ class TestTelescopeState(unittest.TestCase):
         thread.start()
         ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
         thread.join()
+
+    def test_wait_indexed_already_done(self):
+        self.ts.set_indexed('test_key', 'sub_key', 5)
+        self.ts.wait_indexed('test_key', 'sub_key')
+        self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 5)
+
+    def test_wait_indexed_timeout(self):
+        self.ts.set_indexed('test_key', 'sub_key', 5)
+        with self.assertRaises(TimeoutError):
+            self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 4, timeout=0.05)
+        with self.assertRaises(TimeoutError):
+            self.ts.wait_indexed('test_key', 'another_key', timeout=0.05)
+        with self.assertRaises(TimeoutError):
+            self.ts.wait_indexed('not_present', 'sub_key', timeout=0.05)
+
+    def test_wait_indexed_delayed(self):
+        def set_key():
+            self.ts.set_indexed('test_key', 'foo', 1)
+            time.sleep(0.05)
+            self.ts.set_indexed('test_key', 'bar', 2)
+        for condition in [None, lambda value: value == 2]:
+            self.ts.delete('test_key')
+            thread = threading.Thread(target=set_key)
+            thread.start()
+            self.ts.wait_indexed('test_key', 'bar', condition, timeout=2)
+            self.assertEqual(2, self.ts.get_indexed('test_key', 'bar'))
+            thread.join()
+
+    def test_wait_indexed_already_cancelled(self):
+        future = mock.MagicMock()
+        future.done.return_value = True
+        with self.assertRaises(CancelledError):
+            self.ts.wait_indexed('test_key', 'foo', cancel_future=future)
+
+    def test_wait_indexed_already_done_and_cancelled(self):
+        future = mock.MagicMock()
+        future.done.return_value = True
+        self.ts.set_indexed('test_key', 'sub_key', 1)
+        self.ts.wait_indexed('test_key', 'sub_key', lambda value: value == 1, cancel_future=future)
+
+    def test_wait_indexed_cancel(self):
+        def cancel():
+            time.sleep(0.1)
+            future.done.return_value = True
+        future = mock.MagicMock()
+        future.done.return_value = False
+        thread = threading.Thread(target=cancel)
+        thread.start()
+        with self.assertRaises(CancelledError):
+            self.ts.wait_indexed('test_key', 'sub_key', cancel_future=future)
+
+    def test_wait_indexed_shadow(self):
+        def set_key(telstate):
+            time.sleep(0.1)
+            telstate.set_indexed('test_key', 'sub_key', 1)
+
+        # Shadow the key that will be set by set_key
+        self.ns.set_indexed('test_key', 'blah', 1)
+        thread = threading.Thread(target=set_key, args=(self.ts,))
+        thread.start()
+        with self.assertRaises(TimeoutError):
+            self.ns.wait_indexed('test_key', 'sub_key', timeout=0.2)
+
+    def test_wait_indexed_wrong_type(self):
+        def set_key():
+            time.sleep(0.1)
+            self.ts.add('test_key', 'value')
+
+        thread = threading.Thread(target=set_key)
+        thread.start()
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.wait_indexed('test_key', 'value')
+        thread.join()
+        # Different code-path when key was already set at the start
+        with self.assertRaises(ImmutableKeyError):
+            self.ts.wait_indexed('test_key', 'value')
 
     def _test_mixed_unicode_bytes(self, ns, key):
         self.ts.clear()

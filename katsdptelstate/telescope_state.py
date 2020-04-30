@@ -489,14 +489,12 @@ class TelescopeState:
 
         Parameters
         ----------
-        key : str or bytes
+        key : bytes
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
         message : tuple, optional
-            A tuple of the form (key, value) or (key, value, timestamp).
-            The first indicates an update to an immutable, and the second an
-            update to a mutable.
+            A non-empty tuple returned by :meth:`.Backend.wait_key`.
 
             If specified, this is used to find the latest value and timestamp
             (if available) of the key instead of retrieving it from the backend.
@@ -505,7 +503,7 @@ class TelescopeState:
             return message is not None or key in self
 
         for prefix in self._prefixes:
-            full_key = prefix + ensure_binary(key)
+            full_key = prefix + key
             if message is not None and full_key == message[1] and message[0] != KeyType.MUTABLE:
                 value = message[2]
                 timestamp = None if message[0] != KeyType.MUTABLE else message[3]
@@ -583,7 +581,6 @@ class TelescopeState:
                                            .format(key_str, timeout))
                     get_timeout = min(get_timeout, remain)
                 message = monitor.send(get_timeout)
-                print(message)
                 if message is None:
                     continue
                 if message == ():
@@ -591,6 +588,118 @@ class TelescopeState:
                     # have enough information to be useful.
                     message = None
                 if self._check_condition(key, condition, message):
+                    return
+
+    def _check_indexed_condition(self, key, sub_key, condition, message=None):
+        """Check whether key exists and satisfies a condition (if any).
+
+        Parameters
+        ----------
+        key : bytes
+            Unqualified key name to check
+        sub_key : bytes
+            Encoded sub-key to check
+        condition : callable, optional
+            See :meth:`wait_indexed`'s docstring for the details
+        message : tuple, optional
+            A non-empty tuple returned by :meth:`.Backend.wait_key`. If
+            specified, it must match the given `sub_key`.
+
+            If specified, this is used to find the latest value instead of
+            retrieving it from the backend.
+        """
+        assert message is None or message[3] == sub_key
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            if message is not None and full_key == message[1]:
+                value = message[2]
+            else:
+                try:
+                    # TODO: this could be more efficient if the backend
+                    # provided a has_indexed that didn't retrieve the
+                    # value.
+                    value = self._backend.get_indexed(full_key, sub_key)
+                except KeyError:
+                    continue       # Key does not exist, try next prefix
+                if value is None:
+                    return False   # Key exists, but sub-key does not exist
+            if not condition:
+                return True
+            else:
+                return condition(decode_value(value))
+        return False    # Key does not exist (for any prefix)
+
+    def wait_indexed(self, key, sub_key, condition=None, timeout=None, cancel_future=None):
+        """Wait for a sub-key of an indexed key to exist, possibly with some condition.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Key name to monitor
+        sub_key : object
+            Sub-key to monitor within `key`.
+        condition : callable, signature `bool = condition(value)`, optional
+            If not specified, wait until the sub-key exists. Otherwise, the
+            callable should have the signature `bool = condition(value)`
+            where `value` is the value associated with the sub-key, and the
+            return value indicates whether the condition is satisfied.
+        timeout : float, optional
+            If specified and the condition is not met within the time limit,
+            an exception is thrown.
+        cancel_future : future, optional
+            If not ``None``, a future object (e.g.
+            :class:`concurrent.futures.Future` or :class:`trollius.Future`). If
+            ``cancel_future.done()`` is true before the timeout, raises
+            :exc:`CancelledError`. In the current implementation, it is only
+            polled once a second, rather than waited for.
+
+        Raises
+        ------
+        TimeoutError
+            if a timeout was specified and was exceeded
+        CancelledError
+            if a cancellation future was specified and done
+        ImmutableKeyError
+            if the key exists (or is created while waiting) but is not indexed
+        """
+        key = ensure_binary(key)
+        sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
+        # First check if condition is already satisfied, in which case we
+        # don't need to create a pubsub connection.
+        if self._check_indexed_condition(key, sub_key_enc, condition):
+            return
+        key_str = '{}[{!r}]'.format(display_str(key), sub_key)
+
+        def check_cancelled():
+            if cancel_future is not None and cancel_future.done():
+                raise CancelledError('Wait for {} cancelled'.format(key_str))
+
+        check_cancelled()
+        monitor = self._backend.monitor_keys([prefix + key
+                                              for prefix in self._prefixes])
+        with contextlib.closing(monitor):
+            monitor.send(None)   # Just to start the generator going
+            start = time.time()
+            while True:
+                check_cancelled()
+                get_timeout = 1.0
+                if timeout is not None:
+                    remain = (start + timeout) - time.time()
+                    if remain <= 0:
+                        raise TimeoutError('Timed out waiting for {} after {}s'
+                                           .format(key_str, timeout))
+                    get_timeout = min(get_timeout, remain)
+                message = monitor.send(get_timeout)
+                if message is None:
+                    continue
+                elif message == ():
+                    # The monitor thinks it's worth checking again, but doesn't
+                    # have enough information to be useful.
+                    message = None
+                elif message[0] != KeyType.INDEXED:
+                    raise ImmutableKeyError('wait_indexed called on non-indexed key {}'
+                                            .format(key_str))
+                if self._check_indexed_condition(key, sub_key_enc, condition, message):
                     return
 
     def _get(self, key, return_encoded=False):

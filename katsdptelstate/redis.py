@@ -248,7 +248,7 @@ class RedisBackend(Backend):
                             newline = data.find(b'\n')
                             if newline == -1:
                                 raise RuntimeError('Pubsub message missing newline')
-                            sub_key_len = int(data[1 : newline])
+                            sub_key_len = int(data[:newline])
                             sub_key = data[newline + 1 : newline + 1 + sub_key_len]
                             value = data[newline + 1 + sub_key_len :]
                             timeout = yield (key_type, key, value, sub_key)

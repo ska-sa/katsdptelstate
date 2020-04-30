@@ -24,8 +24,8 @@ import six
 
 class KeyType(enum.Enum):
     IMMUTABLE = 1
-    INDEXED = 2
-    MUTABLE = 3
+    MUTABLE = 2
+    INDEXED = 3
 
 
 # Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
