@@ -60,7 +60,7 @@ class TelescopeState:
 
         - an endpoint: specifies the address of the Redis server
 
-        - an URL (i.e., contains ``://``): passed to :meth:`redis.StrictRedis.from_url`
+        - an URL (i.e., contains ``://``): passed to :meth:`redis.Redis.from_url`
 
         - an empty string: a :class:`~katsdptelstate.memory.MemoryBackend` is created
 
@@ -110,7 +110,7 @@ class TelescopeState:
         else:
             from .redis import RedisBackend
             if isinstance(endpoint, str) and '://' in endpoint:
-                r = redis.StrictRedis.from_url(
+                r = redis.Redis.from_url(
                     endpoint,
                     db=db,
                     socket_timeout=5,
@@ -126,7 +126,7 @@ class TelescopeState:
                 # If no port is provided, redis will pick its default port
                 if endpoint.port is not None:
                     redis_kwargs['port'] = endpoint.port
-                r = redis.StrictRedis(**redis_kwargs)
+                r = redis.Redis(**redis_kwargs)
             self._backend = RedisBackend(r)
         # Ensure all prefixes are bytes internally for consistency
         self._prefixes = tuple(ensure_binary(prefix) for prefix in prefixes)

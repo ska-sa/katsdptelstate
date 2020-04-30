@@ -27,16 +27,15 @@ import fakeredis
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
 from katsdptelstate.rdb_utility import dump_string, dump_zset
-from katsdptelstate.compat import zadd
 from katsdptelstate.redis import RedisBackend, RedisCallback
 from katsdptelstate import TelescopeState, RdbParseError
 
 
-class TabloidRedis(fakeredis.FakeStrictRedis):
+class TabloidRedis(fakeredis.FakeRedis):
     """A Redis-like class that is a very superficial simulacrum of a real server.
 
     Designed specifically to support the read cases in use by katsdptelstate.
-    The Redis-like functionality is almost entirely derived from FakeStrictRedis,
+    The Redis-like functionality is almost entirely derived from FakeRedis,
     we only add a dump function.
     """
     def __init__(self, **kwargs):
@@ -77,7 +76,7 @@ class TestRDBHandling(unittest.TestCase):
 
     def _add_test_vec(self, key):
         # TabloidRedis does not properly support non-zero scores
-        zadd(self.tr, key, {b'first': 0.0, b'second': 0.0, b'third\n\0': 0.0})
+        self.tr.zadd(key, {b'first': 0.0, b'second': 0.0, b'third\n\0': 0.0})
 
     def test_writer_reader(self):
         self._add_test_vec('writezl')
@@ -117,7 +116,7 @@ class TestRDBHandling(unittest.TestCase):
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
     def _test_zset(self, items):
-        zadd(self.tr, 'my_zset', {x: 0.0 for x in items})
+        self.tr.zadd('my_zset', {x: 0.0 for x in items})
         with RDBWriter(self.base('zset.rdb')) as rdbw:
             rdbw.save(self.tr)
 

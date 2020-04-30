@@ -22,7 +22,6 @@ import redis
 from . import utils
 from .backend import Backend
 from .errors import ConnectionError, ImmutableKeyError
-from . import compat
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
@@ -32,7 +31,7 @@ except ImportError as _rdb_reader_import_error:   # noqa: F841
 
 
 class RedisCallback(BackendCallback):
-    """RDB callback that stores keys in :class:`redis.StrictRedis`-like client."""
+    """RDB callback that stores keys in :class:`redis.Redis`-like client."""
     def __init__(self, client):
         super().__init__()
         self.client = client
@@ -53,7 +52,7 @@ class RedisCallback(BackendCallback):
 
     def end_sorted_set(self, key):
         self.client_busy = True
-        compat.zadd(self.client, key, self._zset)
+        self.client.zadd(key, self._zset)
         self.client_busy = False
         self._zset = {}
 
