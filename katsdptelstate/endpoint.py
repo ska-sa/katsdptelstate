@@ -94,7 +94,7 @@ def endpoint_parser(default_port):
                 pos = text.rfind(':', right + 1)
         if pos != -1:
             host = text[:pos]
-            port = int(text[pos+1:])
+            port = int(text[pos + 1:])
         else:
             host = text
         # Strip the []
@@ -130,7 +130,7 @@ def endpoint_list_parser(default_port, single_port=False):
             pos = endpoint.host.rfind('+')
             if pos != -1:
                 start = endpoint.host[:pos]
-                count = int(endpoint.host[pos+1:])
+                count = int(endpoint.host[pos + 1:])
                 if count < 0:
                     raise ValueError('bad count {}'.format(count))
                 try:
@@ -181,8 +181,8 @@ def endpoints_to_str(endpoints):
         # Group endpoints with the same port together, then order by IP address
         ip.sort(key=lambda endpoint: (endpoint.port is not None, endpoint.port, endpoint.host))
         for endpoint in ip:
-            if (ip_parts and ip_parts[-1][2] == endpoint.port and
-                    ip_parts[-1][0] + ip_parts[-1][1] == endpoint.host):
+            if (ip_parts and ip_parts[-1][2] == endpoint.port
+                    and ip_parts[-1][0] + ip_parts[-1][1] == endpoint.host):
                 ip_parts[-1][1] += 1
             else:
                 ip_parts.append([endpoint.host, 1, endpoint.port])
