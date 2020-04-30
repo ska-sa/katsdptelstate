@@ -52,7 +52,7 @@ setup(name='katsdptelstate',
       python_requires='>=3.5',
       setup_requires=['katversion'],
       use_katversion=True,
-      install_requires=['redis>=2.10.5', 'six>=1.12', 'netifaces',
+      install_requires=['redis>=3.3', 'six>=1.12', 'netifaces',
                         'msgpack', 'numpy'],
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
       tests_require=['mock', 'rdbtools', 'fakeredis[lua]>=1.3.1'])
