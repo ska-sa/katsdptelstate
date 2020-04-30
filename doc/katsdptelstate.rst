@@ -12,14 +12,6 @@ katsdptelstate.backend module
    :undoc-members:
    :show-inheritance:
 
-katsdptelstate.compat module
-----------------------------
-
-.. automodule:: katsdptelstate.compat
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 katsdptelstate.encoding module
 ------------------------------
 
