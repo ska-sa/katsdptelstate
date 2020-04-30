@@ -4,10 +4,18 @@ katsdptelstate package
 Submodules
 ----------
 
-katsdptelstate.compat module
-----------------------------
+katsdptelstate.backend module
+-----------------------------
 
-.. automodule:: katsdptelstate.compat
+.. automodule:: katsdptelstate.backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+katsdptelstate.encoding module
+------------------------------
+
+.. automodule:: katsdptelstate.encoding
    :members:
    :undoc-members:
    :show-inheritance:
@@ -16,6 +24,14 @@ katsdptelstate.endpoint module
 ------------------------------
 
 .. automodule:: katsdptelstate.endpoint
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+katsdptelstate.errors module
+----------------------------
+
+.. automodule:: katsdptelstate.errors
    :members:
    :undoc-members:
    :show-inheritance:
@@ -64,6 +80,14 @@ katsdptelstate.telescope\_state module
 --------------------------------------
 
 .. automodule:: katsdptelstate.telescope_state
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+katsdptelstate.utils module
+---------------------------
+
+.. automodule:: katsdptelstate.utils
    :members:
    :undoc-members:
    :show-inheritance:

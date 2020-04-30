@@ -36,7 +36,7 @@ setup(name='katsdptelstate',
       url='https://github.com/ska-sa/katsdptelstate',
       license='Modified BSD',
       classifiers=[
-          'Development Status :: 4 - Beta',
+          'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
           'License :: OSI Approved :: BSD License',
           'Operating System :: OS Independent',
@@ -55,4 +55,4 @@ setup(name='katsdptelstate',
       install_requires=['redis>=3.3', 'six>=1.12', 'netifaces',
                         'msgpack', 'numpy'],
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
-      tests_require=['mock', 'rdbtools', 'fakeredis[lua]>=1.3.1'])
+      tests_require=['rdbtools', 'fakeredis[lua]>=1.3.1'])

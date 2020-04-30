@@ -118,7 +118,7 @@ class RDBWriter:
 
         Parameters
         ----------
-        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.StrictRedis`-like
+        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.Redis`-like
             A telstate, backend, or Redis-compatible client instance supporting keys() and dump()
         keys : sequence of str or bytes, optional
             The keys to extract from Redis and include in the dump.
@@ -171,7 +171,7 @@ if __name__ == '__main__':
 
     endpoint = args.redis
     logger.info("Connecting to Redis instance at %s", endpoint)
-    client = redis.StrictRedis(host=endpoint.host, port=endpoint.port)
+    client = redis.Redis(host=endpoint.host, port=endpoint.port)
     logger.info("Saving keys to RDB file %s", args.outfile)
     keys = args.keys
     if keys is not None:
