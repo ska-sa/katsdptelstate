@@ -18,28 +18,32 @@ import time
 import math
 import logging
 import contextlib
+import warnings
 
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
-from .errors import (InvalidKeyError, InvalidTimestampError, ImmutableKeyError, TimeoutError,
-                     CancelledError, DecodeError)
-from .encoding import ENCODING_DEFAULT, encode_value, decode_value, equal_encoded_values
-from .utils import ensure_str, ensure_binary, display_str
-from .backend import Backend
+from .errors import (InvalidKeyError, ImmutableKeyError, TimeoutError, CancelledError,
+                     DecodeError, InvalidTimestampError)
+from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
+                       equal_encoded_values)
+from .utils import ensure_str, ensure_binary, display_str, KeyType
+from .backend import Backend, KeyUpdate, IndexedKeyUpdate
 
 
 logger = logging.getLogger(__name__)
 
 
 class TelescopeState:
-    """Interface to attributes and sensors stored in a Redis database.
+    """Interface to attributes and sensors stored in a database.
 
-    There are two types of keys permitted: single immutable values, and mutable
-    keys where the full history of values is stored with timestamps. These are
-    mapped to the Redis string and zset types. A Redis database used with this
-    class must *only* be used with this class, as it does not deal with other
-    types of values.
+    Refer to the README for a description of the types of keys supported.
+
+    A Redis database used with this class must *only* be used with this class,
+    as it assumes that all keys were encoded by this package. It should
+    however be robust to malicious data, failing gracefully rather than
+    executing arbitrary code or consuming unreasonable amounts of time or
+    memory.
 
     Each instance of this class has an associated list of prefixes. Lookups
     try each key in turn until a match is found. Writes use the first prefix in
@@ -231,14 +235,29 @@ class TelescopeState:
         return False
 
     def is_immutable(self, key):
-        """Check to see if the specified key is an immutable."""
+        """Check to see if the specified key is an immutable.
+
+        Note that indexed keys are not considered immutable for this purpose.
+        If the key does not exist, ``False`` is returned.
+
+        .. deprecated:: 0.10
+            :meth:`is_immutable` is deprecated and may be removed in a future release.
+            Use :meth:`key_type` instead.
+        """
+        warnings.warn('is_immutable is deprecated; use key_type instead', FutureWarning)
+        return self.key_type(key) == KeyType.IMMUTABLE
+
+    def key_type(self, key):
+        """Get the type of a key.
+
+        If the key does not exist, returns ``None``.
+        """
         key = ensure_binary(key)
         for prefix in self._prefixes:
-            try:
-                return self._backend.is_immutable(prefix + key)
-            except KeyError:
-                pass
-        return False
+            key_type = self._backend.key_type(prefix + key)
+            if key_type is not None:
+                return key_type
+        return None
 
     def keys(self, filter='*'):
         """Return a list of keys currently in the model.
@@ -295,6 +314,38 @@ class TelescopeState:
         """
         return self._backend.clear()
 
+    def _check_immutable_change(self, key, old_enc, new_enc, new):
+        """Check if an immutable is being changed to the same value.
+
+        If not, raise :exc:`ImmutableKeyError`, otherwise just log a message.
+        This is intended to be called by subclasses.
+
+        Parameters
+        ----------
+        key : str
+            Human-readable version of the key
+        old_enc : bytes
+            Previous value, encoded
+        new_enc : bytes
+            New value, encoded
+        new
+            New value, prior to encoding
+        """
+        try:
+            if not equal_encoded_values(new_enc, old_enc):
+                raise ImmutableKeyError(
+                    'Attempt to change value of immutable key {} from '
+                    '{!r} to {!r}'.format(key, decode_value(old_enc), new))
+            else:
+                logger.info('Attribute {} updated with the same value'
+                            .format(key))
+                return True
+        except DecodeError as error:
+            raise ImmutableKeyError(
+                'Attempt to set value of immutable key {} to {!r} but '
+                'failed to decode the previous value to compare: {}'
+                .format(key, new, error))
+
     def add(self, key, value, ts=None, immutable=False, encoding=ENCODING_DEFAULT):
         """Add a new key / value pair to the model.
 
@@ -323,8 +374,9 @@ class TelescopeState:
         InvalidKeyError
             if `key` collides with a class member name
         ImmutableKeyError
-            if an attempt is made to change the value of an immutable or to
-            change a mutable key to immutable or vice versa
+            if an attempt is made to change the value of an immutable
+        ImmutableKeyError
+            if the key already exists and is not an immutable
         redis.ResponseError
             if there is some other error from the Redis server
         """
@@ -340,24 +392,11 @@ class TelescopeState:
             try:
                 old = self._backend.set_immutable(full_key, str_val)
             except ImmutableKeyError:
-                raise ImmutableKeyError('Attempt to overwrite mutable key {} '
-                                        'with immutable'.format(key_str))
+                raise ImmutableKeyError('Attempt to change key {} to immutable'
+                                        .format(key_str))
             if old is not None:
                 # The key already exists. Check if the value is the same.
-                try:
-                    if not equal_encoded_values(str_val, old):
-                        raise ImmutableKeyError(
-                            'Attempt to change value of immutable key {} from '
-                            '{!r} to {!r}'.format(key_str, decode_value(old), value))
-                    else:
-                        logger.info('Attribute {} updated with the same value'
-                                    .format(key_str))
-                        return True
-                except DecodeError as error:
-                    raise ImmutableKeyError(
-                        'Attempt to set value of immutable key {} to {!r} but '
-                        'failed to decode the previous value to compare: {}'
-                        .format(key_str, value, error))
+                self._check_immutable_change(key_str, old, str_val, value)
         else:
             ts = float(ts) if ts is not None else time.time()
             if math.isnan(ts) or math.isinf(ts):
@@ -369,22 +408,101 @@ class TelescopeState:
             try:
                 self._backend.add_mutable(full_key, str_val, ts)
             except ImmutableKeyError:
-                raise ImmutableKeyError('Attempt to overwrite immutable key {}'
+                raise ImmutableKeyError('Attempt to change key {} to mutable'
                                         .format(key_str))
+
+    def set_indexed(self, key, sub_key, value, encoding=ENCODING_DEFAULT):
+        """Set a sub-key of an indexed key.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Main key
+        sub_key : object
+            Sub-key within `key` to associate with the value. It must be both
+            hashable and serialisable.
+        encoding : bytes
+            Encoding used for `value` (see :func:`encode_value`). Note that it
+            does not affect the encoding of `sub_key`.
+
+        Raises
+        ------
+        InvalidKeyError
+            if `key` collides with a class member name
+        ImmutableKeyError
+            if the sub-key already exists with a different value
+        ImmutableKeyError
+            if the key already exists and is not indexed
+        redis.ResponseError
+            if there is some other error from the Redis server
+        """
+        # check that we are not going to munge a class method
+        if key in self.__class__.__dict__:
+            raise InvalidKeyError("The specified key already exists as a "
+                                  "class method and thus cannot be used.")
+        # Raises a TypeError if it's not hashable, to prevent trouble
+        # retrieving it later.
+        hash(sub_key)
+        key = ensure_binary(key)
+        full_key = self._prefixes[0] + key
+        key_str = display_str(full_key)
+        # Sub-keys will always be encoded with ENCODING_MSGPACK, so that
+        # lookups don't need to worry whether they are using the matching
+        # encoding.
+        sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
+        str_val = encode_value(value, encoding)
+        try:
+            old = self.backend.set_indexed(full_key, sub_key_enc, str_val)
+        except ImmutableKeyError:
+            raise ImmutableKeyError('Attempt to change key {} to indexed immutable'
+                                    .format(key_str))
+        if old is not None:
+            # The key already exists. Check if the value is the same.
+            key_descr = '{}[{!r}]'.format(key_str, sub_key)
+            self._check_immutable_change(key_descr, old, str_val, value)
+
+    def get_indexed(self, key, sub_key, default=None, return_encoded=False):
+        """Retrieve an indexed value set with :meth:`set_indexed`.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Main key
+        sub_key : object
+            Sub-key within `key`, which must be hashable and serialisable
+        default : object
+            Value to return if the sub-key is not found
+        return_encoded : bool, optional
+            Default 'False' - return values are first decoded from internal storage
+            'True' - return values are retained in encoded form.
+        """
+        key = ensure_binary(key)
+        sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            try:
+                raw_value = self.backend.get_indexed(full_key, sub_key_enc)
+                if raw_value is None:
+                    return default
+                elif return_encoded:
+                    return raw_value
+                else:
+                    return decode_value(raw_value)
+            except KeyError:
+                pass  # Key does not exist, try the next prefix
+        return default
 
     def _check_condition(self, key, condition, message=None):
         """Check whether key exists and satisfies a condition (if any).
 
         Parameters
         ----------
-        key : str or bytes
+        key : bytes
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
         message : tuple, optional
-            A tuple of the form (key, value) or (key, value, timestamp).
-            The first indicates an update to an immutable, and the second an
-            update to a mutable.
+            A non-empty tuple returned by :meth:`.Backend.wait_key`.
 
             If specified, this is used to find the latest value and timestamp
             (if available) of the key instead of retrieving it from the backend.
@@ -393,15 +511,21 @@ class TelescopeState:
             return message is not None or key in self
 
         for prefix in self._prefixes:
-            full_key = prefix + ensure_binary(key)
-            if message is not None and full_key == message[0]:
-                value = message[1]
-                timestamp = None if len(message) == 2 else message[2]
+            full_key = prefix + key
+            if (message is not None and full_key == message.key
+                    and message.key_type != KeyType.INDEXED):
+                value = message.value
+                timestamp = getattr(message, 'timestamp', None)
             else:
                 value, timestamp = self._backend.get(full_key)
                 if value is None:
                     continue      # Key does not exist, so try the next one
-            return condition(decode_value(value), timestamp)
+            if isinstance(value, dict):
+                # Handle indexed items
+                value = {decode_value(k): decode_value(v) for k, v in value.items()}
+            else:
+                value = decode_value(value)
+            return condition(value, timestamp)
         return False    # Key does not exist
 
     def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
@@ -468,23 +592,141 @@ class TelescopeState:
                 message = monitor.send(get_timeout)
                 if message is None:
                     continue
-                if len(message) <= 1:
+                if not isinstance(message, KeyUpdate):
                     # The monitor thinks it's worth checking again, but doesn't
                     # have enough information to be useful.
                     message = None
                 if self._check_condition(key, condition, message):
                     return
 
+    def _check_indexed_condition(self, key, sub_key, condition, message=None):
+        """Check whether key exists and satisfies a condition (if any).
+
+        Parameters
+        ----------
+        key : bytes
+            Unqualified key name to check
+        sub_key : bytes
+            Encoded sub-key to check
+        condition : callable, optional
+            See :meth:`wait_indexed`'s docstring for the details
+        message : tuple, optional
+            A non-empty tuple returned by :meth:`.Backend.wait_key`. If
+            specified, it must match the given `sub_key`.
+
+            If specified, this is used to find the latest value instead of
+            retrieving it from the backend.
+        """
+        assert message is None or message.sub_key == sub_key
+        for prefix in self._prefixes:
+            full_key = prefix + key
+            if message is not None and full_key == message.key:
+                value = message.value
+            else:
+                try:
+                    # TODO: this could be more efficient if the backend
+                    # provided a has_indexed that didn't retrieve the
+                    # value.
+                    value = self._backend.get_indexed(full_key, sub_key)
+                except KeyError:
+                    continue       # Key does not exist, try next prefix
+                if value is None:
+                    return False   # Key exists, but sub-key does not exist
+            if not condition:
+                return True
+            else:
+                return condition(decode_value(value))
+        return False    # Key does not exist (for any prefix)
+
+    def wait_indexed(self, key, sub_key, condition=None, timeout=None, cancel_future=None):
+        """Wait for a sub-key of an indexed key to exist, possibly with some condition.
+
+        Parameters
+        ----------
+        key : str or bytes
+            Key name to monitor
+        sub_key : object
+            Sub-key to monitor within `key`.
+        condition : callable, signature `bool = condition(value)`, optional
+            If not specified, wait until the sub-key exists. Otherwise, the
+            callable should have the signature `bool = condition(value)`
+            where `value` is the value associated with the sub-key, and the
+            return value indicates whether the condition is satisfied.
+        timeout : float, optional
+            If specified and the condition is not met within the time limit,
+            an exception is thrown.
+        cancel_future : future, optional
+            If not ``None``, a future object (e.g.
+            :class:`concurrent.futures.Future` or :class:`trollius.Future`). If
+            ``cancel_future.done()`` is true before the timeout, raises
+            :exc:`CancelledError`. In the current implementation, it is only
+            polled once a second, rather than waited for.
+
+        Raises
+        ------
+        TimeoutError
+            if a timeout was specified and was exceeded
+        CancelledError
+            if a cancellation future was specified and done
+        ImmutableKeyError
+            if the key exists (or is created while waiting) but is not indexed
+        """
+        key = ensure_binary(key)
+        sub_key_enc = encode_value(sub_key, ENCODING_MSGPACK)
+        # First check if condition is already satisfied, in which case we
+        # don't need to create a pubsub connection.
+        if self._check_indexed_condition(key, sub_key_enc, condition):
+            return
+        key_str = '{}[{!r}]'.format(display_str(key), sub_key)
+
+        def check_cancelled():
+            if cancel_future is not None and cancel_future.done():
+                raise CancelledError('Wait for {} cancelled'.format(key_str))
+
+        check_cancelled()
+        monitor = self._backend.monitor_keys([prefix + key
+                                              for prefix in self._prefixes])
+        with contextlib.closing(monitor):
+            monitor.send(None)   # Just to start the generator going
+            start = time.time()
+            while True:
+                check_cancelled()
+                get_timeout = 1.0
+                if timeout is not None:
+                    remain = (start + timeout) - time.time()
+                    if remain <= 0:
+                        raise TimeoutError('Timed out waiting for {} after {}s'
+                                           .format(key_str, timeout))
+                    get_timeout = min(get_timeout, remain)
+                message = monitor.send(get_timeout)
+                if message is None:
+                    continue
+                elif not isinstance(message, KeyUpdate):
+                    # The monitor thinks it's worth checking again, but doesn't
+                    # have enough information to be useful.
+                    message = None
+                elif not isinstance(message, IndexedKeyUpdate):
+                    raise ImmutableKeyError('wait_indexed called on non-indexed key {}'
+                                            .format(key_str))
+                if self._check_indexed_condition(key, sub_key_enc, condition, message):
+                    return
+
     def _get(self, key, return_encoded=False):
         key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
-            str_val = self._backend.get(full_key)[0]
-            if str_val is not None:
+            raw_value = self._backend.get(full_key)[0]
+            if raw_value is not None:
                 if return_encoded:
-                    return str_val
+                    return raw_value
+                elif isinstance(raw_value, dict):
+                    # Indexed immutable
+                    return {
+                        decode_value(key): decode_value(value)
+                        for (key, value) in raw_value.items()
+                    }
                 else:
-                    return decode_value(str_val)
+                    return decode_value(raw_value)
         raise KeyError('{} not found'.format(display_str(key)))
 
     def get(self, key, default=None, return_encoded=False):
@@ -540,7 +782,7 @@ class TelescopeState:
         KeyError
             if `key` does not exist (with any prefix)
         ImmutableKeyError
-            if `key` refers to an immutable key
+            if `key` refers to an existing key which is not mutable
 
         Notes
         -----

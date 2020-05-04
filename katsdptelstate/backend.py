@@ -17,20 +17,75 @@
 from abc import ABC, abstractmethod
 import time
 
+from .utils import KeyType
+
+
+class KeyUpdateBase:
+    """Indicates that the caller of the monitor should check again.
+
+    This base class contains no information about what changed in the
+    database. Sub-classes contain more specific information.
+    """
+    pass
+
+
+class KeyUpdate(ABC, KeyUpdateBase):
+    """Update notification for a specific key.
+
+    This is a base class for type-specific notification classes and should not
+    be instantiated directly.
+    """
+
+    def __init__(self, key: bytes, value: bytes):
+        self.key = key
+        self.value = value
+
+    @property
+    @abstractmethod
+    def key_type(self) -> KeyType:
+        pass       # noqa: cover
+
+
+class MutableKeyUpdate(KeyUpdate):
+    """Update notification for a mutable key."""
+
+    def __init__(self, key: bytes, value: bytes, timestamp: float):
+        super().__init__(key, value)
+        self.timestamp = timestamp
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.MUTABLE
+
+
+class ImmutableKeyUpdate(KeyUpdate):
+    """Update notification for an immutable key."""
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.IMMUTABLE
+
+
+class IndexedKeyUpdate(KeyUpdate):
+    """Update notification for an indexed key."""
+
+    def __init__(self, key: bytes, sub_key: bytes, value: bytes):
+        super().__init__(key, value)
+        self.sub_key = sub_key
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.INDEXED
+
 
 class Backend(ABC):
     """Low-level interface for telescope state backends.
 
     The backend interface does not deal with namespaces or encodings, which are
     handled by the frontend :class:`TelescopeState` class. A backend must be
-    able to store
-
-    - immutables: key-value pairs (both :class:`bytes`), whose value cannot
-      change once set.
-
-    - mutables: a key associated with a set of (value, timestamp) pairs, where
-      the timestamps are non-negative finite floats and the values are
-      :class:`bytes`.
+    able to store the same types as :class:`~katsdptelstate.TelescopeState`,
+    but keys and values will be :class:`bytes` rather than arbitrary Python
+    objects.
     """
 
     @abstractmethod
@@ -58,14 +113,8 @@ class Backend(ABC):
         """Remove all keys"""
 
     @abstractmethod
-    def is_immutable(self, key):
-        """Whether `key` is an immutable key in the backend.
-
-        Raises
-        ------
-        KeyError
-            If `key` is not present at all
-        """
+    def key_type(self, key):
+        """Get type of `key`, or ``None`` if it does not exist."""
 
     @abstractmethod
     def set_immutable(self, key, value):
@@ -77,18 +126,25 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is mutable
+            If the key exists and is not immutable.
         """
 
     @abstractmethod
     def get(self, key):
         """Get the value and timestamp of a key.
 
-        If the key is mutable, returns the most recent value. If it
-        is immutable, returns the value with a timestamp of ``None``.
+        The return value depends on the key type:
 
-        If the key does not exist, both the value and timestamp will be
-        ``None``.
+        immutable
+          The value.
+        mutable
+          The most recent value.
+        indexed
+          A dictionary of all values (with undefined iteration order).
+        absent
+          None
+
+        The timestamp will be ``None`` for types other than mutable.
         """
 
     @abstractmethod
@@ -100,7 +156,34 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is immutable
+            If the key exists and is not mutable
+        """
+
+    @abstractmethod
+    def set_indexed(self, key, sub_key, value):
+        """Add value in an indexed immutable key.
+
+        If the sub-key already exists, returns the existing value and does not
+        update it. Otherwise, returns ``None``.
+
+        Raises
+        ------
+        ImmutableKeyError
+            If the key exists and is not indexed.
+        """
+
+    @abstractmethod
+    def get_indexed(self, key, sub_key):
+        """Get the value of an indexed immutable key.
+
+        Returns ``None`` if the key exists but the sub-key does not exist.
+
+        Raises
+        ------
+        KeyError
+            If the key does not exist.
+        ImmutableKeyError
+            If the key exists and is not indexed.
         """
 
     @abstractmethod
@@ -125,24 +208,20 @@ class Backend(ABC):
         Raises
         ------
         ImmutableKeyError
-            If the key exists and is immutable
+            If the key exists and is not mutable
         """
 
     @abstractmethod
     def dump(self, key):
-        """Return a key in the same format as the Redis DUMP command, or None if not present"""
+        """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
     def monitor_keys(self, keys):
         """Report changes to keys in `keys`.
 
         Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a timeout and gets back an update event.
-        Each update event is a tuple, of the form (key, value) or (key, value,
-        timestamp) depending on whether the update is to an immutable or a
-        mutable key; or of the form (key,) to indicate that a key may have
-        been updated but there is insufficient information to provide the
-        latest value. If there is no event within the timeout, returns
-        ``None``.
+        After that, the caller sends a timeout and gets back an update event
+        (of type :class:`KeyUpdateBase` or a subclass). If there is no event
+        within the timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller
@@ -155,4 +234,4 @@ class Backend(ABC):
         timeout = yield None
         while True:
             time.sleep(timeout)
-            timeout = yield (keys[0],)
+            timeout = yield KeyUpdateBase()

@@ -26,9 +26,9 @@ import fakeredis
 
 from katsdptelstate.rdb_writer import RDBWriter
 from katsdptelstate.rdb_reader import load_from_file
-from katsdptelstate.rdb_utility import dump_string, dump_zset
+from katsdptelstate.rdb_utility import dump_string, dump_zset, dump_hash
 from katsdptelstate.redis import RedisBackend, RedisCallback
-from katsdptelstate import TelescopeState, RdbParseError
+from katsdptelstate import TelescopeState, RdbParseError, KeyType
 
 
 class TabloidRedis(fakeredis.FakeRedis):
@@ -38,6 +38,7 @@ class TabloidRedis(fakeredis.FakeRedis):
     The Redis-like functionality is almost entirely derived from FakeRedis,
     we only add a dump function.
     """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -54,11 +55,13 @@ class TabloidRedis(fakeredis.FakeRedis):
         key_type = self.type(key)
         if key_type == b'none':
             return None
-        if key_type == b'zset':
+        elif key_type == b'zset':
             data = self.zrange(key, 0, -1)
             return dump_zset(data)
-        if key_type == b'string':
+        elif key_type == b'string':
             return dump_string(self.get(key))
+        elif key_type == b'hash':
+            return dump_hash(self.hgetall(key))
         raise NotImplementedError("Unsupported key type {}. Must be either "
                                   "string or zset".format(key_type))
 
@@ -142,6 +145,28 @@ class TestRDBHandling(unittest.TestCase):
     #     """Ziplist with >4GB of data (can't be encoded as ziplist)"""
     #     self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
+    def _test_hash(self, items):
+        self.tr.hmset('my_hash', items)
+        with RDBWriter(self.base('hash.rdb')) as rdbw:
+            rdbw.save(self.tr)
+
+        local_tr = TabloidRedis()
+        load_from_file(RedisCallback(local_tr), self.base('hash.rdb'))
+        self.assertEqual(local_tr.keys(), [b'my_hash'])
+        read = local_tr.hgetall('my_hash')
+        self.assertEqual(read, items)
+
+    def test_hash_many_entries(self):
+        """Hash with large number of entries.
+
+        This uses the more general encoding, rather than a ziplist.
+        """
+        self._test_hash({b'key%03d' % i: b'value%03d' % i for i in range(1000)})
+
+    def test_hash_big_entry(self):
+        """Ziplist with a large entry (has different encoding)"""
+        self._test_hash({b'x' * 1000000: b'y' * 100000})
+
 
 class TestLoadFromFile(unittest.TestCase):
     """Test :meth:`TelescopeState.load_from_file`."""
@@ -160,6 +185,8 @@ class TestLoadFromFile(unittest.TestCase):
         write_ts['immutable'] = ['some value']
         write_ts.add('mutable', 'first', 12.0)
         write_ts.add('mutable', 'second', 15.5)
+        write_ts.set_indexed('indexed', 'a', 1j)
+        write_ts.set_indexed('indexed', 'b', 'z')
         # Write data to file
         with RDBWriter(file) as rdbw:
             rdbw.save(write_ts)
@@ -168,11 +195,12 @@ class TestLoadFromFile(unittest.TestCase):
         # Load RDB file back into some backend
         read_ts = self.make_telescope_state()
         read_ts.load_from_file(file)
-        self.assertEqual(read_ts.keys(), ['immutable', 'mutable'])
-        self.assertTrue(read_ts.is_immutable('immutable'))
+        self.assertEqual(read_ts.keys(), ['immutable', 'indexed', 'mutable'])
+        self.assertEqual(read_ts.key_type('immutable'), KeyType.IMMUTABLE)
         self.assertEqual(read_ts['immutable'], ['some value'])
         self.assertEqual(read_ts.get_range('mutable', st=0),
                          [('first', 12.0), ('second', 15.5)])
+        self.assertEqual(read_ts.get('indexed'), {'a': 1j, 'b': 'z'})
 
     def test_load_from_file(self):
         self.save_to_file(self.filename)

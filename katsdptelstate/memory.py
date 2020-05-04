@@ -21,7 +21,7 @@ import logging
 from . import utils
 from .backend import Backend
 from .errors import ImmutableKeyError
-from .rdb_utility import dump_string, dump_zset
+from .rdb_utility import dump_string, dump_zset, dump_hash
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
@@ -123,6 +123,13 @@ class MemoryCallback(BackendCallback):
     def end_sorted_set(self, key):
         self.data[key].sort()
 
+    def start_hash(self, key, length, expiry, info):
+        self.data[key] = {}
+        self.n_keys += 1
+
+    def hset(self, key, field, value):
+        self.data[key][field] = value
+
 
 class MemoryBackend(Backend):
     """Telescope state backend that keeps data in memory.
@@ -160,8 +167,18 @@ class MemoryBackend(Backend):
     def clear(self):
         self._data.clear()
 
-    def is_immutable(self, key):
-        return isinstance(self._data[key], bytes)
+    def key_type(self, key):
+        value = self._data.get(key)
+        if value is None:
+            return None
+        elif isinstance(value, bytes):
+            return utils.KeyType.IMMUTABLE
+        elif isinstance(value, dict):
+            return utils.KeyType.INDEXED
+        elif isinstance(value, list):
+            return utils.KeyType.MUTABLE
+        else:
+            assert False
 
     def set_immutable(self, key, value):
         old = self._data.get(key)
@@ -194,6 +211,22 @@ class MemoryBackend(Backend):
         else:
             raise ImmutableKeyError
 
+    def set_indexed(self, key, sub_key, value):
+        item = self._data.setdefault(key, {})
+        if not isinstance(item, dict):
+            raise ImmutableKeyError
+        if sub_key in item:
+            return item[sub_key]
+        else:
+            item[sub_key] = value
+            return None
+
+    def get_indexed(self, key, sub_key):
+        item = self._data[key]
+        if not isinstance(item, dict):
+            raise ImmutableKeyError
+        return item.get(sub_key)
+
     @classmethod
     def _bisect(cls, items, timestamp, is_end, include_end=False):
         packed = utils.pack_query_timestamp(timestamp, is_end, include_end)
@@ -224,5 +257,9 @@ class MemoryBackend(Backend):
             return None
         elif isinstance(value, bytes):
             return dump_string(value)
-        else:
+        elif isinstance(value, list):
             return dump_zset(value)
+        elif isinstance(value, dict):
+            return dump_hash(value)
+        else:
+            assert False
