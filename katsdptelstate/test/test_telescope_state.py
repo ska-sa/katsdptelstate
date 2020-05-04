@@ -330,36 +330,37 @@ class TestTelescopeState(unittest.TestCase):
             # Takes a different code path, even though equivalent
             self.ts.wait_key('test_key', lambda value, ts: True, timeout=0.1)
 
+    def _set_key_immutable(self):
+        time.sleep(0.1)
+        self.ts['test_key'] = 123
+
+    def _set_key_mutable(self):
+        time.sleep(0.1)
+        self.ts.add('test_key', 123, ts=1234567890)
+
+    def _set_key_indexed(self):
+        time.sleep(0.1)
+        self.ts.set_indexed('test_key', 'idx', 123)
+
     def test_wait_key_delayed(self):
         """wait_key must succeed with a timeout that does not expire before the condition is met."""
-        def set_key():
-            self.ts.add('test_key', 123)
-            time.sleep(0.1)
-            self.ts.add('test_key', 234)
-        thread = threading.Thread(target=set_key)
-        thread.start()
-        self.ts.wait_key('test_key', lambda value, ts: value == 234, timeout=2)
-        self.assertEqual(234, self.ts.get('test_key'))
-        thread.join()
+        for (set_key, value, timestamp) in [
+                (self._set_key_mutable, 123, 1234567890),
+                (self._set_key_immutable, 123, None),
+                (self._set_key_indexed, {'idx': 123}, None)]:
+            thread = threading.Thread(target=set_key)
+            thread.start()
+            self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp, timeout=2)
+            self.assertEqual(value, self.ts.get('test_key'))
+            thread.join()
+            self.ts.delete('test_key')
 
     def test_wait_key_delayed_unconditional(self):
         """wait_key must succeed when given a timeout that does not expire before key appears."""
-        def set_key_immutable():
-            time.sleep(0.1)
-            self.ts['test_key'] = 123
-
-        def set_key_mutable():
-            time.sleep(0.1)
-            self.ts.add('test_key', 123)
-
-        def set_key_indexed():
-            time.sleep(0.1)
-            self.ts.set_indexed('test_key', 'idx', 123)
-
         for set_key, value in [
-                (set_key_mutable, 123),
-                (set_key_immutable, 123),
-                (set_key_indexed, {'idx': 123})]:
+                (self._set_key_mutable, 123),
+                (self._set_key_immutable, 123),
+                (self._set_key_indexed, {'idx': 123})]:
             thread = threading.Thread(target=set_key)
             thread.start()
             self.ts.wait_key('test_key', timeout=2)

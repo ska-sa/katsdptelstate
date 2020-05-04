@@ -20,7 +20,7 @@ import pkg_resources
 import redis
 
 from . import utils
-from .backend import Backend
+from .backend import Backend, KeyUpdateBase, MutableKeyUpdate, ImmutableKeyUpdate, IndexedKeyUpdate
 from .errors import ConnectionError, ImmutableKeyError
 from .utils import KeyType, ensure_str, display_str
 try:
@@ -227,7 +227,7 @@ class RedisBackend(Backend):
                         # happened. Also, if we lost connection and
                         # reconnected, we will get the subscribe message
                         # again.
-                        timeout = yield ()
+                        timeout = yield KeyUpdateBase()
                     elif message['type'] == 'message':
                         # First check if there is a key type byte in the message.
                         data = message['data']
@@ -241,7 +241,7 @@ class RedisBackend(Backend):
                         else:
                             data = data[1:]  # Strip off the key type
                         if key_type == KeyType.IMMUTABLE:
-                            timeout = yield (key_type, key, data)
+                            timeout = yield ImmutableKeyUpdate(key, data)
                         elif key_type == KeyType.INDEXED:
                             # Encoding is <sub-key-length>\n<sub-key><value>
                             newline = data.find(b'\n')
@@ -250,10 +250,10 @@ class RedisBackend(Backend):
                             sub_key_len = int(data[:newline])
                             sub_key = data[newline + 1 : newline + 1 + sub_key_len]
                             value = data[newline + 1 + sub_key_len :]
-                            timeout = yield (key_type, key, value, sub_key)
+                            timeout = yield IndexedKeyUpdate(key, sub_key, value)
                         elif key_type == KeyType.MUTABLE:
                             value, timestamp = utils.split_timestamp(data)
-                            timeout = yield (key_type, key, value, timestamp)
+                            timeout = yield MutableKeyUpdate(key, value, timestamp)
                         else:
                             raise RuntimeError('Unhandled key type {}'.format(key_type))
 

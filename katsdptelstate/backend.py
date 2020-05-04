@@ -17,6 +17,66 @@
 from abc import ABC, abstractmethod
 import time
 
+from .utils import KeyType
+
+
+class KeyUpdateBase:
+    """Indicates that the caller of the monitor should check again.
+
+    This base class contains no information about what changed in the
+    database. Sub-classes contain more specific information.
+    """
+    pass
+
+
+class KeyUpdate(ABC, KeyUpdateBase):
+    """Update notification for a specific key.
+
+    This is a base class for type-specific notification classes and should not
+    be instantiated directly.
+    """
+
+    def __init__(self, key: bytes, value: bytes):
+        self.key = key
+        self.value = value
+
+    @property
+    @abstractmethod
+    def key_type(self) -> KeyType:
+        pass       # noqa: cover
+
+
+class MutableKeyUpdate(KeyUpdate):
+    """Update notification for a mutable key."""
+
+    def __init__(self, key: bytes, value: bytes, timestamp: float):
+        super().__init__(key, value)
+        self.timestamp = timestamp
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.MUTABLE
+
+
+class ImmutableKeyUpdate(KeyUpdate):
+    """Update notification for an immutable key."""
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.IMMUTABLE
+
+
+class IndexedKeyUpdate(KeyUpdate):
+    """Update notification for an indexed key."""
+
+    def __init__(self, key: bytes, sub_key: bytes, value: bytes):
+        super().__init__(key, value)
+        self.sub_key = sub_key
+
+    @property
+    def key_type(self) -> KeyType:
+        return KeyType.INDEXED
+
 
 class Backend(ABC):
     """Low-level interface for telescope state backends.
@@ -159,20 +219,8 @@ class Backend(ABC):
         """Report changes to keys in `keys`.
 
         Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a timeout and gets back an update event.
-        Each update event is a tuple of the form (type, key, value, ...). The
-        extra arguments depend on the type:
-
-        immutable
-          no extra arguments
-        mutable
-          the timestamp
-        indexed
-          the subkey for which the value is being set
-
-        The yielded value may also be an empty tuple to indicate that the
-        caller should check for updates but there is insufficient information
-        to indicate which keys (if any) were updated. If there is no event
+        After that, the caller sends a timeout and gets back an update event
+        (of type :class:`KeyUpdateBase` or a subclass). If there is no event
         within the timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
@@ -186,4 +234,4 @@ class Backend(ABC):
         timeout = yield None
         while True:
             time.sleep(timeout)
-            timeout = yield ()
+            timeout = yield KeyUpdateBase()

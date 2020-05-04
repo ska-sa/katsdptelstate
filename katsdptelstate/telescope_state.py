@@ -28,7 +28,7 @@ from .errors import (InvalidKeyError, ImmutableKeyError, TimeoutError, Cancelled
 from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
                        equal_encoded_values)
 from .utils import ensure_str, ensure_binary, display_str, KeyType
-from .backend import Backend
+from .backend import Backend, KeyUpdate, IndexedKeyUpdate
 
 
 logger = logging.getLogger(__name__)
@@ -512,9 +512,10 @@ class TelescopeState:
 
         for prefix in self._prefixes:
             full_key = prefix + key
-            if message is not None and full_key == message[1] and message[0] != KeyType.MUTABLE:
-                value = message[2]
-                timestamp = None if message[0] != KeyType.MUTABLE else message[3]
+            if (message is not None and full_key == message.key
+                    and message.key_type != KeyType.INDEXED):
+                value = message.value
+                timestamp = getattr(message, 'timestamp', None)
             else:
                 value, timestamp = self._backend.get(full_key)
                 if value is None:
@@ -591,7 +592,7 @@ class TelescopeState:
                 message = monitor.send(get_timeout)
                 if message is None:
                     continue
-                if message == ():
+                if not isinstance(message, KeyUpdate):
                     # The monitor thinks it's worth checking again, but doesn't
                     # have enough information to be useful.
                     message = None
@@ -616,11 +617,11 @@ class TelescopeState:
             If specified, this is used to find the latest value instead of
             retrieving it from the backend.
         """
-        assert message is None or message[3] == sub_key
+        assert message is None or message.sub_key == sub_key
         for prefix in self._prefixes:
             full_key = prefix + key
-            if message is not None and full_key == message[1]:
-                value = message[2]
+            if message is not None and full_key == message.key:
+                value = message.value
             else:
                 try:
                     # TODO: this could be more efficient if the backend
@@ -700,11 +701,11 @@ class TelescopeState:
                 message = monitor.send(get_timeout)
                 if message is None:
                     continue
-                elif message == ():
+                elif not isinstance(message, KeyUpdate):
                     # The monitor thinks it's worth checking again, but doesn't
                     # have enough information to be useful.
                     message = None
-                elif message[0] != KeyType.INDEXED:
+                elif not isinstance(message, IndexedKeyUpdate):
                     raise ImmutableKeyError('wait_indexed called on non-indexed key {}'
                                             .format(key_str))
                 if self._check_indexed_condition(key, sub_key_enc, condition, message):
