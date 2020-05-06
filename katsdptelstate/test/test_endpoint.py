@@ -23,45 +23,45 @@ from katsdptelstate.endpoint import (
 
 
 class TestEndpoint:
-    def test_str(self):
+    def test_str(self) -> None:
         assert_equal('test.me:80', str(Endpoint('test.me', 80)))
         assert_equal('[1080::8:800:200C:417A]:12345', str(Endpoint('1080::8:800:200C:417A', 12345)))
 
-    def test_repr(self):
+    def test_repr(self) -> None:
         assert_equal("Endpoint('test.me', 80)", repr(Endpoint('test.me', 80)))
 
-    def test_parser_default_port(self):
+    def test_parser_default_port(self) -> None:
         parser = endpoint_parser(1234)
         assert_equal(Endpoint('hello', 1234), parser('hello'))
         assert_equal(Endpoint('192.168.0.1', 1234), parser('192.168.0.1'))
         assert_equal(Endpoint('1080::8:800:200C:417A', 1234), parser('[1080::8:800:200C:417A]'))
 
-    def test_parser_port(self):
+    def test_parser_port(self) -> None:
         parser = endpoint_parser(1234)
         assert_equal(Endpoint('hello', 80), parser('hello:80'))
         assert_equal(Endpoint('1080::8:800:200C:417A', 80), parser('[1080::8:800:200C:417A]:80'))
 
-    def test_bad_ipv6(self):
+    def test_bad_ipv6(self) -> None:
         parser = endpoint_parser(1234)
         assert_raises(ValueError, parser, '[notipv6]:1234')
 
-    def test_iter(self):
+    def test_iter(self) -> None:
         endpoint = Endpoint('hello', 80)
         assert_equal(('hello', 80), tuple(endpoint))
 
-    def test_eq(self):
+    def test_eq(self) -> None:
         assert_equal(Endpoint('hello', 80), Endpoint('hello', 80))
         assert_not_equal(Endpoint('hello', 80), Endpoint('hello', 90))
         assert_not_equal(Endpoint('hello', 80), Endpoint('world', 80))
         assert_not_equal(Endpoint('hello', 80), 'not_an_endpoint')
 
-    def test_hash(self):
+    def test_hash(self) -> None:
         assert_equal(hash(Endpoint('hello', 80)), hash(Endpoint('hello', 80)))
         assert_not_equal(hash(Endpoint('hello', 80)), hash(Endpoint('hello', 90)))
 
 
 class TestEndpointList:
-    def test_parser(self):
+    def test_parser(self) -> None:
         parser = endpoint_list_parser(1234)
         endpoints = parser(
             'hello:80,world,[1080::8:800:200C:417A],192.168.0.255+4,10.0.255.255+3:60')
@@ -81,26 +81,26 @@ class TestEndpointList:
         ]
         assert_equal(expected, endpoints)
 
-    def test_parser_bad_count(self):
+    def test_parser_bad_count(self) -> None:
         assert_raises(ValueError, endpoint_list_parser(1234), '192.168.0.1+-4')
 
-    def test_parser_non_integer_count(self):
+    def test_parser_non_integer_count(self) -> None:
         assert_raises(ValueError, endpoint_list_parser(1234), '192.168.0.1+hello')
 
-    def test_parser_count_without_ipv4(self):
+    def test_parser_count_without_ipv4(self) -> None:
         assert_raises(ValueError, endpoint_list_parser(1234), 'hello.world+4')
 
-    def test_parser_single_port(self):
+    def test_parser_single_port(self) -> None:
         parser = endpoint_list_parser(1234, single_port=True)
         endpoints = parser('hello:1234,world')
         expected = [Endpoint('hello', 1234), Endpoint('world', 1234)]
         assert_equal(expected, endpoints)
 
-    def test_parser_single_port_bad(self):
+    def test_parser_single_port_bad(self) -> None:
         assert_raises(ValueError, endpoint_list_parser(1234, single_port=True), 'x:123,y:456')
 
 
-def test_endpoints_to_str():
+def test_endpoints_to_str() -> None:
     endpoints = [
         Endpoint('hostname', 1234),
         Endpoint('1.2.3.4', 7148),
