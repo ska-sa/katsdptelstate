@@ -32,7 +32,7 @@ setup(name='katsdptelstate',
       author='MeerKAT SDP team',
       author_email='sdpdev+katsdptelstate@ska.ac.za',
       packages=find_packages(),
-      package_data={'': ['lua_scripts/*.lua']},
+      package_data={'': ['lua_scripts/*.lua', 'py.typed']},
       url='https://github.com/ska-sa/katsdptelstate',
       license='Modified BSD',
       classifiers=[
@@ -55,4 +55,6 @@ setup(name='katsdptelstate',
       install_requires=['redis>=3.3', 'six>=1.12', 'netifaces',
                         'msgpack', 'numpy'],
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
-      tests_require=['rdbtools', 'fakeredis[lua]>=1.3.1'])
+      tests_require=['rdbtools', 'fakeredis[lua]>=1.3.1'],
+      zip_safe=False     # For py.typed
+)
