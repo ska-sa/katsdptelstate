@@ -23,6 +23,7 @@ import functools
 import threading
 import warnings
 import pickle
+from typing import Optional, Any
 
 import msgpack
 import numpy as np
@@ -72,7 +73,7 @@ PICKLE_ERROR = ('The telescope state contains pickled values. This is a security
 _pickle_loads = functools.partial(pickle.loads, encoding='latin1')
 
 
-def set_allow_pickle(allow, warn=False):
+def set_allow_pickle(allow: bool, warn: bool = False) -> None:
     """Control whether pickles are allowed.
 
     This overrides the defaults which are determined from the environment.
@@ -92,7 +93,7 @@ def set_allow_pickle(allow, warn=False):
         _warn_on_pickle = warn
 
 
-def _init_allow_pickle():
+def _init_allow_pickle() -> None:
     env = os.environ.get('KATSDPTELSTATE_ALLOW_PICKLE')
     allow = False
     if env == '1':
@@ -107,7 +108,7 @@ def _init_allow_pickle():
 _init_allow_pickle()
 
 
-def _encode_ndarray(value):
+def _encode_ndarray(value: np.ndarray) -> bytes:
     fp = io.BytesIO()
     try:
         np.save(fp, value, allow_pickle=False)
@@ -117,7 +118,7 @@ def _encode_ndarray(value):
     return fp.getvalue()
 
 
-def _decode_ndarray(data):
+def _decode_ndarray(data: bytes) -> np.ndarray:
     fp = io.BytesIO(data)
     try:
         return np.load(fp, allow_pickle=False)
@@ -125,7 +126,7 @@ def _decode_ndarray(data):
         raise DecodeError(str(error))
 
 
-def _encode_numpy_scalar(value):
+def _encode_numpy_scalar(value: np.generic) -> bytes:
     if value.dtype.hasobject:
         raise EncodeError('cannot encode dtype {} as it contains objects'
                           .format(value.dtype))
@@ -133,7 +134,7 @@ def _encode_numpy_scalar(value):
     return _msgpack_encode(descr) + value.tobytes()
 
 
-def _decode_numpy_scalar(data):
+def _decode_numpy_scalar(data: bytes) -> np.generic:
     try:
         descr = _msgpack_decode(data)
         raw = b''
@@ -148,7 +149,7 @@ def _decode_numpy_scalar(data):
     return value[0]
 
 
-def _msgpack_default(value):
+def _msgpack_default(value: Any) -> msgpack.ExtType:
     if isinstance(value, tuple):
         return msgpack.ExtType(MSGPACK_EXT_TUPLE, _msgpack_encode(list(value)))
     elif isinstance(value, np.ndarray):
@@ -163,7 +164,7 @@ def _msgpack_default(value):
                           .format(value.__class__.__name__))
 
 
-def _msgpack_ext_hook(code, data):
+def _msgpack_ext_hook(code: int, data: bytes) -> Any:
     if code == MSGPACK_EXT_TUPLE:
         content = _msgpack_decode(data)
         if not isinstance(content, list):
@@ -181,12 +182,12 @@ def _msgpack_ext_hook(code, data):
         raise DecodeError('unknown extension type {}'.format(code))
 
 
-def _msgpack_encode(value):
+def _msgpack_encode(value: Any) -> bytes:
     return msgpack.packb(value, use_bin_type=True, strict_types=True,
                          default=_msgpack_default)
 
 
-def _msgpack_decode(value):
+def _msgpack_decode(value: bytes) -> Any:
     # The max_*_len prevent a corrupted or malicious input from consuming
     # memory significantly in excess of the input size before it determines
     # that there isn't actually enough data to back it.
@@ -199,7 +200,7 @@ def _msgpack_decode(value):
                            max_ext_len=max_len)
 
 
-def encode_value(value, encoding=ENCODING_DEFAULT):
+def encode_value(value: Any, encoding: bytes = ENCODING_DEFAULT) -> bytes:
     """Encode a value to a byte array for storage in redis.
 
     Parameters
@@ -224,7 +225,7 @@ def encode_value(value, encoding=ENCODING_DEFAULT):
         raise ValueError('Unknown encoding {:#x}'.format(ord(encoding)))
 
 
-def decode_value(value, allow_pickle=None):
+def decode_value(value: bytes, allow_pickle: Optional[bool] = None) -> Any:
     """Decode a value encoded with :func:`encode_value`.
 
     The encoded value is self-describing, so it is not necessary to specify
@@ -277,7 +278,7 @@ def decode_value(value, allow_pickle=None):
                           '(katsdptelstate may need to be updated)'.format(value[:1]))
 
 
-def equal_encoded_values(a, b):
+def equal_encoded_values(a: bytes, b: bytes) -> bool:
     """Test whether two encoded values represent the same/equivalent objects.
 
     This is not a complete implementation. Mostly, it just checks that the

@@ -22,13 +22,14 @@ https://github.com/sripathikrishnan/redis-rdb-tools/wiki/Redis-RDB-Dump-File-For
 
 import struct
 import itertools
+from typing import Mapping, Sequence, Iterable, Union
 
 
 # Version 6 (first two bytes), and a zero checksum
 DUMP_POSTFIX = b"\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 
-def encode_len(length):
+def encode_len(length: int) -> bytes:
     """Encodes the specified length as 1,2 or 5 bytes of
     RDB specific length encoded byte.
 
@@ -50,7 +51,7 @@ def encode_len(length):
     return struct.pack('>Q', 0x8000000000 + length)[3:]
 
 
-def encode_prev_length(length):
+def encode_prev_length(length: int) -> bytes:
     """Special helper for zset previous entry lengths.
 
     If length < 253 then use 1 byte directly, otherwise
@@ -62,14 +63,14 @@ def encode_prev_length(length):
     return b'\xfe' + struct.pack("<I", length)
 
 
-def dump_string(data):
+def dump_string(data: bytes) -> bytes:
     """Encode a binary string as per redis DUMP command"""
     type_specifier = b'\x00'
     encoded_length = encode_len(len(data))
     return type_specifier + encoded_length + data + DUMP_POSTFIX
 
 
-def encode_ziplist(entries):
+def encode_ziplist(entries: Iterable[Union[bytes, int]]) -> bytes:
     """Create an RDB ziplist, including the envelope.
 
     The entries can either be byte strings or integers, and any iterable can
@@ -120,7 +121,7 @@ def encode_ziplist(entries):
     return b''.join(raw_entries)
 
 
-def dump_iterable(prefix, suffix, entries):
+def dump_iterable(prefix: bytes, suffix: bytes, entries: Iterable[bytes]) -> bytes:
     """Output a sequence of strings, bracketed by a prefix and suffix.
 
     This is an internal function used to implement :func:`dump_zset` and
@@ -133,7 +134,7 @@ def dump_iterable(prefix, suffix, entries):
     return b''.join(enc)
 
 
-def dump_zset(data):
+def dump_zset(data: Sequence[bytes]) -> bytes:
     """Encode a set of values as a redis zset, as per redis DUMP command.
 
     All scores are assumed to be zero and encoded in the most efficient way
@@ -170,7 +171,7 @@ def dump_zset(data):
         return b'\x0c' + encode_len(len(zl_envelope)) + zl_envelope + DUMP_POSTFIX
 
 
-def dump_hash(data):
+def dump_hash(data: Mapping[bytes, bytes]) -> bytes:
     """Encode a dictionary as a redis hash, as per redis DUMP command.
 
     The encoding is similar to zsets, but using the value instead of the score.

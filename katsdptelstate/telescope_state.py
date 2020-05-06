@@ -19,6 +19,7 @@ import math
 import logging
 import contextlib
 import warnings
+from typing import List, Tuple, Dict, BinaryIO, Callable, Union, Optional, TypeVar, Any
 
 import redis
 
@@ -27,11 +28,13 @@ from .errors import (InvalidKeyError, ImmutableKeyError, TimeoutError, Cancelled
                      DecodeError, InvalidTimestampError)
 from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
                        equal_encoded_values)
-from .utils import ensure_str, ensure_binary, display_str, KeyType
+from .utils import ensure_str, ensure_binary, display_str, KeyType, _PathType
 from .backend import Backend, KeyUpdate, IndexedKeyUpdate
 
 
 logger = logging.getLogger(__name__)
+_Key = Union[bytes, str]
+_T = TypeVar('_T', bound='TelescopeState')
 
 
 class TelescopeState:
@@ -95,13 +98,15 @@ class TelescopeState:
     SEPARATOR = '_'
     SEPARATOR_BYTES = b'_'
 
-    def __init__(self, endpoint='', db=0, prefixes=(b'',), base=None):
+    def __init__(self, endpoint: Union[str, Endpoint, Backend] = '',
+                 db: int = 0, prefixes: Tuple[_Key, ...] = (b'',),
+                 base: Optional['TelescopeState'] = None) -> None:
         if base is not None:
             if endpoint != '':
                 raise ValueError('Cannot specify both base and endpoint')
             if db != 0:
                 raise ValueError('Cannot specify both base and db')
-            self._backend = base._backend
+            self._backend = base._backend      # type: Backend
         elif isinstance(endpoint, Backend):
             if db != 0:
                 raise ValueError('Cannot specify both a backend and a db')
@@ -122,6 +127,7 @@ class TelescopeState:
             else:
                 if not isinstance(endpoint, Endpoint):
                     endpoint = endpoint_parser(default_port=None)(endpoint)
+                assert isinstance(endpoint, Endpoint)   # Keeps mypy happy
                 redis_kwargs = dict(
                     host=endpoint.host,
                     db=db,
@@ -136,15 +142,15 @@ class TelescopeState:
         self._prefixes = tuple(ensure_binary(prefix) for prefix in prefixes)
 
     @property
-    def prefixes(self):
+    def prefixes(self) -> Tuple[str, ...]:
         """The active key prefixes as a tuple of strings."""
         return tuple(ensure_str(prefix) for prefix in self._prefixes)
 
     @property
-    def backend(self):
+    def backend(self) -> Backend:
         return self._backend
 
-    def load_from_file(self, file):
+    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
         """Load keys from a Redis-compatible RDB snapshot file.
 
         Redis keys are extracted sequentially from the RDB file and inserted
@@ -176,15 +182,16 @@ class TelescopeState:
             If the file could not be parsed (truncated / malformed / not RDB)
         """
         keys_loaded = self._backend.load_from_file(file)
-        logger.info("Loading {} keys from {}".format(keys_loaded, file))
+        # mypy complains about {}-formatting of bytes
+        logger.info("Loading {} keys from {}".format(keys_loaded, file))  # type: ignore
         return keys_loaded
 
     @classmethod
-    def join(cls, *names):
+    def join(cls, *names: str) -> str:
         """Join string components of key with supported separator."""
         return cls.SEPARATOR.join(names)
 
-    def view(self, name, add_separator=True, exclusive=False):
+    def view(self: _T, name: _Key, add_separator: bool = True, exclusive: bool = False) -> _T:
         """Create a view with an extra name in the list of namespaces.
 
         Returns a new view with `name` added as the first prefix, or the
@@ -196,25 +203,25 @@ class TelescopeState:
         if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
             name += self.SEPARATOR_BYTES
         if exclusive:
-            prefixes = (name,)
+            prefixes = (name,)    # type: Tuple[_Key, ...]
         else:
             prefixes = (name,) + self._prefixes
         return self.__class__(prefixes=prefixes, base=self)
 
-    def root(self):
+    def root(self: _T) -> _T:
         """Create a view containing only the root namespace."""
         return self.__class__(base=self)
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> Any:
         try:
             return self._get(key)
         except KeyError as error:
             raise AttributeError(str(error))
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: _Key) -> Any:
         return self._get(key)
 
-    def __setattr__(self, key, value):
+    def __setattr__(self, key: str, value: Any) -> None:
         if key.startswith('_'):
             super().__setattr__(key, value)
         elif key in self.__class__.__dict__:
@@ -223,10 +230,10 @@ class TelescopeState:
         else:
             self.add(key, value, immutable=True)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: _Key, value: Any) -> None:
         self.add(key, value, immutable=True)
 
-    def __contains__(self, key):
+    def __contains__(self, key: _Key) -> bool:
         """Check to see if the specified key exists in the database."""
         key = ensure_binary(key)
         for prefix in self._prefixes:
@@ -234,7 +241,7 @@ class TelescopeState:
                 return True
         return False
 
-    def is_immutable(self, key):
+    def is_immutable(self, key: _Key) -> bool:
         """Check to see if the specified key is an immutable.
 
         Note that indexed keys are not considered immutable for this purpose.
@@ -247,7 +254,7 @@ class TelescopeState:
         warnings.warn('is_immutable is deprecated; use key_type instead', FutureWarning)
         return self.key_type(key) == KeyType.IMMUTABLE
 
-    def key_type(self, key):
+    def key_type(self, key: _Key) -> Optional[KeyType]:
         """Get the type of a key.
 
         If the key does not exist, returns ``None``.
@@ -259,7 +266,7 @@ class TelescopeState:
                 return key_type
         return None
 
-    def keys(self, filter='*'):
+    def keys(self, filter: _Key = '*') -> List[str]:
         """Return a list of keys currently in the model.
 
         This function ignores the prefix list and returns all keys with
@@ -278,19 +285,19 @@ class TelescopeState:
         keys = self._backend.keys(ensure_binary(filter))
         return sorted(ensure_str(key) for key in keys)
 
-    def _ipython_key_completions_(self):
+    def _ipython_key_completions_(self) -> List[str]:
         """List of keys used in IPython (version >= 5) tab completion.
 
         This respects the prefix list and presents keys with prefixes removed.
         """
-        keys = []
+        keys = []     # type: List[str]
         keys_b = self._backend.keys(b'*')
         for prefix_b in self._prefixes:
             keys.extend(ensure_str(k[len(prefix_b):])
                         for k in keys_b if k.startswith(prefix_b))
         return keys
 
-    def delete(self, key):
+    def delete(self, key: _Key) -> None:
         """Remove a key, and all values, from the model.
 
         The key is deleted from every namespace in the prefix list.
@@ -304,7 +311,7 @@ class TelescopeState:
         for prefix in self._prefixes:
             self._backend.delete(prefix + key)
 
-    def clear(self):
+    def clear(self) -> None:
         """Remove all keys in all namespaces.
 
         .. note::
@@ -314,7 +321,7 @@ class TelescopeState:
         """
         return self._backend.clear()
 
-    def _check_immutable_change(self, key, old_enc, new_enc, new):
+    def _check_immutable_change(self, key: str, old_enc: bytes, new_enc: bytes, new: Any) -> None:
         """Check if an immutable is being changed to the same value.
 
         If not, raise :exc:`ImmutableKeyError`, otherwise just log a message.
@@ -339,14 +346,14 @@ class TelescopeState:
             else:
                 logger.info('Attribute {} updated with the same value'
                             .format(key))
-                return True
         except DecodeError as error:
             raise ImmutableKeyError(
                 'Attempt to set value of immutable key {} to {!r} but '
                 'failed to decode the previous value to compare: {}'
                 .format(key, new, error))
 
-    def add(self, key, value, ts=None, immutable=False, encoding=ENCODING_DEFAULT):
+    def add(self, key: _Key, value: Any, ts: Optional[float] = None,
+            immutable: bool = False, encoding: bytes = ENCODING_DEFAULT) -> None:
         """Add a new key / value pair to the model.
 
         If `immutable` is true, then either the key must not previously have
@@ -411,7 +418,8 @@ class TelescopeState:
                 raise ImmutableKeyError('Attempt to change key {} to mutable'
                                         .format(key_str))
 
-    def set_indexed(self, key, sub_key, value, encoding=ENCODING_DEFAULT):
+    def set_indexed(self, key: _Key, sub_key: Any, value: Any,
+                    encoding: bytes = ENCODING_DEFAULT) -> None:
         """Set a sub-key of an indexed key.
 
         Parameters
@@ -461,7 +469,8 @@ class TelescopeState:
             key_descr = '{}[{!r}]'.format(key_str, sub_key)
             self._check_immutable_change(key_descr, old, str_val, value)
 
-    def get_indexed(self, key, sub_key, default=None, return_encoded=False):
+    def get_indexed(self, key: _Key, sub_key: Any, default: Any = None,
+                    return_encoded: bool = False) -> Any:
         """Retrieve an indexed value set with :meth:`set_indexed`.
 
         Parameters
@@ -492,7 +501,9 @@ class TelescopeState:
                 pass  # Key does not exist, try the next prefix
         return default
 
-    def _check_condition(self, key, condition, message=None):
+    def _check_condition(self, key: bytes,
+                         condition: Optional[Callable[[Any, Optional[float]], bool]],
+                         message: Optional[KeyUpdate] = None):
         """Check whether key exists and satisfies a condition (if any).
 
         Parameters
@@ -501,7 +512,7 @@ class TelescopeState:
             Unqualified key name to check
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
-        message : tuple, optional
+        message : :class:`.KeyUpdateBase`, optional
             A non-empty tuple returned by :meth:`.Backend.wait_key`.
 
             If specified, this is used to find the latest value and timestamp
@@ -514,12 +525,13 @@ class TelescopeState:
             full_key = prefix + key
             if (message is not None and full_key == message.key
                     and message.key_type != KeyType.INDEXED):
-                value = message.value
-                timestamp = getattr(message, 'timestamp', None)
+                value = message.value     # type: Union[bytes, Dict[bytes, bytes]]
+                timestamp = getattr(message, 'timestamp', None)    # type: Optional[float]
             else:
-                value, timestamp = self._backend.get(full_key)
-                if value is None:
+                value2, timestamp = self._backend.get(full_key)
+                if value2 is None:
                     continue      # Key does not exist, so try the next one
+                value = value2
             if isinstance(value, dict):
                 # Handle indexed items
                 value = {decode_value(k): decode_value(v) for k, v in value.items()}
@@ -528,7 +540,10 @@ class TelescopeState:
             return condition(value, timestamp)
         return False    # Key does not exist
 
-    def wait_key(self, key, condition=None, timeout=None, cancel_future=None):
+    def wait_key(self, key: _Key,
+                 condition: Optional[Callable[[Any, Optional[float]], bool]] = None,
+                 timeout: Optional[float] = None,
+                 cancel_future: Any = None) -> None:
         """Wait for a key to exist, possibly with some condition.
 
         Parameters
@@ -546,7 +561,7 @@ class TelescopeState:
             an exception is thrown.
         cancel_future : future, optional
             If not ``None``, a future object (e.g.
-            :class:`concurrent.futures.Future` or :class:`trollius.Future`). If
+            :class:`concurrent.futures.Future` or :class:`asyncio.Future`). If
             ``cancel_future.done()`` is true before the timeout, raises
             :exc:`CancelledError`. In the current implementation, it is only
             polled once a second, rather than waited for.
@@ -599,7 +614,9 @@ class TelescopeState:
                 if self._check_condition(key, condition, message):
                     return
 
-    def _check_indexed_condition(self, key, sub_key, condition, message=None):
+    def _check_indexed_condition(self, key: bytes, sub_key: bytes,
+                                 condition: Optional[Callable[[Any], bool]],
+                                 message: Optional[IndexedKeyUpdate] = None):
         """Check whether key exists and satisfies a condition (if any).
 
         Parameters
@@ -627,18 +644,21 @@ class TelescopeState:
                     # TODO: this could be more efficient if the backend
                     # provided a has_indexed that didn't retrieve the
                     # value.
-                    value = self._backend.get_indexed(full_key, sub_key)
+                    value2 = self._backend.get_indexed(full_key, sub_key)
                 except KeyError:
                     continue       # Key does not exist, try next prefix
-                if value is None:
+                if value2 is None:
                     return False   # Key exists, but sub-key does not exist
+                value = value2
             if not condition:
                 return True
             else:
                 return condition(decode_value(value))
         return False    # Key does not exist (for any prefix)
 
-    def wait_indexed(self, key, sub_key, condition=None, timeout=None, cancel_future=None):
+    def wait_indexed(self, key: _Key, sub_key: Any,
+                     condition: Optional[Callable[[Any], bool]] = None,
+                     timeout: Optional[float] = None, cancel_future: Any = None) -> None:
         """Wait for a sub-key of an indexed key to exist, possibly with some condition.
 
         Parameters
@@ -711,7 +731,7 @@ class TelescopeState:
                 if self._check_indexed_condition(key, sub_key_enc, condition, message):
                     return
 
-    def _get(self, key, return_encoded=False):
+    def _get(self, key: _Key, return_encoded: bool = False) -> Any:
         key = ensure_binary(key)
         for prefix in self._prefixes:
             full_key = prefix + key
@@ -729,11 +749,13 @@ class TelescopeState:
                     return decode_value(raw_value)
         raise KeyError('{} not found'.format(display_str(key)))
 
-    def get(self, key, default=None, return_encoded=False):
+    def get(self, key: _Key, default: Any = None, return_encoded: bool = False) -> Any:
         """Get a single value from the model.
 
         Parameters
         ----------
+        key : str or bytes
+            Key to retrieve
         default : object, optional
             Object to return if key not found
         return_encoded : bool, optional
@@ -750,8 +772,11 @@ class TelescopeState:
         except KeyError:
             return default
 
-    def get_range(self, key, st=None, et=None,
-                  include_previous=None, include_end=False, return_encoded=False):
+    def get_range(self, key: _Key,
+                  st: Optional[float] = None, et: Optional[float] = None,
+                  include_previous: Optional[bool] = None,
+                  include_end: bool = False,
+                  return_encoded: bool = False) -> List[Tuple[Any, float]]:
         """Get the range of values specified by the key and timespec from the model.
 
         Parameters

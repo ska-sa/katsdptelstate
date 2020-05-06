@@ -16,8 +16,9 @@
 
 from abc import ABC, abstractmethod
 import time
+from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, Optional, Union
 
-from .utils import KeyType
+from .utils import KeyType, _PathType
 
 
 class KeyUpdateBase:
@@ -36,7 +37,7 @@ class KeyUpdate(ABC, KeyUpdateBase):
     be instantiated directly.
     """
 
-    def __init__(self, key: bytes, value: bytes):
+    def __init__(self, key: bytes, value: bytes) -> None:
         self.key = key
         self.value = value
 
@@ -49,7 +50,7 @@ class KeyUpdate(ABC, KeyUpdateBase):
 class MutableKeyUpdate(KeyUpdate):
     """Update notification for a mutable key."""
 
-    def __init__(self, key: bytes, value: bytes, timestamp: float):
+    def __init__(self, key: bytes, value: bytes, timestamp: float) -> None:
         super().__init__(key, value)
         self.timestamp = timestamp
 
@@ -89,15 +90,15 @@ class Backend(ABC):
     """
 
     @abstractmethod
-    def load_from_file(self, file):
+    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
         """Implements :meth:`TelescopeState.load_from_file`."""
 
     @abstractmethod
-    def __contains__(self, key):
+    def __contains__(self, key: bytes) -> bool:
         """Return if `key` is in the backend."""
 
     @abstractmethod
-    def keys(self, filter):
+    def keys(self, filter: bytes) -> List[bytes]:
         """Return all keys matching `filter`.
 
         The filter is a redis pattern. Backends might only support ``b'*'`` as
@@ -105,19 +106,19 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def delete(self, key):
+    def delete(self, key: bytes) -> None:
         """Delete a key (no-op if it does not exist)"""
 
     @abstractmethod
-    def clear(self):
+    def clear(self) -> None:
         """Remove all keys"""
 
     @abstractmethod
-    def key_type(self, key):
+    def key_type(self, key: bytes) -> Optional[KeyType]:
         """Get type of `key`, or ``None`` if it does not exist."""
 
     @abstractmethod
-    def set_immutable(self, key, value):
+    def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
         """Set the value of an immutable key.
 
         If the key already exists (and is immutable), returns the existing
@@ -130,7 +131,11 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get(self, key):
+    def get(self, key: bytes) -> Union[
+            Tuple[None, None],
+            Tuple[bytes, None],
+            Tuple[bytes, float],
+            Tuple[Dict[bytes, bytes], None]]:
         """Get the value and timestamp of a key.
 
         The return value depends on the key type:
@@ -148,7 +153,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def add_mutable(self, key, value, timestamp):
+    def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
         """Set a (value, timestamp) pair in a mutable key.
 
         The `timestamp` will be a non-negative float value.
@@ -160,7 +165,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def set_indexed(self, key, sub_key, value):
+    def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
         """Add value in an indexed immutable key.
 
         If the sub-key already exists, returns the existing value and does not
@@ -173,7 +178,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get_indexed(self, key, sub_key):
+    def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
         """Get the value of an indexed immutable key.
 
         Returns ``None`` if the key exists but the sub-key does not exist.
@@ -187,7 +192,8 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get_range(self, key, start_time, end_time, include_previous, include_end):
+    def get_range(self, key: bytes, start_time: float, end_time: float,
+                  include_previous: bool, include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         """Obtain a range of values from a mutable key.
 
         If the key does not exist, returns None.
@@ -212,10 +218,11 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def dump(self, key):
+    def dump(self, key: bytes) -> Optional[bytes]:
         """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
-    def monitor_keys(self, keys):
+    def monitor_keys(self, keys: Iterable[bytes]) \
+            -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         """Report changes to keys in `keys`.
 
         Returns a generator. The first yield from the generator is a no-op.
@@ -233,5 +240,6 @@ class Backend(ABC):
         # This is a valid but usually suboptimal implementation
         timeout = yield None
         while True:
+            assert timeout is not None
             time.sleep(timeout)
             timeout = yield KeyUpdateBase()

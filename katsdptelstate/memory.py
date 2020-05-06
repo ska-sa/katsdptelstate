@@ -17,8 +17,11 @@
 import bisect
 import re
 import logging
+from datetime import datetime
+from typing import Pattern, List, Tuple, Dict, BinaryIO, Union, Optional
 
 from . import utils
+from .utils import _PathType
 from .backend import Backend
 from .errors import ImmutableKeyError
 from .rdb_utility import dump_string, dump_zset, dump_hash
@@ -26,14 +29,15 @@ try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
 except ImportError as _rdb_reader_import_error:   # noqa: F841
-    rdb_reader = None
-    BackendCallback = object     # So that MemoryCallback can still be defined
+    rdb_reader = None            # type: ignore
+    BackendCallback = object     # type: ignore   # So that MemoryCallback can still be defined
 
 
 logger = logging.getLogger(__name__)
+_Value = Union[bytes, Dict[bytes, bytes], List[bytes]]
 
 
-def _compile_pattern(pattern):
+def _compile_pattern(pattern: bytes) -> Pattern[bytes]:
     """Compile a glob pattern (e.g. for keys) to a bytes regex.
 
     fnmatch.fnmatchcase doesn't work for this, because it uses different
@@ -46,12 +50,12 @@ def _compile_pattern(pattern):
 
     # It's easier to work with text than bytes, because indexing bytes
     # doesn't behave the same in Python 3. Latin-1 will round-trip safely.
-    pattern = pattern.decode('latin-1')
+    pattern_str = pattern.decode('latin-1')
     parts = ['^']
     i = 0
-    L = len(pattern)
+    L = len(pattern_str)
     while i < L:
-        c = pattern[i]
+        c = pattern_str[i]
         i += 1
         if c == '?':
             parts.append('.')
@@ -60,30 +64,30 @@ def _compile_pattern(pattern):
         elif c == '\\':
             if i == L:
                 i -= 1
-            parts.append(re.escape(pattern[i]))
+            parts.append(re.escape(pattern_str[i]))
             i += 1
         elif c == '[':
             parts.append('[')
-            if i < L and pattern[i] == '^':
+            if i < L and pattern_str[i] == '^':
                 i += 1
                 parts.append('^')
             parts_len = len(parts)  # To detect if anything was added
             while i < L:
-                if pattern[i] == '\\' and i + 1 < L:
+                if pattern_str[i] == '\\' and i + 1 < L:
                     i += 1
-                    parts.append(re.escape(pattern[i]))
-                elif pattern[i] == ']':
+                    parts.append(re.escape(pattern_str[i]))
+                elif pattern_str[i] == ']':
                     i += 1
                     break
-                elif i + 2 < L and pattern[i + 1] == '-':
-                    start = pattern[i]
-                    end = pattern[i + 2]
+                elif i + 2 < L and pattern_str[i + 1] == '-':
+                    start = pattern_str[i]
+                    end = pattern_str[i + 2]
                     if start > end:
                         start, end = end, start
                     parts.append(re.escape(start) + '-' + re.escape(end))
                     i += 2
                 else:
-                    parts.append(re.escape(pattern[i]))
+                    parts.append(re.escape(pattern_str[i]))
                 i += 1
             if len(parts) == parts_len:
                 if parts[-1] == '[':
@@ -105,30 +109,32 @@ def _compile_pattern(pattern):
 
 class MemoryCallback(BackendCallback):
     """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
-    def __init__(self, data):
+
+    def __init__(self, data: Dict[bytes, _Value]) -> None:
         super().__init__()
         self.data = data
 
-    def set(self, key, value, expiry, info):
+    def set(self, key: bytes, value: bytes, expiry: Optional[datetime], info: dict) -> None:
         self.data[key] = value
         self.n_keys += 1
 
-    def start_sorted_set(self, key, length, expiry, info):
+    def start_sorted_set(self, key: bytes, length: int,
+                         expiry: Optional[datetime], info: dict) -> None:
         self.data[key] = []
         self.n_keys += 1
 
-    def zadd(self, key, score, member):
-        self.data[key].append(member)
+    def zadd(self, key: bytes, score: float, member: bytes) -> None:
+        self.data[key].append(member)       # type: ignore
 
-    def end_sorted_set(self, key):
-        self.data[key].sort()
+    def end_sorted_set(self, key: bytes) -> None:
+        self.data[key].sort()               # type: ignore
 
-    def start_hash(self, key, length, expiry, info):
+    def start_hash(self, key: bytes, length: int, expiry: Optional[datetime], info: dict) -> None:
         self.data[key] = {}
         self.n_keys += 1
 
-    def hset(self, key, field, value):
-        self.data[key][field] = value
+    def hset(self, key: bytes, field: bytes, value: bytes) -> None:
+        self.data[key][field] = value       # type: ignore
 
 
 class MemoryBackend(Backend):
@@ -143,31 +149,31 @@ class MemoryBackend(Backend):
     Mutable keys are stored as sorted lists, and encode timestamps in-place
     using the same packing as :class:`.RedisBackend`.
     """
-    def __init__(self):
-        self._data = {}
+    def __init__(self) -> None:
+        self._data = {}       # type: Dict[bytes, _Value]
 
-    def load_from_file(self, file):
+    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
         if rdb_reader is None:
             raise _rdb_reader_import_error   # noqa: F821
         return rdb_reader.load_from_file(MemoryCallback(self._data), file)
 
-    def __contains__(self, key):
+    def __contains__(self, key: bytes) -> bool:
         return key in self._data
 
-    def keys(self, filter):
+    def keys(self, filter: bytes) -> List[bytes]:
         if filter == b'*':
             return list(self._data.keys())
         else:
             regex = _compile_pattern(filter)
             return [key for key in self._data.keys() if regex.match(key)]
 
-    def delete(self, key):
+    def delete(self, key: bytes) -> None:
         self._data.pop(key, None)
 
-    def clear(self):
+    def clear(self) -> None:
         self._data.clear()
 
-    def key_type(self, key):
+    def key_type(self, key: bytes) -> Optional[utils.KeyType]:
         value = self._data.get(key)
         if value is None:
             return None
@@ -180,7 +186,7 @@ class MemoryBackend(Backend):
         else:
             assert False
 
-    def set_immutable(self, key, value):
+    def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
         old = self._data.get(key)
         if old is None:
             self._data[key] = value
@@ -190,14 +196,19 @@ class MemoryBackend(Backend):
         else:
             raise ImmutableKeyError
 
-    def get(self, key):
+    def get(self, key: bytes) -> Union[
+            Tuple[None, None],
+            Tuple[bytes, None],
+            Tuple[bytes, float],
+            Tuple[Dict[bytes, bytes], None]]:
         value = self._data.get(key)
         if isinstance(value, list):
             return utils.split_timestamp(value[-1])
         else:
-            return value, None
+            # mypy is not smart enough to figure out that this is compatible
+            return value, None     # type: ignore
 
-    def add_mutable(self, key, value, timestamp):
+    def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
         str_val = utils.pack_timestamp(timestamp) + value
         items = self._data.get(key)
         if items is None:
@@ -211,7 +222,7 @@ class MemoryBackend(Backend):
         else:
             raise ImmutableKeyError
 
-    def set_indexed(self, key, sub_key, value):
+    def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
         item = self._data.setdefault(key, {})
         if not isinstance(item, dict):
             raise ImmutableKeyError
@@ -221,14 +232,15 @@ class MemoryBackend(Backend):
             item[sub_key] = value
             return None
 
-    def get_indexed(self, key, sub_key):
+    def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
         item = self._data[key]
         if not isinstance(item, dict):
             raise ImmutableKeyError
         return item.get(sub_key)
 
     @classmethod
-    def _bisect(cls, items, timestamp, is_end, include_end=False):
+    def _bisect(cls, items: List[bytes], timestamp: float,
+                is_end: bool, include_end: bool = False) -> int:
         packed = utils.pack_query_timestamp(timestamp, is_end, include_end)
         if packed == b'-':
             return 0
@@ -238,11 +250,12 @@ class MemoryBackend(Backend):
             # pack_query_timestamp adds a prefix of [ or (, which we don't need
             return bisect.bisect_left(items, packed[1:])
 
-    def get_range(self, key, start_time, end_time, include_previous, include_end):
+    def get_range(self, key: bytes, start_time: float, end_time: float,
+                  include_previous: bool, include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         items = self._data.get(key)
         if items is None:
             return None
-        elif isinstance(items, bytes):
+        elif not isinstance(items, list):
             raise ImmutableKeyError
 
         start_pos = self._bisect(items, start_time, False)
@@ -251,7 +264,7 @@ class MemoryBackend(Backend):
         end_pos = self._bisect(items, end_time, True, include_end)
         return [utils.split_timestamp(value) for value in items[start_pos:end_pos]]
 
-    def dump(self, key):
+    def dump(self, key: bytes) -> Optional[bytes]:
         value = self._data.get(key)
         if value is None:
             return None

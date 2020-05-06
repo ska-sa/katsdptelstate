@@ -16,52 +16,58 @@
 
 import socket
 import struct
+from typing import List, Iterable, Iterator, Callable, Optional, Any
 
 import ipaddress
 import netifaces
 
 
 class Endpoint:
-    """A TCP or UDP endpoint consisting of a host and a port"""
+    """A TCP or UDP endpoint consisting of a host and a port.
 
-    def __init__(self, host, port):
+    Typically the host should be a string (whether a hostname or IP address) and
+    the port should be an integer, but users are free to use other conventions.
+    """
+
+    def __init__(self, host: Any, port: Any) -> None:
         self.host = host
         self.port = port
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, Endpoint) and self.host == other.host and self.port == other.port
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         return not self == other
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.host, self.port))
 
-    def __str__(self):
+    def __str__(self) -> str:
         if ':' in self.host:
             # IPv6 address - escape it
             return '[{}]:{}'.format(self.host, self.port)
         else:
             return '{}:{}'.format(self.host, self.port)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return 'Endpoint({!r}, {!r})'.format(self.host, self.port)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         """Support `tuple(endpoint)` for passing to a socket function"""
         return iter((self.host, self.port))
 
-    def multicast_subscribe(self, sock):
-        """If the address is an IPv4 multicast address, subscribe to the group
-        on `sock`. Return `True` if the host is a multicast address.
+    def multicast_subscribe(self, sock: socket.socket) -> bool:
+        """If the address is an IPv4 multicast address, subscribe to the group on `sock`.
+
+        Return `True` if the host is a multicast address.
         """
         try:
-            raw = socket.inet_aton(self.host)
+            raw = socket.inet_aton(str(self.host))
         except OSError:
             return False
         else:
             # IPv4 multicast is the range 224.0.0.0 - 239.255.255.255
-            if raw[0] >= chr(224) and raw[0] <= chr(239):
+            if raw[0] >= 224 and raw[0] <= 239:
                 for iface in netifaces.interfaces():
                     for addr in netifaces.ifaddresses(iface).get(netifaces.AF_INET, []):
                         # Skip point-to-point links (includes loopback)
@@ -76,13 +82,14 @@ class Endpoint:
                 return False
 
 
-def endpoint_parser(default_port):
-    """Return a factory function that parses a string. The string is either
-    `hostname`, or `hostname:port`, where `port` is an integer. IPv6 addresses
-    are written in square brackets (similar to RFC 2732) to disambiguate the
-    embedded colons.
+def endpoint_parser(default_port: Any) -> Callable[[str], Endpoint]:
+    """Return a factory function that parses a string.
+
+    The string is either `hostname`, or `hostname:port`, where `port` is an
+    integer. IPv6 addresses are written in square brackets (similar to RFC
+    2732) to disambiguate the embedded colons.
     """
-    def parser(text):
+    def parser(text: str) -> Endpoint:
         port = default_port
         # Find the last :, which should separate the port
         pos = text.rfind(':')
@@ -109,19 +116,21 @@ def endpoint_parser(default_port):
     return parser
 
 
-def endpoint_list_parser(default_port, single_port=False):
-    """Return a factory function that parses a string. The string comprises
-    a comma-separated list, each element of which is of the form taken by
-    :func:`endpoint_parser`. Optionally, the hostname may be followed by
-    `+count`, where `count` is an integer specifying a number of sequential
-    IP addresses (in addition to the explicitly named one). This variation is
-    only valid with IPv4 addresses.
+def endpoint_list_parser(default_port: Any,
+                         single_port: bool = False) -> Callable[[str], List[Endpoint]]:
+    """Return a factory function that parses a string.
+
+    The string comprises a comma-separated list, each element of which is of
+    the form taken by :func:`endpoint_parser`. Optionally, the hostname may be
+    followed by `+count`, where `count` is an integer specifying a number of
+    sequential IP addresses (in addition to the explicitly named one). This
+    variation is only valid with IPv4 addresses.
 
     If `single_port` is true, then it will reject any list that contains
     more than one distinct port number, as well as an empty list. This allows
     the user to determine a unique port for the list.
     """
-    def parser(text):
+    def parser(text: str) -> List[Endpoint]:
         sub_parser = endpoint_parser(default_port)
         parts = text.split(',')
         endpoints = []
@@ -153,10 +162,10 @@ def endpoint_list_parser(default_port, single_port=False):
     return parser
 
 
-def endpoints_to_str(endpoints):
-    """Convert a list of endpoints into a compact string that generates the
-    same list. This is the inverse of
-    :func:`katsdptelstate.endpoint.endpoint_list_parser`.
+def endpoints_to_str(endpoints: Iterable[Endpoint]) -> str:
+    """Convert a list of endpoints into a compact string that generates the same list.
+
+    This is the inverse of :func:`katsdptelstate.endpoint.endpoint_list_parser`.
     """
     # Partition the endpoints by type
     ipv4 = []
@@ -166,10 +175,10 @@ def endpoints_to_str(endpoints):
         # ipaddress module requires unicode, so convert if not already
         host = endpoint.host.decode('utf-8') if isinstance(endpoint.host, bytes) else endpoint.host
         try:
-            ipv4.append(Endpoint(ipaddress.IPv4Address(host), endpoint.port))
+            ipv4.append(Endpoint(ipaddress.IPv4Address(endpoint.host), endpoint.port))
         except ipaddress.AddressValueError:
             try:
-                ipv6.append(Endpoint(ipaddress.IPv6Address(host), endpoint.port))
+                ipv6.append(Endpoint(ipaddress.IPv6Address(endpoint.host), endpoint.port))
             except ipaddress.AddressValueError:
                 other.append(endpoint)
     # We build a list of parts, each of which is either host:port, addr:port or
@@ -177,7 +186,8 @@ def endpoints_to_str(endpoints):
     # at the end.
     parts = []
     for ip in (ipv4, ipv6):
-        ip_parts = []    # lists of address, num, port (not tuples because mutated)
+        # lists of address, num, port (not tuples because mutated)
+        ip_parts = []      # type: List[List[Any]]
         # Group endpoints with the same port together, then order by IP address
         ip.sort(key=lambda endpoint: (endpoint.port is not None, endpoint.port, endpoint.host))
         for endpoint in ip:

@@ -14,6 +14,10 @@
 # limitations under the License.
 ################################################################################
 
+from typing import Optional
+
+from .utils import _PathType
+
 
 class TelstateError(RuntimeError):
     """Base class for errors from this package."""
@@ -26,10 +30,10 @@ class ConnectionError(TelstateError):
 class RdbParseError(TelstateError):
     """Error parsing RDB file."""
 
-    def __init__(self, filename=None):
+    def __init__(self, filename: Optional[_PathType] = None) -> None:
         self.filename = filename
 
-    def __str__(self):
+    def __str__(self) -> str:
         name = repr(self.filename) if self.filename else 'object'
         return 'Invalid RDB file {}'.format(name)
 

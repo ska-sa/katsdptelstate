@@ -15,6 +15,8 @@
 ################################################################################
 
 import contextlib
+from datetime import datetime
+from typing import List, Tuple, Dict, BinaryIO, Generator, Iterable, Optional, Union, Any
 
 import pkg_resources
 import redis
@@ -22,34 +24,38 @@ import redis
 from . import utils
 from .backend import Backend, KeyUpdateBase, MutableKeyUpdate, ImmutableKeyUpdate, IndexedKeyUpdate
 from .errors import ConnectionError, ImmutableKeyError
-from .utils import KeyType, ensure_str, display_str
+from .utils import KeyType, ensure_str, display_str, _PathType
 try:
     from . import rdb_reader
     from .rdb_reader import BackendCallback
 except ImportError as _rdb_reader_import_error:   # noqa: F841
-    rdb_reader = None
-    BackendCallback = object     # So that RedisCallback can still be defined
+    rdb_reader = None            # type: ignore
+    BackendCallback = object     # type: ignore   # So that RedisCallback can still be defined
 
 
 class RedisCallback(BackendCallback):
     """RDB callback that stores keys in :class:`redis.Redis`-like client."""
 
-    def __init__(self, client):
+    def __init__(self, client: redis.Redis) -> None:
         super().__init__()
         self.client = client
-        self._zset = {}
+        self._zset = {}         # type: Dict[bytes, float]
+        self._hash = []         # type: List[bytes]
 
-    def set(self, key, value, expiry, info):
+    def set(self, key: bytes, value: bytes, expiry: Optional[datetime], info: dict) -> None:
         self.client_busy = True
-        self.client.set(key, value, expiry)
+        self.client.set(key, value)
+        if expiry is not None:
+            self.client.expireat(key, expiry)
         self.client_busy = False
         self.n_keys += 1
 
-    def start_sorted_set(self, key, length, expiry, info):
+    def start_sorted_set(self, key: bytes, length: int,
+                         expiry: Optional[datetime], info: dict) -> None:
         self._zset = {}
         self.n_keys += 1
 
-    def zadd(self, key, score, member):
+    def zadd(self, key: bytes, score: float, member: bytes) -> None:
         self._zset[member] = score
 
     def end_sorted_set(self, key):
@@ -58,14 +64,14 @@ class RedisCallback(BackendCallback):
         self.client_busy = False
         self._zset = {}
 
-    def start_hash(self, key, length, expiry, info):
+    def start_hash(self, key: bytes, length: int, expiry: Optional[datetime], info: dict) -> None:
         self._hash = []
         self.n_keys += 1
 
-    def hset(self, key, field, value):
+    def hset(self, key: bytes, field: bytes, value: bytes) -> None:
         self._hash.extend([field, value])
 
-    def end_hash(self, key):
+    def end_hash(self, key: bytes) -> None:
         self.client_busy = True
         # redis-py's hset doesn't support multiple key/value pairs, and its
         # hmset takes a mapping rather than interleaved keys and values. To
@@ -77,7 +83,7 @@ class RedisCallback(BackendCallback):
 
 
 @contextlib.contextmanager
-def _handle_wrongtype():
+def _handle_wrongtype() -> Generator[None, None, None]:
     """Map redis WRONGTYPE error to ImmutableKeyError.
 
     It also handles WRONGTYPE errors from inside scripts.
@@ -102,7 +108,7 @@ class RedisBackend(Backend):
         b'zset': KeyType.MUTABLE
     }
 
-    def __init__(self, client):
+    def __init__(self, client: redis.Redis) -> None:
         self.client = client
         self._ps = self.client.pubsub(ignore_subscribe_messages=True)
         try:
@@ -120,35 +126,41 @@ class RedisBackend(Backend):
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = self.client.register_script(script)
 
-    def _call(self, script_name, *args, **kwargs):
+    def _call(self, script_name: str, *args, **kwargs) -> Any:
         return self._scripts[script_name](*args, **kwargs)
 
-    def load_from_file(self, file):
+    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
         if rdb_reader is None:
             raise _rdb_reader_import_error   # noqa: F821
         return rdb_reader.load_from_file(RedisCallback(self.client), file)
 
-    def __contains__(self, key):
-        return self.client.exists(key)
+    def __contains__(self, key: bytes) -> bool:
+        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
+        return bool(self.client.exists(key))     # type: ignore
 
-    def keys(self, filter):
+    def keys(self, filter: bytes) -> List[bytes]:
         return self.client.keys(filter)
 
-    def delete(self, key):
-        self.client.delete(key)
+    def delete(self, key: bytes) -> None:
+        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
+        self.client.delete(key)                  # type: ignore
 
-    def clear(self):
+    def clear(self) -> None:
         self.client.flushdb()
 
-    def key_type(self, key):
+    def key_type(self, key: bytes) -> Optional[KeyType]:
         type_ = self.client.type(key)
         return self._KEY_TYPES[type_]
 
-    def set_immutable(self, key, value):
+    def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
             return self._call('set_immutable', [key], [value])
 
-    def get(self, key):
+    def get(self, key: bytes) -> Union[
+            Tuple[None, None],
+            Tuple[bytes, None],
+            Tuple[bytes, float],
+            Tuple[Dict[bytes, bytes], None]]:
         result = self._call('get', [key])
         if result[1] == b'none':
             return None, None
@@ -164,16 +176,16 @@ class RedisBackend(Backend):
             raise RuntimeError('Unknown key type {} for key {}'
                                .format(ensure_str(result[1]), display_str(key)))
 
-    def add_mutable(self, key, value, timestamp):
+    def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
         str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
             self._call('add_mutable', [key], [str_val])
 
-    def set_indexed(self, key, sub_key, value):
+    def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
             return self._call('set_indexed', [key], [sub_key, value])
 
-    def get_indexed(self, key, sub_key):
+    def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
             result = self._call('get_indexed', [key], [sub_key])
             if result == 1:
@@ -182,7 +194,8 @@ class RedisBackend(Backend):
             else:
                 return result
 
-    def get_range(self, key, start_time, end_time, include_previous, include_end):
+    def get_range(self, key: bytes, start_time: float, end_time: float,
+                  include_previous: bool, include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
@@ -191,7 +204,8 @@ class RedisBackend(Backend):
             return None     # Key does not exist
         return [utils.split_timestamp(val) for val in ret_vals]
 
-    def monitor_keys(self, keys):
+    def monitor_keys(self, keys: Iterable[bytes]) \
+            -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         # Updates trigger pubsub messages to update/<key>. The format depends
         # on the key type:
         # immutable: [\x01] <value>
@@ -213,9 +227,11 @@ class RedisBackend(Backend):
         p = self.client.pubsub()
         with contextlib.closing(p):
             for key in keys:
-                p.subscribe(b'update/' + key)
+                # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
+                p.subscribe(b'update/' + key)     # type: ignore
             timeout = yield None
             while True:
+                assert timeout is not None
                 message = p.get_message(timeout=timeout)
                 if message is None:
                     timeout = yield None
@@ -235,9 +251,10 @@ class RedisBackend(Backend):
                             key_type = KeyType(data[0])
                         except (ValueError, IndexError):
                             # It's the older format lacking a key type byte
-                            key_type = self.key_type(key)
-                            if key_type is None:
+                            key_type2 = self.key_type(key)
+                            if key_type2 is None:
                                 continue     # Key was deleted before we could retrieve the type
+                            key_type = key_type2
                         else:
                             data = data[1:]  # Strip off the key type
                         if key_type == KeyType.IMMUTABLE:
@@ -257,5 +274,5 @@ class RedisBackend(Backend):
                         else:
                             raise RuntimeError('Unhandled key type {}'.format(key_type))
 
-    def dump(self, key):
+    def dump(self, key: bytes) -> Optional[bytes]:
         return self.client.dump(key)

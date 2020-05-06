@@ -16,10 +16,14 @@
 
 import logging
 import os
+from typing import Iterable, Union, Optional, TypeVar
+
+import redis
 
 from .rdb_utility import encode_len
-from .utils import ensure_binary, display_str
+from .utils import ensure_binary, display_str, _PathType
 from .telescope_state import TelescopeState
+from .backend import Backend
 
 # Basic RDB header. First 5 bytes are the standard REDIS magic
 # Next 4 bytes store the RDB format version number (6 in this case)
@@ -34,8 +38,10 @@ RDB_CHECKSUM = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 
 logger = logging.getLogger(__name__)
 
+_T = TypeVar('_T', bound='RDBWriter')
 
-def encode_item(key, dumped_value):
+
+def encode_item(key: bytes, dumped_value: bytes) -> bytes:
     """Encode key and corresponding DUMPed value to RDB format.
 
     The first byte indicates the encoding used for the value of this key. This
@@ -70,7 +76,7 @@ class RDBWriter:
 
     Parameters
     ----------
-    filename : str
+    filename : path-like
         Destination filename. Will be opened in 'wb'.
 
     Attributes
@@ -80,7 +86,7 @@ class RDBWriter:
     keys_failed : int
         Number of keys that failed to be written.
     """
-    def __init__(self, filename):
+    def __init__(self, filename: _PathType) -> None:
         self.filename = filename
         self.keys_written = 0
         self.keys_failed = 0
@@ -92,13 +98,13 @@ class RDBWriter:
             self._fileobj.close()
             raise
 
-    def __enter__(self):
+    def __enter__(self: _T) -> _T:
         return self
 
-    def __exit__(self, *exc_info):
+    def __exit__(self, *exc_info) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Close off RDB file and delete it if it contains no keys."""
         try:
             self._fileobj.write(RDB_TERMINATOR + RDB_CHECKSUM)
@@ -108,7 +114,8 @@ class RDBWriter:
                 logger.error("No valid keys found - removing empty file")
                 os.remove(self.filename)
 
-    def save(self, client, keys=None):
+    def save(self, client: Union[TelescopeState, Backend, redis.Redis],
+             keys: Optional[Iterable[Union[str, bytes]]] = None) -> None:
         """Save a specified subset of keys from a Redis DB to the RDB dump file.
 
         This is a very limited RDB dump utility. It takes a Redis database
@@ -120,7 +127,7 @@ class RDBWriter:
         ----------
         client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.Redis`-like
             A telstate, backend, or Redis-compatible client instance supporting keys() and dump()
-        keys : sequence of str or bytes, optional
+        keys : iterable of str or bytes, optional
             The keys to extract from Redis and include in the dump.
             Keys that don't exist will not raise an Exception, only a log message.
             None (default) includes all keys.
@@ -166,7 +173,7 @@ if __name__ == '__main__':
     parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT),
                         default=endpoint_parser(DEFAULT_PORT)('localhost'),
                         help='host[:port] of the Redis instance to connect to. '
-                             '[default=%(default)s]'.format(DEFAULT_PORT))
+                             '[default=%(default)s]')
     args = parser.parse_args()
 
     endpoint = args.redis
