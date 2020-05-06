@@ -44,7 +44,8 @@ class RedisCallback(BackendCallback):
 
     def set(self, key: bytes, value: bytes, expiry: Optional[datetime], info: dict) -> None:
         self.client_busy = True
-        self.client.set(key, value)
+        # mypy 0.720's typeshed doesn't allow bytes keys
+        self.client.set(key, value)        # type: ignore
         if expiry is not None:
             self.client.expireat(key, expiry)
         self.client_busy = False
@@ -119,7 +120,7 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
-        self._scripts = {}
+        self._scripts = {}     # type: Dict[str, redis.Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable', 'get_range']:
             script = pkg_resources.resource_string(
