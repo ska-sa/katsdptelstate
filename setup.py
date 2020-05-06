@@ -57,4 +57,4 @@ setup(name='katsdptelstate',
       extras_require={'rdb': ['rdbtools', 'python-lzf']},
       tests_require=['rdbtools', 'fakeredis[lua]>=1.3.1'],
       zip_safe=False     # For py.typed
-)
+      )

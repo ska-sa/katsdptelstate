@@ -16,7 +16,7 @@
 
 import socket
 import struct
-from typing import List, Iterable, Iterator, Callable, Optional, Any
+from typing import List, Iterable, Iterator, Callable, Any
 
 import ipaddress
 import netifaces
@@ -175,10 +175,10 @@ def endpoints_to_str(endpoints: Iterable[Endpoint]) -> str:
         # ipaddress module requires unicode, so convert if not already
         host = endpoint.host.decode('utf-8') if isinstance(endpoint.host, bytes) else endpoint.host
         try:
-            ipv4.append(Endpoint(ipaddress.IPv4Address(endpoint.host), endpoint.port))
+            ipv4.append(Endpoint(ipaddress.IPv4Address(host), endpoint.port))
         except ipaddress.AddressValueError:
             try:
-                ipv6.append(Endpoint(ipaddress.IPv6Address(endpoint.host), endpoint.port))
+                ipv6.append(Endpoint(ipaddress.IPv6Address(host), endpoint.port))
             except ipaddress.AddressValueError:
                 other.append(endpoint)
     # We build a list of parts, each of which is either host:port, addr:port or
