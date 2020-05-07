@@ -14,74 +14,24 @@
 # limitations under the License.
 ################################################################################
 
+import asyncio
 import contextlib
-from datetime import datetime
-from typing import List, Tuple, Dict, BinaryIO, Generator, Iterable, Optional, Union, Any
+import hashlib
+import logging
+from typing import (List, Tuple, Dict, Generator, AsyncGenerator, Sequence,
+                    Iterable, Optional, Union, Any)
 
 import pkg_resources
-import redis
+import aioredis
 
 from .. import utils
 from .backend import Backend
 from ..backend import KeyUpdateBase, MutableKeyUpdate, ImmutableKeyUpdate, IndexedKeyUpdate
-from ..errors import ConnectionError, ImmutableKeyError
-from ..utils import KeyType, ensure_str, display_str, _PathType
-try:
-    from .. import rdb_reader
-    from ..rdb_reader import BackendCallback
-except ImportError as _rdb_reader_import_error:   # noqa: F841
-    rdb_reader = None            # type: ignore
-    BackendCallback = object     # type: ignore   # So that RedisCallback can still be defined
+from ..errors import ImmutableKeyError
+from ..utils import KeyType, ensure_str, display_str
 
 
-class RedisCallback(BackendCallback):
-    """RDB callback that stores keys in :class:`redis.Redis`-like client."""
-
-    def __init__(self, client: redis.Redis) -> None:
-        super().__init__()
-        self.client = client
-        self._zset = {}         # type: Dict[bytes, float]
-        self._hash = []         # type: List[bytes]
-
-    def set(self, key: bytes, value: bytes, expiry: Optional[datetime], info: dict) -> None:
-        self.client_busy = True
-        # mypy 0.720's typeshed doesn't allow bytes keys
-        self.client.set(key, value)        # type: ignore
-        if expiry is not None:
-            self.client.expireat(key, expiry)
-        self.client_busy = False
-        self.n_keys += 1
-
-    def start_sorted_set(self, key: bytes, length: int,
-                         expiry: Optional[datetime], info: dict) -> None:
-        self._zset = {}
-        self.n_keys += 1
-
-    def zadd(self, key: bytes, score: float, member: bytes) -> None:
-        self._zset[member] = score
-
-    def end_sorted_set(self, key):
-        self.client_busy = True
-        self.client.zadd(key, self._zset)
-        self.client_busy = False
-        self._zset = {}
-
-    def start_hash(self, key: bytes, length: int, expiry: Optional[datetime], info: dict) -> None:
-        self._hash = []
-        self.n_keys += 1
-
-    def hset(self, key: bytes, field: bytes, value: bytes) -> None:
-        self._hash.extend([field, value])
-
-    def end_hash(self, key: bytes) -> None:
-        self.client_busy = True
-        # redis-py's hset doesn't support multiple key/value pairs, and its
-        # hmset takes a mapping rather than interleaved keys and values. To
-        # avoid the cost of building a dict and then flattening it again,
-        # we execute the raw Redis command directly.
-        self.client.execute_command('HSET', key, *self._hash)
-        self.client_busy = False
-        self._hash = []
+logger = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
@@ -92,12 +42,30 @@ def _handle_wrongtype() -> Generator[None, None, None]:
     """
     try:
         yield
-    except redis.ResponseError as error:
+    except aioredis.ReplyError as error:
         if (error.args[0].startswith('WRONGTYPE ')
-                or (error.args[0].startswith('Error running script')
+                or (error.args[0].startswith('ERR Error running script')
                     and 'WRONGTYPE ' in error.args[0])):
             raise ImmutableKeyError
         raise
+
+
+class _Script:
+    """Handle caching of scripts on the redis server."""
+
+    def __init__(self, script: bytes) -> None:
+        self.script = script
+        self.digest = hashlib.sha1(self.script).hexdigest()
+
+    async def __call__(self, client: aioredis.Redis,
+                       keys: Sequence = [], args: Sequence = []) -> Any:
+        try:
+            return await client.evalsha(self.digest, keys, args)
+        except aioredis.ReplyError as exc:
+            if not exc.args[0].startswith('NOSCRIPT '):
+                raise
+        # The script wasn't cached, so try again with original source
+        return await client.eval(self.script, keys, args)
 
 
 class RedisBackend(Backend):
@@ -110,60 +78,44 @@ class RedisBackend(Backend):
         b'zset': KeyType.MUTABLE
     }
 
-    def __init__(self, client: redis.Redis) -> None:
+    def __init__(self, client: aioredis.Redis) -> None:
         self.client = client
-        self._ps = self.client.pubsub(ignore_subscribe_messages=True)
-        try:
-            # This is the first command to the server and therefore
-            # the first test of its availability
-            self.client.ping()
-        except (redis.TimeoutError, redis.ConnectionError) as e:
-            # redis.TimeoutError: bad host
-            # redis.ConnectionError: good host, bad port
-            raise ConnectionError("could not connect to redis server: {}".format(e))
-        self._scripts = {}     # type: Dict[str, redis.client.Script]
+        self._scripts = {}     # type: Dict[str, _Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable', 'get_range']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
-            self._scripts[script_name] = self.client.register_script(script)
+            self._scripts[script_name] = _Script(script)
 
-    def _call(self, script_name: str, *args, **kwargs) -> Any:
-        return self._scripts[script_name](*args, **kwargs)
+    async def _call(self, script_name: str, *args, **kwargs) -> Any:
+        return await self._scripts[script_name](self.client, *args, **kwargs)
 
-    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
-        if rdb_reader is None:
-            raise _rdb_reader_import_error   # noqa: F821
-        return rdb_reader.load_from_file(RedisCallback(self.client), file)
+    async def exists(self, key: bytes) -> bool:
+        return bool(await self.client.exists(key))
 
-    def __contains__(self, key: bytes) -> bool:
-        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-        return bool(self.client.exists(key))     # type: ignore
+    async def keys(self, filter: bytes) -> List[bytes]:
+        return await self.client.keys(filter)
 
-    def keys(self, filter: bytes) -> List[bytes]:
-        return self.client.keys(filter)
+    async def delete(self, key: bytes) -> None:
+        await self.client.delete(key)
 
-    def delete(self, key: bytes) -> None:
-        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-        self.client.delete(key)                  # type: ignore
+    async def clear(self) -> None:
+        await self.client.flushdb()
 
-    def clear(self) -> None:
-        self.client.flushdb()
-
-    def key_type(self, key: bytes) -> Optional[KeyType]:
-        type_ = self.client.type(key)
+    async def key_type(self, key: bytes) -> Optional[KeyType]:
+        type_ = await self.client.type(key)
         return self._KEY_TYPES[type_]
 
-    def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
+    async def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
-            return self._call('set_immutable', [key], [value])
+            return await self._call('set_immutable', [key], [value])
 
-    def get(self, key: bytes) -> Union[
+    async def get(self, key: bytes) -> Union[
             Tuple[None, None],
             Tuple[bytes, None],
             Tuple[bytes, float],
             Tuple[Dict[bytes, bytes], None]]:
-        result = self._call('get', [key])
+        result = await self._call('get', [key])
         if result[1] == b'none':
             return None, None
         elif result[1] == b'string':
@@ -178,103 +130,78 @@ class RedisBackend(Backend):
             raise RuntimeError('Unknown key type {} for key {}'
                                .format(ensure_str(result[1]), display_str(key)))
 
-    def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
+    async def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
         str_val = utils.pack_timestamp(timestamp) + value
         with _handle_wrongtype():
-            self._call('add_mutable', [key], [str_val])
+            await self._call('add_mutable', [key], [str_val])
 
-    def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
+    async def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
-            return self._call('set_indexed', [key], [sub_key, value])
+            return await self._call('set_indexed', [key], [sub_key, value])
 
-    def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
+    async def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
         with _handle_wrongtype():
-            result = self._call('get_indexed', [key], [sub_key])
+            result = await self._call('get_indexed', [key], [sub_key])
             if result == 1:
                 # Key does not exist
                 raise KeyError
             else:
                 return result
 
-    def get_range(self, key: bytes, start_time: float, end_time: float,
-                  include_previous: bool, include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
+    async def get_range(self, key: bytes, start_time: float, end_time: float,
+                        include_previous: bool,
+                        include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
-            ret_vals = self._call('get_range', [key], [packed_st, packed_et, int(include_previous)])
+            ret_vals = await self._call('get_range', [key],
+                                        [packed_st, packed_et, int(include_previous)])
         if ret_vals is None:
             return None     # Key does not exist
         return [utils.split_timestamp(val) for val in ret_vals]
 
-    def monitor_keys(self, keys: Iterable[bytes]) \
-            -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
-        # Updates trigger pubsub messages to update/<key>. The format depends
-        # on the key type:
-        # immutable: [\x01] <value>
-        # mutable:   [\x02] <timestamp> <value>
-        # indexed:   \x03 <subkey-len> \n <subkey> <value>
-        #            (subkey-len is ASCII text)
-        # The first byte corresponds to the values in the KeyType
-        # enumeration. For immutable and mutable, the leading byte is
-        # currently omitted, and the key type needs to be looked up. This can
-        # only be fixed once the code to handle these bytes is present in all
-        # deployments.
-        #
-        # This can in theory cause ambiguities, because the first byte could
-        # be either the key type or the start of a value or timestamp.
-        # However, values are encoded and the encoding currently in use is
-        # signalled with a \xFF at the start; and timestamps starting with
-        # one of these bytes is infinitesimally close to zero and so will
-        # not arise in practice.
-        p = self.client.pubsub()
-        with contextlib.closing(p):
-            for key in keys:
-                # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-                p.subscribe(b'update/' + key)     # type: ignore
-            timeout = yield None
-            while True:
-                assert timeout is not None
-                message = p.get_message(timeout=timeout)
-                if message is None:
-                    timeout = yield None
-                else:
-                    assert message['channel'].startswith(b'update/')
-                    key = message['channel'][7:]
-                    if message['type'] == 'subscribe':
-                        # An update may have occurred before our subscription
-                        # happened. Also, if we lost connection and
-                        # reconnected, we will get the subscribe message
-                        # again.
-                        timeout = yield KeyUpdateBase()
-                    elif message['type'] == 'message':
-                        # First check if there is a key type byte in the message.
-                        data = message['data']
-                        try:
-                            key_type = KeyType(data[0])
-                        except (ValueError, IndexError):
-                            # It's the older format lacking a key type byte
-                            key_type2 = self.key_type(key)
-                            if key_type2 is None:
-                                continue     # Key was deleted before we could retrieve the type
-                            key_type = key_type2
-                        else:
-                            data = data[1:]  # Strip off the key type
-                        if key_type == KeyType.IMMUTABLE:
-                            timeout = yield ImmutableKeyUpdate(key, data)
-                        elif key_type == KeyType.INDEXED:
-                            # Encoding is <sub-key-length>\n<sub-key><value>
-                            newline = data.find(b'\n')
-                            if newline == -1:
-                                raise RuntimeError('Pubsub message missing newline')
-                            sub_key_len = int(data[:newline])
-                            sub_key = data[newline + 1 : newline + 1 + sub_key_len]
-                            value = data[newline + 1 + sub_key_len :]
-                            timeout = yield IndexedKeyUpdate(key, sub_key, value)
-                        elif key_type == KeyType.MUTABLE:
-                            value, timestamp = utils.split_timestamp(data)
-                            timeout = yield MutableKeyUpdate(key, value, timestamp)
-                        else:
-                            raise RuntimeError('Unhandled key type {}'.format(key_type))
+    async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
+        # Refer to katsdptelstate.redis.RedisBackend for details of the protocol
+        while True:
+            receiver = aioredis.pubsub.Receiver()
+            await self.client.subscribe(*(receiver.channel(b'update/' + key) for key in keys))
+            try:
+                # Condition may have been satisfied while we were busy subscribing
+                logger.debug('Subscribed to channels, notifying caller to check')
+                yield KeyUpdateBase()
+                async for channel, data in receiver.iter():
+                    assert channel.name.startswith(b'update/')
+                    key = channel.name[7:]
+                    logger.debug('Received update on channel %r', key)
+                    # First check if there is a key type byte in the message.
+                    try:
+                        key_type = KeyType(data[0])
+                    except (ValueError, IndexError):
+                        # It's the older format lacking a key type byte
+                        key_type2 = await self.key_type(key)
+                        if key_type2 is None:
+                            continue     # Key was deleted before we could retrieve the type
+                        key_type = key_type2
+                    else:
+                        data = data[1:]  # Strip off the key type
+                    if key_type == KeyType.IMMUTABLE:
+                        yield ImmutableKeyUpdate(key, data)
+                    elif key_type == KeyType.INDEXED:
+                        # Encoding is <sub-key-length>\n<sub-key><value>
+                        newline = data.find(b'\n')
+                        if newline == -1:
+                            raise RuntimeError('Pubsub message missing newline')
+                        sub_key_len = int(data[:newline])
+                        sub_key = data[newline + 1 : newline + 1 + sub_key_len]
+                        value = data[newline + 1 + sub_key_len :]
+                        yield IndexedKeyUpdate(key, sub_key, value)
+                    elif key_type == KeyType.MUTABLE:
+                        value, timestamp = utils.split_timestamp(data)
+                        yield MutableKeyUpdate(key, value, timestamp)
+                    else:
+                        raise RuntimeError('Unhandled key type {}'.format(key_type))
+            finally:
+                await asyncio.shield(self.client.unsubscribe(*(b'update/' + key for key in keys)))
 
-    def dump(self, key: bytes) -> Optional[bytes]:
-        return self.client.dump(key)
+    async def dump(self, key: bytes) -> Optional[bytes]:
+        return await self.client.dump(key)
