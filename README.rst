@@ -113,3 +113,49 @@ A Simple Example
   print(view['x'])  # -> 1
   print(view.prefixes)  # -> ('ns_', '')
   print(view.keys())  # -> ['n_chans', 'no_change', 'ns_x']
+
+Asynchronous interface
+----------------------
+There is also an interface that works with asyncio. Use
+``katsdptelstate.aio.TelescopeState`` instead of
+``katsdptelstate.TelescopeState``. Functions that interact with the database are now
+coroutines.
+
+There are a few differences from the synchronous version, partly necessary due
+to the nature of asyncio and partly to streamline and modernise the code:
+
+- The constructor only takes a backend, not an endpoint. See below for an
+  example of how to construct a redis backend.
+- There is currently no support for reading or writing RDB files; you'll need
+  to create a synchronous telescope state client that connects to the same
+  storage.
+- There is no support for attribute-style access.
+- Item-style access is supported for read (``await ts.get('key')``), but not
+  for write. Use ``await ts.set('key', 'value')`` instead to set immutable
+  keys.
+- Instead of ``key in ts``, use ``await ts.exists(key)``.
+- The ``wait_key`` and ``wait_indexed`` methods do not take a timeout or a
+  cancellation future. They can be used with asyncio's cancellation machinery.
+  The `async_timeout`_ package is useful for timeouts.
+- The backend should be closed when no longer needed to avoid warnings.
+
+Example
+^^^^^^^
+
+.. code:: python
+
+  import aioredis
+  from katsdptelstate.aio import TelescopeState
+  from katsdptelstate.aio.redis import RedisBackend
+
+  # Create a connection to localhost redis server
+  client = await aioredis.create_redis_pool('redis://localhost')
+  ts = TelescopeState(RedisBackend(client))
+
+  # Store and retrieve some data
+  await ts.set('key', 'value')
+  print(await ts.get('key'))
+
+  # Close the connections (do not try to use ts after this)
+  ts.backend.close()
+  await ts.backend.wait_closed()
