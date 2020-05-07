@@ -17,7 +17,6 @@
 """Tests for the asynchronous Telescope State client."""
 
 import asyncio
-import time
 from unittest import mock
 
 import asynctest
@@ -27,7 +26,6 @@ import fakeredis.aioredis
 
 from katsdptelstate import ImmutableKeyError, encode_value, KeyType, ENCODING_MSGPACK
 from katsdptelstate.aio import TelescopeState
-from katsdptelstate.aio.memory import MemoryBackend
 from katsdptelstate.aio.redis import RedisBackend
 
 
@@ -133,7 +131,7 @@ class TestTelescopeState(asynctest.TestCase):
 
     async def test_immutable_same_value_str(self) -> None:
         with mock.patch('katsdptelstate.encoding._allow_pickle', True), \
-             mock.patch('katsdptelstate.encoding._warn_on_pickle', False):
+                mock.patch('katsdptelstate.encoding._warn_on_pickle', False):
             await self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
             await self.ts.add('test_bytes', b'caf\xc3\xa9', immutable=True)
             await self.ts.add('test_bytes', 'café', immutable=True)
@@ -346,9 +344,6 @@ class TestTelescopeState(asynctest.TestCase):
 
     async def test_wait_key_cancel(self) -> None:
         """wait_key must deal gracefully with cancellation."""
-        def cancel():
-            time.sleep(0.1)
-            future.done.return_value = True
         task = asyncio.ensure_future(self.ts.wait_key('test_key'))
         await asyncio.sleep(0.1)
         task.cancel()
