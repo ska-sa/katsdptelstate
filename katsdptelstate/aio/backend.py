@@ -19,64 +19,7 @@ import time
 from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, Optional, Union
 
 from ..utils import KeyType, _PathType
-
-
-class KeyUpdateBase:
-    """Indicates that the caller of the monitor should check again.
-
-    This base class contains no information about what changed in the
-    database. Sub-classes contain more specific information.
-    """
-    pass
-
-
-class KeyUpdate(ABC, KeyUpdateBase):
-    """Update notification for a specific key.
-
-    This is a base class for type-specific notification classes and should not
-    be instantiated directly.
-    """
-
-    def __init__(self, key: bytes, value: bytes) -> None:
-        self.key = key
-        self.value = value
-
-    @property
-    @abstractmethod
-    def key_type(self) -> KeyType:
-        pass       # noqa: cover
-
-
-class MutableKeyUpdate(KeyUpdate):
-    """Update notification for a mutable key."""
-
-    def __init__(self, key: bytes, value: bytes, timestamp: float) -> None:
-        super().__init__(key, value)
-        self.timestamp = timestamp
-
-    @property
-    def key_type(self) -> KeyType:
-        return KeyType.MUTABLE
-
-
-class ImmutableKeyUpdate(KeyUpdate):
-    """Update notification for an immutable key."""
-
-    @property
-    def key_type(self) -> KeyType:
-        return KeyType.IMMUTABLE
-
-
-class IndexedKeyUpdate(KeyUpdate):
-    """Update notification for an indexed key."""
-
-    def __init__(self, key: bytes, sub_key: bytes, value: bytes):
-        super().__init__(key, value)
-        self.sub_key = sub_key
-
-    @property
-    def key_type(self) -> KeyType:
-        return KeyType.INDEXED
+from ..backend import KeyUpdateBase
 
 
 class Backend(ABC):
@@ -227,7 +170,7 @@ class Backend(ABC):
 
         Returns a generator. The first yield from the generator is a no-op.
         After that, the caller sends a timeout and gets back an update event
-        (of type :class:`KeyUpdateBase` or a subclass). If there is no event
+        (of type :class:`.KeyUpdateBase` or a subclass). If there is no event
         within the timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
