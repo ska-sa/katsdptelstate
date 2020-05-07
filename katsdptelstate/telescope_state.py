@@ -433,7 +433,7 @@ class TelescopeState(TelescopeStateBase[Backend]):
         condition : callable, optional
             See :meth:`wait_key`'s docstring for the details
         message : :class:`.KeyUpdateBase`, optional
-            A non-empty tuple returned by :meth:`.Backend.wait_key`.
+            A non-empty update returned by :meth:`.Backend.wait_key`.
 
             If specified, this is used to find the latest value and timestamp
             (if available) of the key instead of retrieving it from the backend.
@@ -547,8 +547,8 @@ class TelescopeState(TelescopeStateBase[Backend]):
             Encoded sub-key to check
         condition : callable, optional
             See :meth:`wait_indexed`'s docstring for the details
-        message : tuple, optional
-            A non-empty tuple returned by :meth:`.Backend.wait_key`. If
+        message : :class:`.KeyUpdateBase`, optional
+            A non-empty update returned by :meth:`.Backend.wait_key`. If
             specified, it must match the given `sub_key`.
 
             If specified, this is used to find the latest value instead of

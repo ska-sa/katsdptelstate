@@ -15,8 +15,9 @@
 ################################################################################
 
 from abc import ABC, abstractmethod
+import asyncio
 import time
-from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, Optional, Union
+from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, AsyncGenerator, Optional, Union
 
 from ..utils import KeyType, _PathType
 from ..backend import KeyUpdateBase
@@ -33,15 +34,11 @@ class Backend(ABC):
     """
 
     @abstractmethod
-    def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
-        """Implements :meth:`TelescopeState.load_from_file`."""
-
-    @abstractmethod
-    def __contains__(self, key: bytes) -> bool:
+    async def exists(self, key: bytes) -> bool:
         """Return if `key` is in the backend."""
 
     @abstractmethod
-    def keys(self, filter: bytes) -> List[bytes]:
+    async def keys(self, filter: bytes) -> List[bytes]:
         """Return all keys matching `filter`.
 
         The filter is a redis pattern. Backends might only support ``b'*'`` as
@@ -49,19 +46,19 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def delete(self, key: bytes) -> None:
+    async def delete(self, key: bytes) -> None:
         """Delete a key (no-op if it does not exist)"""
 
     @abstractmethod
-    def clear(self) -> None:
+    async def clear(self) -> None:
         """Remove all keys"""
 
     @abstractmethod
-    def key_type(self, key: bytes) -> Optional[KeyType]:
+    async def key_type(self, key: bytes) -> Optional[KeyType]:
         """Get type of `key`, or ``None`` if it does not exist."""
 
     @abstractmethod
-    def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
+    async def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
         """Set the value of an immutable key.
 
         If the key already exists (and is immutable), returns the existing
@@ -74,7 +71,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get(self, key: bytes) -> Union[
+    async def get(self, key: bytes) -> Union[
             Tuple[None, None],
             Tuple[bytes, None],
             Tuple[bytes, float],
@@ -96,7 +93,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
+    async def add_mutable(self, key: bytes, value: bytes, timestamp: float) -> None:
         """Set a (value, timestamp) pair in a mutable key.
 
         The `timestamp` will be a non-negative float value.
@@ -108,7 +105,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
+    async def set_indexed(self, key: bytes, sub_key: bytes, value: bytes) -> Optional[bytes]:
         """Add value in an indexed immutable key.
 
         If the sub-key already exists, returns the existing value and does not
@@ -121,7 +118,7 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
+    async def get_indexed(self, key: bytes, sub_key: bytes) -> Optional[bytes]:
         """Get the value of an indexed immutable key.
 
         Returns ``None`` if the key exists but the sub-key does not exist.
@@ -135,8 +132,9 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def get_range(self, key: bytes, start_time: float, end_time: float,
-                  include_previous: bool, include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
+    async def get_range(self, key: bytes, start_time: float, end_time: float,
+                        include_previous: bool,
+                        include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         """Obtain a range of values from a mutable key.
 
         If the key does not exist, returns None.
@@ -161,28 +159,21 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    def dump(self, key: bytes) -> Optional[bytes]:
+    async def dump(self, key: bytes) -> Optional[bytes]:
         """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
-    def monitor_keys(self, keys: Iterable[bytes]) \
-            -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
+    async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         """Report changes to keys in `keys`.
 
-        Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a timeout and gets back an update event
-        (of type :class:`.KeyUpdateBase` or a subclass). If there is no event
-        within the timeout, returns ``None``.
-
-        It is acceptable (but undesirable) for this function to miss the
-        occasional update e.g. due to a network connection outage. The caller
-        takes care to use a low timeout and retry rather than blocking for
-        long periods.
-
-        The generator runs until it is closed.
+        Returns an asynchronous iterator that yields an infinite stream of
+        update notifications. When no longer needed it should be closed.
         """
         # This is a valid but usually suboptimal implementation
+        while True:
+            await asyncio.sleep(1)
+            yield KeyUpdateBase()
         timeout = yield None
         while True:
             assert timeout is not None
             time.sleep(timeout)
-            timeout = yield KeyUpdateBase()
+            yield KeyUpdateBase()
