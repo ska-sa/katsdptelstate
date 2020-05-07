@@ -120,7 +120,7 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
-        self._scripts = {}     # type: Dict[str, redis.Script]
+        self._scripts = {}     # type: Dict[str, redis.client.Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable', 'get_range']:
             script = pkg_resources.resource_string(
