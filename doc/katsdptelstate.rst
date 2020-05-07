@@ -1,6 +1,14 @@
 katsdptelstate package
 ======================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   katsdptelstate.aio
+
 Submodules
 ----------
 
