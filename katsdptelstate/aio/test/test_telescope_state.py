@@ -16,17 +16,19 @@
 
 """Tests for the asynchronous Telescope State client."""
 
-import threading
+import asyncio
 import time
 from unittest import mock
 
 import asynctest
+import async_timeout
 import numpy as np
-import fakeredis
+import fakeredis.aioredis
 
 from katsdptelstate import ImmutableKeyError, encode_value, KeyType, ENCODING_MSGPACK
 from katsdptelstate.aio import TelescopeState
 from katsdptelstate.aio.memory import MemoryBackend
+from katsdptelstate.aio.redis import RedisBackend
 
 
 class TestTelescopeState(asynctest.TestCase):
@@ -276,29 +278,31 @@ class TestTelescopeState(asynctest.TestCase):
         await self.ts.add('test_key', 'value', 1234.5)
         self.assertEqual([('value', 1234.5)], await self.ts.get_range('test_key', st=0))
 
-    def test_wait_key_already_done_mutable(self) -> None:
+    async def test_wait_key_already_done_mutable(self) -> None:
         """Calling wait_key with a condition that is met must return (mutable version)."""
-        self.ts.add('test_key', 123)
-        value, timestamp = self.ts.get_range('test_key')[0]
-        self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
+        await self.ts.add('test_key', 123)
+        value, timestamp = (await self.ts.get_range('test_key'))[0]
+        await self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
 
-    def test_wait_key_already_done_immutable(self) -> None:
+    async def test_wait_key_already_done_immutable(self) -> None:
         """Calling wait_key with a condition that is met must return (immutable version)."""
-        self.ts.add('test_key', 123, immutable=True)
-        self.ts.wait_key('test_key', lambda v, t: v == self.ts['test_key'] and t is None)
+        await self.ts.add('test_key', 123, immutable=True)
+        await self.ts.wait_key('test_key', lambda v, t: v == 123 and t is None)
 
-    def test_wait_key_already_done_indexed(self) -> None:
+    async def test_wait_key_already_done_indexed(self) -> None:
         """Calling wait_key with a condition that is met must return (indexed version)."""
-        self.ts.set_indexed('test_key', 'idx', 5)
-        self.ts.wait_key('test_key', lambda v, t: v == {'idx': 5} and t is None)
+        await self.ts.set_indexed('test_key', 'idx', 5)
+        await self.ts.wait_key('test_key', lambda v, t: v == {'idx': 5} and t is None)
 
-    def test_wait_key_timeout(self) -> None:
+    async def test_wait_key_timeout(self) -> None:
         """wait_key must time out in the given time if the condition is not met"""
-        with self.assertRaises(TimeoutError):
-            self.ts.wait_key('test_key', timeout=0.1)
-        with self.assertRaises(TimeoutError):
-            # Takes a different code path, even though equivalent
-            self.ts.wait_key('test_key', lambda value, ts: True, timeout=0.1)
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.1):
+                await self.ts.wait_key('test_key')
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.1):
+                # Takes a different code path, even though equivalent
+                await self.ts.wait_key('test_key', lambda value, ts: True)
 
     async def _set_key_immutable(self) -> None:
         await asyncio.sleep(0.1)
@@ -312,155 +316,125 @@ class TestTelescopeState(asynctest.TestCase):
         await asyncio.sleep(0.1)
         await self.ts.set_indexed('test_key', 'idx', 123)
 
-    def test_wait_key_delayed(self) -> None:
+    async def test_wait_key_delayed(self) -> None:
         """wait_key must succeed with a timeout that does not expire before the condition is met."""
         for (set_key, value, timestamp) in [
                 (self._set_key_mutable, 123, 1234567890),
                 (self._set_key_immutable, 123, None),
                 (self._set_key_indexed, {'idx': 123}, None)]:
-            thread = threading.Thread(target=set_key)
-            thread.start()
-            self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp, timeout=2)
-            self.assertEqual(value, self.ts.get('test_key'))
-            thread.join()
-            self.ts.delete('test_key')
+            task = asyncio.ensure_future(set_key())
+            await self.ts.wait_key('test_key', lambda v, t: v == value and t == timestamp)
+            self.assertEqual(value, await self.ts.get('test_key'))
+            await task
+            await self.ts.delete('test_key')
 
-    def test_wait_key_delayed_unconditional(self) -> None:
+    async def test_wait_key_delayed_unconditional(self) -> None:
         """wait_key must succeed when given a timeout that does not expire before key appears."""
         for set_key, value in [
                 (self._set_key_mutable, 123),
                 (self._set_key_immutable, 123),
                 (self._set_key_indexed, {'idx': 123})]:
-            thread = threading.Thread(target=set_key)
-            thread.start()
-            self.ts.wait_key('test_key', timeout=2)
-            self.assertEqual(value, self.ts['test_key'])
-            thread.join()
-            self.ts.delete('test_key')
+            task = asyncio.ensure_future(set_key())
+            await self.ts.wait_key('test_key')
+            self.assertEqual(value, await self.ts['test_key'])
+            await task
+            await self.ts.delete('test_key')
 
-    def test_wait_key_already_cancelled(self) -> None:
-        """wait_key must raise :exc:`CancelledError` if the `cancel_future` is already done."""
-        future = mock.MagicMock()
-        future.done.return_value = True
-        with self.assertRaises(CancelledError):
-            self.ts.wait_key('test_key', cancel_future=future)
-
-    def test_wait_key_already_done_and_cancelled(self) -> None:
-        """wait_key is successful if both the condition and the cancellation are done on entry."""
-        future = mock.MagicMock()
-        future.done.return_value = True
-        self.ts.add('test_key', 123)
-        self.ts.wait_key('test_key', lambda value, ts: value == 123, cancel_future=future)
-
-    def test_wait_key_cancel(self) -> None:
-        """wait_key must return when cancelled."""
+    async def test_wait_key_cancel(self) -> None:
+        """wait_key must deal gracefully with cancellation."""
         def cancel():
             time.sleep(0.1)
             future.done.return_value = True
-        future = mock.MagicMock()
-        future.done.return_value = False
-        thread = threading.Thread(target=cancel)
-        thread.start()
-        with self.assertRaises(CancelledError):
-            self.ts.wait_key('test_key', cancel_future=future)
+        task = asyncio.ensure_future(self.ts.wait_key('test_key'))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
 
-    def test_wait_key_shadow(self) -> None:
+    async def test_wait_key_shadow(self) -> None:
         """updates to a shadowed qualified key must be ignored"""
-        def set_key(telstate):
-            time.sleep(0.1)
-            telstate.add('test_key', True, immutable=True)
+        async def set_key(telstate):
+            await asyncio.sleep(0.1)
+            await telstate.add('test_key', True, immutable=True)
 
         ns2 = self.ns.view('ns2')
         # Put a non-matching key into a mid-level namespace
-        self.ns.add('test_key', False)
+        await self.ns.add('test_key', False)
         # Put a matching key into a shadowed namespace after a delay
-        thread = threading.Thread(target=set_key, args=(self.ts,))
-        thread.start()
-        with self.assertRaises(TimeoutError):
-            ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
-        thread.join()
+        task = asyncio.ensure_future(set_key(self.ts))
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.5):
+                await ns2.wait_key('test_key', lambda value, ts: value is True)
+        await task
 
         # Put a matching key into a non-shadowed namespace after a delay
-        thread = threading.Thread(target=set_key, args=(ns2,))
-        thread.start()
-        ns2.wait_key('test_key', lambda value, ts: value is True, timeout=0.5)
-        thread.join()
+        task = asyncio.ensure_future(set_key(ns2))
+        with async_timeout.timeout(5):
+            await ns2.wait_key('test_key', lambda value, ts: value is True)
+        await task
 
-    def test_wait_indexed_already_done(self) -> None:
-        self.ts.set_indexed('test_key', 'sub_key', 5)
-        self.ts.wait_indexed('test_key', 'sub_key')
-        self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 5)
+    async def test_wait_indexed_already_done(self) -> None:
+        await self.ts.set_indexed('test_key', 'sub_key', 5)
+        await self.ts.wait_indexed('test_key', 'sub_key')
+        await self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 5)
 
-    def test_wait_indexed_timeout(self) -> None:
-        self.ts.set_indexed('test_key', 'sub_key', 5)
-        with self.assertRaises(TimeoutError):
-            self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 4, timeout=0.05)
-        with self.assertRaises(TimeoutError):
-            self.ts.wait_indexed('test_key', 'another_key', timeout=0.05)
-        with self.assertRaises(TimeoutError):
-            self.ts.wait_indexed('not_present', 'sub_key', timeout=0.05)
+    async def test_wait_indexed_timeout(self) -> None:
+        await self.ts.set_indexed('test_key', 'sub_key', 5)
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.05):
+                await self.ts.wait_indexed('test_key', 'sub_key', lambda v: v == 4)
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.05):
+                await self.ts.wait_indexed('test_key', 'another_key')
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.05):
+                await self.ts.wait_indexed('not_present', 'sub_key')
 
-    def test_wait_indexed_delayed(self) -> None:
-        def set_key():
-            self.ts.set_indexed('test_key', 'foo', 1)
-            time.sleep(0.05)
-            self.ts.set_indexed('test_key', 'bar', 2)
+    async def test_wait_indexed_delayed(self) -> None:
+        async def set_key():
+            await self.ts.set_indexed('test_key', 'foo', 1)
+            await asyncio.sleep(0.05)
+            await self.ts.set_indexed('test_key', 'bar', 2)
         for condition in [None, lambda value: value == 2]:
-            self.ts.delete('test_key')
-            thread = threading.Thread(target=set_key)
-            thread.start()
-            self.ts.wait_indexed('test_key', 'bar', condition, timeout=2)
-            self.assertEqual(2, self.ts.get_indexed('test_key', 'bar'))
-            thread.join()
+            await self.ts.delete('test_key')
+            task = asyncio.ensure_future(set_key())
+            with async_timeout.timeout(2):
+                await self.ts.wait_indexed('test_key', 'bar', condition)
+            self.assertEqual(2, await self.ts.get_indexed('test_key', 'bar'))
+            await task
 
-    def test_wait_indexed_already_cancelled(self) -> None:
-        future = mock.MagicMock()
-        future.done.return_value = True
-        with self.assertRaises(CancelledError):
-            self.ts.wait_indexed('test_key', 'foo', cancel_future=future)
+    async def test_wait_indexed_cancel(self) -> None:
+        task = asyncio.ensure_future(self.ts.wait_indexed('test_key', 'sub_key'))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
 
-    def test_wait_indexed_already_done_and_cancelled(self) -> None:
-        future = mock.MagicMock()
-        future.done.return_value = True
-        self.ts.set_indexed('test_key', 'sub_key', 1)
-        self.ts.wait_indexed('test_key', 'sub_key', lambda value: value == 1, cancel_future=future)
-
-    def test_wait_indexed_cancel(self) -> None:
-        def cancel():
-            time.sleep(0.1)
-            future.done.return_value = True
-        future = mock.MagicMock()
-        future.done.return_value = False
-        thread = threading.Thread(target=cancel)
-        thread.start()
-        with self.assertRaises(CancelledError):
-            self.ts.wait_indexed('test_key', 'sub_key', cancel_future=future)
-
-    def test_wait_indexed_shadow(self) -> None:
-        def set_key(telstate):
-            time.sleep(0.1)
-            telstate.set_indexed('test_key', 'sub_key', 1)
+    async def test_wait_indexed_shadow(self) -> None:
+        async def set_key(telstate):
+            await asyncio.sleep(0.1)
+            await telstate.set_indexed('test_key', 'sub_key', 1)
 
         # Shadow the key that will be set by set_key
-        self.ns.set_indexed('test_key', 'blah', 1)
-        thread = threading.Thread(target=set_key, args=(self.ts,))
-        thread.start()
-        with self.assertRaises(TimeoutError):
-            self.ns.wait_indexed('test_key', 'sub_key', timeout=0.2)
+        await self.ns.set_indexed('test_key', 'blah', 1)
+        task = asyncio.ensure_future(set_key(self.ts))
+        with self.assertRaises(asyncio.TimeoutError):
+            with async_timeout.timeout(0.2):
+                await self.ns.wait_indexed('test_key', 'sub_key')
+        await task
 
-    def test_wait_indexed_wrong_type(self) -> None:
-        def set_key():
-            time.sleep(0.1)
-            self.ts.add('test_key', 'value')
+    async def test_wait_indexed_wrong_type(self) -> None:
+        async def set_key():
+            await asyncio.sleep(0.1)
+            await self.ts.add('test_key', 'value')
 
-        thread = threading.Thread(target=set_key)
-        thread.start()
+        task = asyncio.ensure_future(set_key())
         with self.assertRaises(ImmutableKeyError):
-            self.ts.wait_indexed('test_key', 'value')
-        thread.join()
+            await self.ts.wait_indexed('test_key', 'value')
+        await task
         # Different code-path when key was already set at the start
         with self.assertRaises(ImmutableKeyError):
-            self.ts.wait_indexed('test_key', 'value')
+            await self.ts.wait_indexed('test_key', 'value')
 
     async def _test_mixed_unicode_bytes(self, ns, key) -> None:
         await self.ts.clear()
