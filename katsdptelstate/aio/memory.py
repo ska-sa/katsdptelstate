@@ -36,6 +36,17 @@ class MemoryBackend(Backend):
     def __init__(self) -> None:
         self._sync = SyncMemoryBackend()
 
+    def to_sync(self) -> SyncMemoryBackend:
+        """Get a synchronous backend with the same underlying data."""
+        return self._sync
+
+    @staticmethod
+    def from_sync(sync: SyncMemoryBackend) -> 'MemoryBackend':
+        """Create an asynchronous backend that shares data with a synchronous one."""
+        me = MemoryBackend()
+        me._sync = sync
+        return me
+
     async def exists(self, key: bytes) -> bool:
         return key in self._sync
 

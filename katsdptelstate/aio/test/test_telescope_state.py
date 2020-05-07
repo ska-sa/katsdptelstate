@@ -24,8 +24,10 @@ import async_timeout
 import numpy as np
 import fakeredis.aioredis
 
+import katsdptelstate
 from katsdptelstate import ImmutableKeyError, encode_value, KeyType, ENCODING_MSGPACK
 from katsdptelstate.aio import TelescopeState
+from katsdptelstate.aio.memory import MemoryBackend
 from katsdptelstate.aio.redis import RedisBackend
 
 
@@ -517,3 +519,20 @@ class TestTelescopeStateRedis(TestTelescopeState):
     async def make_telescope_state(self) -> TelescopeState:
         client = await fakeredis.aioredis.create_redis_pool()
         return TelescopeState(RedisBackend(client))
+
+
+class TestSharedMemoryBackend(asynctest.TestCase):
+    def setUp(self) -> None:
+        self.async_backend = MemoryBackend()
+        self.sync_backend = self.async_backend.to_sync()
+        self.async_ts = TelescopeState(self.async_backend)
+        self.sync_ts = katsdptelstate.TelescopeState(self.sync_backend)
+
+    async def test_shared(self) -> None:
+        self.sync_ts['foo'] = 'bar'
+        self.assertEqual(await self.async_ts.get('foo'), 'bar')
+
+    async def test_from_sync(self) -> None:
+        ts = TelescopeState(MemoryBackend.from_sync(self.sync_backend))
+        self.sync_ts['foo'] = 'bar'
+        self.assertEqual(await ts.get('foo'), 'bar')
