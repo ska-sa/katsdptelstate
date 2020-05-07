@@ -24,7 +24,7 @@ from typing import List, Tuple, Dict, BinaryIO, Callable, Union, Optional, TypeV
 import redis
 
 from .endpoint import Endpoint, endpoint_parser
-from .errors import (InvalidKeyError, ImmutableKeyError, TimeoutError, CancelledError,
+from .errors import (ImmutableKeyError, TimeoutError, CancelledError,
                      DecodeError, InvalidTimestampError)
 from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
                        equal_encoded_values)
@@ -224,9 +224,9 @@ class TelescopeState:
     def __setattr__(self, key: str, value: Any) -> None:
         if key.startswith('_'):
             super().__setattr__(key, value)
-        elif key in self.__class__.__dict__:
-            raise AttributeError("The specified key already exists as a "
-                                 "class method and thus cannot be used.")
+        elif any(key in cls.__dict__ for cls in self.__class__.__mro__):
+            raise AttributeError("The specified key already exists as a class method "
+                                 "and thus cannot be set via attribute access.")
         else:
             self.add(key, value, immutable=True)
 
@@ -378,8 +378,6 @@ class TelescopeState:
 
         Raises
         ------
-        InvalidKeyError
-            if `key` collides with a class member name
         ImmutableKeyError
             if an attempt is made to change the value of an immutable
         ImmutableKeyError
@@ -387,10 +385,6 @@ class TelescopeState:
         redis.ResponseError
             if there is some other error from the Redis server
         """
-        # check that we are not going to munge a class method
-        if key in self.__class__.__dict__:
-            raise InvalidKeyError("The specified key already exists as a "
-                                  "class method and thus cannot be used.")
         key = ensure_binary(key)
         full_key = self._prefixes[0] + key
         key_str = display_str(full_key)
@@ -435,8 +429,6 @@ class TelescopeState:
 
         Raises
         ------
-        InvalidKeyError
-            if `key` collides with a class member name
         ImmutableKeyError
             if the sub-key already exists with a different value
         ImmutableKeyError
@@ -444,10 +436,6 @@ class TelescopeState:
         redis.ResponseError
             if there is some other error from the Redis server
         """
-        # check that we are not going to munge a class method
-        if key in self.__class__.__dict__:
-            raise InvalidKeyError("The specified key already exists as a "
-                                  "class method and thus cannot be used.")
         # Raises a TypeError if it's not hashable, to prevent trouble
         # retrieving it later.
         hash(sub_key)

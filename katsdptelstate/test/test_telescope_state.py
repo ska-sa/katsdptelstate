@@ -24,7 +24,7 @@ from unittest import mock
 import numpy as np
 import fakeredis
 
-from katsdptelstate import (TelescopeState, InvalidKeyError, ImmutableKeyError,
+from katsdptelstate import (TelescopeState, ImmutableKeyError,
                             TimeoutError, CancelledError, encode_value, KeyType,
                             ENCODING_MSGPACK)
 from katsdptelstate.memory import MemoryBackend
@@ -73,14 +73,6 @@ class TestTelescopeState(unittest.TestCase):
         self.assertEqual(self.ts[self.ts.join('ns', 'test_key')], 1234.5)
         with self.assertRaises(KeyError):
             self.ts['test_key']
-
-    def test_method_protection(self) -> None:
-        with self.assertRaises(InvalidKeyError):
-            self.ts.add('get', 1234.5)
-        with self.assertRaises(InvalidKeyError):
-            self.ts['get'] = 1234.5
-        with self.assertRaises(InvalidKeyError):
-            self.ts.set_indexed('get', 'sub', 1)
 
     def test_delete(self) -> None:
         self.ts.add('test_key', 1234.5)
