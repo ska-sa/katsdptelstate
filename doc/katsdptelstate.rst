@@ -84,6 +84,14 @@ katsdptelstate.telescope\_state module
    :undoc-members:
    :show-inheritance:
 
+katsdptelstate.telescope\_state\_base module
+--------------------------------------------
+
+.. automodule:: katsdptelstate.telescope_state_base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdptelstate.utils module
 ---------------------------
 

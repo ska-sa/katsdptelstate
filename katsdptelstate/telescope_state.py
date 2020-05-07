@@ -30,6 +30,7 @@ from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_
                        equal_encoded_values)
 from .utils import ensure_str, ensure_binary, display_str, KeyType, _PathType
 from .backend import Backend, KeyUpdate, IndexedKeyUpdate
+from .telescope_state_base import TelescopeStateBase, check_immutable_change
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ _Key = Union[bytes, str]
 _T = TypeVar('_T', bound='TelescopeState')
 
 
-class TelescopeState:
+class TelescopeState(TelescopeStateBase[Backend]):
     """Interface to attributes and sensors stored in a database.
 
     Refer to the README for a description of the types of keys supported.
@@ -95,8 +96,6 @@ class TelescopeState:
     ValueError
         If `endpoint` is a :class:`Backend` and `db` is non-default
     """
-    SEPARATOR = '_'
-    SEPARATOR_BYTES = b'_'
 
     def __init__(self, endpoint: Union[str, Endpoint, Backend] = '',
                  db: int = 0, prefixes: Tuple[_Key, ...] = (b'',),
@@ -106,16 +105,16 @@ class TelescopeState:
                 raise ValueError('Cannot specify both base and endpoint')
             if db != 0:
                 raise ValueError('Cannot specify both base and db')
-            self._backend = base._backend      # type: Backend
+            backend = None      # type: Optional[Backend]
         elif isinstance(endpoint, Backend):
             if db != 0:
                 raise ValueError('Cannot specify both a backend and a db')
-            self._backend = endpoint
+            backend = endpoint
         elif not endpoint:
             from .memory import MemoryBackend
             if db != 0:
                 raise ValueError('Cannot specify a db when using the default backend')
-            self._backend = MemoryBackend()
+            backend = MemoryBackend()
         else:
             from .redis import RedisBackend
             if isinstance(endpoint, str) and '://' in endpoint:
@@ -137,18 +136,8 @@ class TelescopeState:
                 if endpoint.port is not None:
                     redis_kwargs['port'] = endpoint.port
                 r = redis.Redis(**redis_kwargs)
-            self._backend = RedisBackend(r)
-        # Ensure all prefixes are bytes internally for consistency
-        self._prefixes = tuple(ensure_binary(prefix) for prefix in prefixes)
-
-    @property
-    def prefixes(self) -> Tuple[str, ...]:
-        """The active key prefixes as a tuple of strings."""
-        return tuple(ensure_str(prefix) for prefix in self._prefixes)
-
-    @property
-    def backend(self) -> Backend:
-        return self._backend
+            backend = RedisBackend(r)
+        super().__init__(backend, prefixes, base)
 
     def load_from_file(self, file: Union[_PathType, BinaryIO]) -> int:
         """Load keys from a Redis-compatible RDB snapshot file.
@@ -185,32 +174,6 @@ class TelescopeState:
         # mypy complains about {}-formatting of bytes
         logger.info("Loading {} keys from {}".format(keys_loaded, file))  # type: ignore
         return keys_loaded
-
-    @classmethod
-    def join(cls, *names: str) -> str:
-        """Join string components of key with supported separator."""
-        return cls.SEPARATOR.join(names)
-
-    def view(self: _T, name: _Key, add_separator: bool = True, exclusive: bool = False) -> _T:
-        """Create a view with an extra name in the list of namespaces.
-
-        Returns a new view with `name` added as the first prefix, or the
-        only prefix if `exclusive` is true. If `name` is non-empty and does not
-        end with the separator, it is added (unless `add_separator` is
-        false).
-        """
-        name = ensure_binary(name)
-        if name != b'' and name[-1:] != self.SEPARATOR_BYTES and add_separator:
-            name += self.SEPARATOR_BYTES
-        if exclusive:
-            prefixes = (name,)    # type: Tuple[_Key, ...]
-        else:
-            prefixes = (name,) + self._prefixes
-        return self.__class__(prefixes=prefixes, base=self)
-
-    def root(self: _T) -> _T:
-        """Create a view containing only the root namespace."""
-        return self.__class__(base=self)
 
     def __getattr__(self, key: str) -> Any:
         try:
@@ -321,37 +284,6 @@ class TelescopeState:
         """
         return self._backend.clear()
 
-    def _check_immutable_change(self, key: str, old_enc: bytes, new_enc: bytes, new: Any) -> None:
-        """Check if an immutable is being changed to the same value.
-
-        If not, raise :exc:`ImmutableKeyError`, otherwise just log a message.
-        This is intended to be called by subclasses.
-
-        Parameters
-        ----------
-        key : str
-            Human-readable version of the key
-        old_enc : bytes
-            Previous value, encoded
-        new_enc : bytes
-            New value, encoded
-        new
-            New value, prior to encoding
-        """
-        try:
-            if not equal_encoded_values(new_enc, old_enc):
-                raise ImmutableKeyError(
-                    'Attempt to change value of immutable key {} from '
-                    '{!r} to {!r}'.format(key, decode_value(old_enc), new))
-            else:
-                logger.info('Attribute {} updated with the same value'
-                            .format(key))
-        except DecodeError as error:
-            raise ImmutableKeyError(
-                'Attempt to set value of immutable key {} to {!r} but '
-                'failed to decode the previous value to compare: {}'
-                .format(key, new, error))
-
     def add(self, key: _Key, value: Any, ts: Optional[float] = None,
             immutable: bool = False, encoding: bytes = ENCODING_DEFAULT) -> None:
         """Add a new key / value pair to the model.
@@ -397,7 +329,7 @@ class TelescopeState:
                                         .format(key_str))
             if old is not None:
                 # The key already exists. Check if the value is the same.
-                self._check_immutable_change(key_str, old, str_val, value)
+                check_immutable_change(key_str, old, str_val, value)
         else:
             ts = float(ts) if ts is not None else time.time()
             if math.isnan(ts) or math.isinf(ts):
@@ -455,7 +387,7 @@ class TelescopeState:
         if old is not None:
             # The key already exists. Check if the value is the same.
             key_descr = '{}[{!r}]'.format(key_str, sub_key)
-            self._check_immutable_change(key_descr, old, str_val, value)
+            check_immutable_change(key_descr, old, str_val, value)
 
     def get_indexed(self, key: _Key, sub_key: Any, default: Any = None,
                     return_encoded: bool = False) -> Any:
