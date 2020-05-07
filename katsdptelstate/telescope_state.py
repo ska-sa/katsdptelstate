@@ -25,9 +25,8 @@ import redis
 
 from .endpoint import Endpoint, endpoint_parser
 from .errors import (ImmutableKeyError, TimeoutError, CancelledError,
-                     DecodeError, InvalidTimestampError)
-from .encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
-                       equal_encoded_values)
+                     InvalidTimestampError)
+from .encoding import ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value
 from .utils import ensure_str, ensure_binary, display_str, KeyType, _PathType
 from .backend import Backend, KeyUpdate, IndexedKeyUpdate
 from .telescope_state_base import TelescopeStateBase, check_immutable_change

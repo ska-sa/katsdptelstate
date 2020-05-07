@@ -17,18 +17,11 @@
 import time
 import math
 import logging
-import contextlib
-import warnings
-from typing import List, Tuple, Dict, BinaryIO, Callable, Union, Optional, TypeVar, Any
+from typing import List, Tuple, Dict, Callable, Union, Optional, TypeVar, Any
 
-import redis
-
-from ..endpoint import Endpoint, endpoint_parser
-from ..errors import (ImmutableKeyError, TimeoutError, CancelledError,
-                      DecodeError, InvalidTimestampError)
-from ..encoding import (ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value,
-                        equal_encoded_values)
-from ..utils import ensure_str, ensure_binary, display_str, KeyType, _PathType
+from ..errors import ImmutableKeyError, InvalidTimestampError
+from ..encoding import ENCODING_DEFAULT, ENCODING_MSGPACK, encode_value, decode_value
+from ..utils import ensure_str, ensure_binary, display_str, KeyType
 from .backend import Backend
 from ..backend import KeyUpdate, KeyUpdateBase, IndexedKeyUpdate
 from ..telescope_state_base import TelescopeStateBase, check_immutable_change
@@ -81,8 +74,6 @@ class TelescopeState(TelescopeStateBase[Backend]):
     ------
     ValueError
         If both `base` and `backend` are specified
-    ValueError
-        If `endpoint` is a :class:`Backend` and `db` is non-default
     """
 
     def __init__(self, backend: Optional[Backend] = None,
@@ -362,11 +353,9 @@ class TelescopeState(TelescopeStateBase[Backend]):
         # don't need to create a pubsub connection.
         if await self._check_condition(key, condition):
             return
-        key_str = display_str(key)
-
         monitor = self._backend.monitor_keys([prefix + key
                                               for prefix in self._prefixes])
-        with contextlib.closing(monitor):
+        try:
             message: Optional[KeyUpdateBase]
             async for message in monitor:
                 if not isinstance(message, KeyUpdate):
@@ -375,6 +364,8 @@ class TelescopeState(TelescopeStateBase[Backend]):
                     message = None
                 if await self._check_condition(key, condition, message):
                     return
+        finally:
+            await monitor.aclose()
 
     async def _check_indexed_condition(self, key: bytes, sub_key: bytes,
                                        condition: Optional[Callable[[Any], bool]],
@@ -456,7 +447,7 @@ class TelescopeState(TelescopeStateBase[Backend]):
 
         monitor = self._backend.monitor_keys([prefix + key
                                               for prefix in self._prefixes])
-        with contextlib.closing(monitor):
+        try:
             message: Optional[KeyUpdateBase]
             async for message in monitor:
                 if not isinstance(message, KeyUpdate):
@@ -468,6 +459,8 @@ class TelescopeState(TelescopeStateBase[Backend]):
                                             .format(key_str))
                 if await self._check_indexed_condition(key, sub_key_enc, condition, message):
                     return
+        finally:
+            await monitor.aclose()
 
     async def _get(self, key: _Key, return_encoded: bool = False) -> Any:
         key = ensure_binary(key)

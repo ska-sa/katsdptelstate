@@ -14,16 +14,11 @@
 # limitations under the License.
 ################################################################################
 
-import bisect
-import re
 import logging
-from datetime import datetime
-from typing import Pattern, List, Tuple, Dict, BinaryIO, Union, Optional
+from typing import List, Tuple, Dict, Union, Optional
 
 from .. import utils
-from ..utils import _PathType
 from .backend import Backend
-from ..errors import ImmutableKeyError
 from ..memory import MemoryBackend as SyncMemoryBackend
 
 

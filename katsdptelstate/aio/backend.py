@@ -17,9 +17,9 @@
 from abc import ABC, abstractmethod
 import asyncio
 import time
-from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, AsyncGenerator, Optional, Union
+from typing import List, Tuple, Dict, Iterable, AsyncGenerator, Optional, Union
 
-from ..utils import KeyType, _PathType
+from ..utils import KeyType
 from ..backend import KeyUpdateBase
 
 
