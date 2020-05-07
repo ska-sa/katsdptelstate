@@ -205,3 +205,9 @@ class RedisBackend(Backend):
 
     async def dump(self, key: bytes) -> Optional[bytes]:
         return await self.client.dump(key)
+
+    def close(self) -> None:
+        self.client.close()
+
+    async def wait_closed(self) -> None:
+        await self.client.wait_closed()

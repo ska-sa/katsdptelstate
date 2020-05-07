@@ -177,3 +177,11 @@ class Backend(ABC):
             assert timeout is not None
             time.sleep(timeout)
             yield KeyUpdateBase()
+
+    @abstractmethod
+    def close(self) -> None:
+        """Start shutting down the connection to the backing storage."""
+
+    @abstractmethod
+    async def wait_closed(self) -> None:
+        """Wait until the shutdown started by :meth:`close` has completed."""

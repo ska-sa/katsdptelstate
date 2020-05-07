@@ -36,6 +36,10 @@ class TestTelescopeState(asynctest.TestCase):
         self.ts = await self.make_telescope_state()
         self.ns = self.ts.view('ns')
 
+    async def tearDown(self) -> None:
+        self.ts.backend.close()
+        await self.ts.backend.wait_closed()
+
     async def make_telescope_state(self) -> TelescopeState:
         return TelescopeState()
 

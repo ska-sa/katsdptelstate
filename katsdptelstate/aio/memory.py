@@ -77,3 +77,9 @@ class MemoryBackend(Backend):
 
     async def dump(self, key: bytes) -> Optional[bytes]:
         return self._sync.dump(key)
+
+    def close(self) -> None:
+        self._sync.clear()
+
+    async def wait_closed(self) -> None:
+        pass
