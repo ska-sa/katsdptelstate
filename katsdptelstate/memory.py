@@ -108,7 +108,7 @@ def _compile_pattern(pattern: bytes) -> Pattern[bytes]:
 
 
 class MemoryCallback(BackendCallback):
-    """RDB callback that stores keys in :class:`MemoryBackend` data structure."""
+    """RDB callback that stores keys in :class:`~katsdptelstate.memory.MemoryBackend`."""
 
     def __init__(self, data: Dict[bytes, _Value]) -> None:
         super().__init__()
@@ -142,12 +142,12 @@ class MemoryBackend(Backend):
 
     It is optimised for read-only use, loading data from a .rdb file.
     Write operations are supported only to facilitate testing, but are not
-    intended for production use. For that, use a :class:`.RedisBackend`
-    with an in-memory Redis emulation. The :meth:`monitor_keys` method is not
-    implemented.
+    intended for production use. For that, use a
+    :class:`~katsdptelstate.redis.RedisBackend` with an in-memory Redis
+    emulation. The :meth:`monitor_keys` method is not implemented.
 
     Mutable keys are stored as sorted lists, and encode timestamps in-place
-    using the same packing as :class:`.RedisBackend`.
+    using the same packing as :class:`~katsdptelstate.redis.RedisBackend`.
     """
     def __init__(self) -> None:
         self._data = {}       # type: Dict[bytes, _Value]
