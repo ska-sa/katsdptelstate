@@ -19,7 +19,7 @@ import contextlib
 import hashlib
 import logging
 from typing import (List, Tuple, Dict, Generator, AsyncGenerator, Sequence,
-                    Iterable, Optional, Union, Any)
+                    Iterable, Callable, Awaitable, Optional, Union, Any)
 
 import pkg_resources
 import aioredis
@@ -87,23 +87,42 @@ class RedisBackend(Backend):
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = _Script(script)
 
+    async def _execute(self, call: Callable[..., Awaitable], *args, **kwargs) -> Any:
+        """Execute a redis command, retrying if the connection died.
+
+        This handles cases like an idle connection being silently closed,
+        the server restarting etc. If there is a connection error, a fresh
+        connection is made and one more attempt is made.
+
+        Since there is no way to tell if the original attempt actually
+        succeeded, the command much be idempotent.
+        """
+        try:
+            return await call(*args, **kwargs)
+        except (ConnectionError, aioredis.ConnectionClosedError) as exc:
+            # Closes all connections in the pool to ensure that we get a
+            # fresh connection.
+            logger.warning('redis connection error (%s), trying again', exc)
+            await self.client.connection.clear()
+            return await call(*args, **kwargs)
+
     async def _call(self, script_name: str, *args, **kwargs) -> Any:
-        return await self._scripts[script_name](self.client, *args, **kwargs)
+        return await self._execute(self._scripts[script_name], self.client, *args, **kwargs)
 
     async def exists(self, key: bytes) -> bool:
-        return bool(await self.client.exists(key))
+        return bool(await self._execute(self.client.exists, key))
 
     async def keys(self, filter: bytes) -> List[bytes]:
-        return await self.client.keys(filter)
+        return await self._execute(self.client.keys, filter)
 
     async def delete(self, key: bytes) -> None:
-        await self.client.delete(key)
+        await self._execute(self.client.delete, key)
 
     async def clear(self) -> None:
-        await self.client.flushdb()
+        await self._execute(self.client.flushdb)
 
     async def key_type(self, key: bytes) -> Optional[KeyType]:
-        type_ = await self.client.type(key)
+        type_ = await self._execute(self.client.type, key)
         return self._KEY_TYPES[type_]
 
     async def set_immutable(self, key: bytes, value: bytes) -> Optional[bytes]:
@@ -204,7 +223,7 @@ class RedisBackend(Backend):
                 await asyncio.shield(self.client.unsubscribe(*(b'update/' + key for key in keys)))
 
     async def dump(self, key: bytes) -> Optional[bytes]:
-        return await self.client.dump(key)
+        return await self._execute(self.client.dump, key)
 
     def close(self) -> None:
         self.client.close()
