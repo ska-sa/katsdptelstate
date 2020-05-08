@@ -50,12 +50,16 @@ setup(name='katsdptelstate',
           'Topic :: Scientific/Engineering :: Astronomy'],
       platforms=['OS Independent'],
       keywords='meerkat ska',
-      python_requires='>=3.6',
+      python_requires='>=3.5',
       setup_requires=['katversion'],
       use_katversion=True,
       install_requires=['redis>=3.3', 'six>=1.12', 'netifaces',
                         'msgpack', 'numpy'],
-      extras_require={'rdb': ['rdbtools', 'python-lzf'], 'test': tests_require},
+      extras_require={
+          'rdb': ['rdbtools', 'python-lzf'],
+          'aio': ['aioredis'],
+          'test': tests_require
+      },
       tests_require=tests_require,
       zip_safe=False     # For py.typed
       )
