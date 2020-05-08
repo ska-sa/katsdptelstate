@@ -180,11 +180,18 @@ class RedisBackend(Backend):
         return [utils.split_timestamp(val) for val in ret_vals]
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
-        # Refer to katsdptelstate.redis.RedisBackend for details of the protocol
+        # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
         while True:
             receiver = aioredis.pubsub.Receiver()
-            await self.client.subscribe(*(receiver.channel(b'update/' + key) for key in keys))
+            # We use a dedicated connection for the lifetime of this generator.
+            # While the connection pool also has a member to hold a pubsub
+            # connection, it's more robust to just close a connection than to
+            # try to manage unsubscriptions.
+            client: Optional[aioredis.Redis] = None
             try:
+                conn = await self.client.connection.acquire()
+                client = aioredis.Redis(conn)
+                await client.subscribe(*(receiver.channel(b'update/' + key) for key in keys))
                 # Condition may have been satisfied while we were busy subscribing
                 logger.debug('Subscribed to channels, notifying caller to check')
                 yield KeyUpdateBase()
@@ -219,8 +226,14 @@ class RedisBackend(Backend):
                         yield MutableKeyUpdate(key, value, timestamp)
                     else:
                         raise RuntimeError('Unhandled key type {}'.format(key_type))
+            except (ConnectionError, aioredis.ConnectionClosedError) as exc:
+                logger.warning('pubsub connection error (%s), retrying in 1s', exc)
             finally:
-                await asyncio.shield(self.client.unsubscribe(*(b'update/' + key for key in keys)))
+                if client is not None:
+                    client.close()
+                    await client.wait_closed()
+                receiver.stop()
+            await asyncio.sleep(1)
 
     async def dump(self, key: bytes) -> Optional[bytes]:
         return await self._execute(self.client.dump, key)
