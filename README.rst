@@ -119,7 +119,7 @@ Asynchronous interface
 There is also an interface that works with asyncio. Use
 ``katsdptelstate.aio.TelescopeState`` instead of
 ``katsdptelstate.TelescopeState``. Functions that interact with the database are now
-coroutines.
+coroutines. Python 3.6+ is required.
 
 There are a few differences from the synchronous version, partly necessary due
 to the nature of asyncio and partly to streamline and modernise the code:
