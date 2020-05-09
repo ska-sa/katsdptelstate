@@ -18,6 +18,9 @@ import struct
 import math
 import functools
 import enum
+import os
+import sys
+from typing import Tuple, Union
 
 import six
 
@@ -31,9 +34,13 @@ class KeyType(enum.Enum):
 # Behave gracefully in case someone uses non-UTF-8 binary in a key on PY3
 ensure_str = functools.partial(six.ensure_str, errors='surrogateescape')
 ensure_binary = functools.partial(six.ensure_binary, errors='surrogateescape')
+if sys.version_info >= (3, 6):
+    _PathType = Union[bytes, str, os.PathLike]
+else:
+    _PathType = Union[bytes, str]
 
 
-def display_str(s):
+def display_str(s) -> str:
     """Return most human-readable and yet accurate version of *s*."""
     try:
         return '{!r}'.format(six.ensure_str(s))
@@ -41,7 +48,7 @@ def display_str(s):
         return '{!r}'.format(s)
 
 
-def pack_query_timestamp(time, is_end, include_end=False):
+def pack_query_timestamp(time: float, is_end: bool, include_end: bool = False) -> bytes:
     """Create a query value for a ZRANGEBYLEX query.
 
     When packing the time for the start of a range, set `is_end` and
@@ -65,14 +72,14 @@ def pack_query_timestamp(time, is_end, include_end=False):
         return (b'(' if is_end else b'[') + packed_time
 
 
-def pack_timestamp(timestamp):
+def pack_timestamp(timestamp: float) -> bytes:
     """Encode a timestamp to a bytes that sorts correctly"""
     assert timestamp >= 0
     # abs forces -0 to +0, which encodes differently
     return struct.pack('>d', abs(timestamp))
 
 
-def split_timestamp(packed):
+def split_timestamp(packed: bytes) -> Tuple[bytes, float]:
     """Split out the value and timestamp from a packed item.
 
     The item contains 8 bytes with the timestamp in big-endian IEEE-754

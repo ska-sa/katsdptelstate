@@ -20,6 +20,7 @@ import unittest
 import shutil
 import os
 import tempfile
+from typing import Mapping, Iterable, BinaryIO, Optional, Union
 
 import redis
 import fakeredis
@@ -39,10 +40,10 @@ class TabloidRedis(fakeredis.FakeRedis):
     we only add a dump function.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def dump(self, key):
+    def dump(self, key: Union[bytes, str]) -> Optional[bytes]:
         """Encode Redis key value in an RDB compatible format.
 
         Note: This follows the DUMP command in Redis itself which produces
@@ -68,20 +69,20 @@ class TabloidRedis(fakeredis.FakeRedis):
 
 class TestRDBHandling(unittest.TestCase):
     """Test that data can be written by :class:`~.TabloidRedis` then read back"""
-    def setUp(self):
+    def setUp(self) -> None:
         # an empty tabloid redis instance
         self.tr = TabloidRedis()
         self.base_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.base_dir)
 
-    def base(self, filename):
+    def base(self, filename: str) -> str:
         return os.path.join(self.base_dir, filename)
 
-    def _add_test_vec(self, key):
+    def _add_test_vec(self, key: str) -> None:
         # TabloidRedis does not properly support non-zero scores
         self.tr.zadd(key, {b'first': 0.0, b'second': 0.0, b'third\n\0': 0.0})
 
-    def test_writer_reader(self):
+    def test_writer_reader(self) -> None:
         self._add_test_vec('writezl')
         test_str = b"some string\x00\xa3\x17\x43and now valid\xff"
         self.tr.set('write', test_str)
@@ -118,7 +119,7 @@ class TestRDBHandling(unittest.TestCase):
         vec = local_tr.zrange('writezl', 0, -1, withscores=True)
         self.assertEqual(vec, [(b'first', 0.0), (b'second', 0.0), (b'third\n\0', 0.0)])
 
-    def _test_zset(self, items):
+    def _test_zset(self, items: Iterable[bytes]) -> None:
         self.tr.zadd('my_zset', {x: 0.0 for x in items})
         with RDBWriter(self.base('zset.rdb')) as rdbw:
             rdbw.save(self.tr)
@@ -129,23 +130,23 @@ class TestRDBHandling(unittest.TestCase):
         vec = local_tr.zrange('my_zset', 0, -1, withscores=True)
         self.assertEqual(vec, [(item, 0.0) for item in items])
 
-    def test_zset_many_entries(self):
+    def test_zset_many_entries(self) -> None:
         """Zset with more than 127 entries.
 
         This uses the more general encoding, rather than ziplist.
         """
         self._test_zset([b'item%03d' % i for i in range(200)])
 
-    def test_zset_with_big_entry(self):
+    def test_zset_with_big_entry(self) -> None:
         """Ziplist with large entry (has different encoding)"""
         self._test_zset([b'?' * 100000])
 
     # Disabled because it uses too much memory in Jenkins
-    # def test_zset_4gb(self):
+    # def test_zset_4gb(self) -> None:
     #     """Ziplist with >4GB of data (can't be encoded as ziplist)"""
     #     self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
-    def _test_hash(self, items):
+    def _test_hash(self, items: Mapping[bytes, bytes]) -> None:
         self.tr.hmset('my_hash', items)
         with RDBWriter(self.base('hash.rdb')) as rdbw:
             rdbw.save(self.tr)
@@ -156,14 +157,14 @@ class TestRDBHandling(unittest.TestCase):
         read = local_tr.hgetall('my_hash')
         self.assertEqual(read, items)
 
-    def test_hash_many_entries(self):
+    def test_hash_many_entries(self) -> None:
         """Hash with large number of entries.
 
         This uses the more general encoding, rather than a ziplist.
         """
         self._test_hash({b'key%03d' % i: b'value%03d' % i for i in range(1000)})
 
-    def test_hash_big_entry(self):
+    def test_hash_big_entry(self) -> None:
         """Ziplist with a large entry (has different encoding)"""
         self._test_hash({b'x' * 1000000: b'y' * 100000})
 
@@ -171,16 +172,16 @@ class TestRDBHandling(unittest.TestCase):
 class TestLoadFromFile(unittest.TestCase):
     """Test :meth:`TelescopeState.load_from_file`."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         # an empty tabloid redis instance
         self.base_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.base_dir)
         self.filename = os.path.join(self.base_dir, 'dump.rdb')
 
-    def make_telescope_state(self):
+    def make_telescope_state(self) -> TelescopeState:
         return TelescopeState()
 
-    def save_to_file(self, file):
+    def save_to_file(self, file: str) -> None:
         write_ts = self.make_telescope_state()
         write_ts['immutable'] = ['some value']
         write_ts.add('mutable', 'first', 12.0)
@@ -191,7 +192,7 @@ class TestLoadFromFile(unittest.TestCase):
         with RDBWriter(file) as rdbw:
             rdbw.save(write_ts)
 
-    def load_from_file_and_check(self, file):
+    def load_from_file_and_check(self, file: Union[str, BinaryIO]) -> None:
         # Load RDB file back into some backend
         read_ts = self.make_telescope_state()
         read_ts.load_from_file(file)
@@ -202,7 +203,7 @@ class TestLoadFromFile(unittest.TestCase):
                          [('first', 12.0), ('second', 15.5)])
         self.assertEqual(read_ts.get('indexed'), {'a': 1j, 'b': 'z'})
 
-    def test_load_from_file(self):
+    def test_load_from_file(self) -> None:
         self.save_to_file(self.filename)
         # Check loading from filenames and file-like objects
         self.load_from_file_and_check(self.filename)
@@ -219,10 +220,10 @@ class TestLoadFromFile(unittest.TestCase):
 
 class TestLoadFromFileRedis(TestLoadFromFile):
     """Test :meth:`TelescopeState.load_from_file` with redis backend."""
-    def make_telescope_state(self, **kwargs):
+    def make_telescope_state(self, **kwargs) -> TelescopeState:
         return TelescopeState(RedisBackend(TabloidRedis(**kwargs)))
 
-    def test_callback_errors_are_preserved(self):
+    def test_callback_errors_are_preserved(self) -> None:
         """Check that a redis.ConnectionError doesn't mutate into RdbParseError."""
         self.save_to_file(self.filename)
         server = fakeredis.FakeServer()
