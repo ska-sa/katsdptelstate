@@ -39,7 +39,10 @@ class RdbParseError(TelstateError):
 
 
 class InvalidKeyError(TelstateError):
-    """A key collides with a class attribute"""
+    """A key collides with a class attribute.
+
+    This is kept only for backwards compatibility. It is no longer considered an error.
+    """
 
 
 class InvalidTimestampError(TelstateError):
