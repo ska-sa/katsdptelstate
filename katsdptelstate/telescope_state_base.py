@@ -57,7 +57,7 @@ def check_immutable_change(key: str, old_enc: bytes, new_enc: bytes, new: Any) -
         raise ImmutableKeyError(
             'Attempt to set value of immutable key {} to {!r} but '
             'failed to decode the previous value to compare: {}'
-            .format(key, new, error))
+            .format(key, new, error)) from error
 
 
 class TelescopeStateBase(Generic[_B]):
