@@ -95,7 +95,7 @@ class RedisBackend(Backend):
         connection is made and one more attempt is made.
 
         Since there is no way to tell if the original attempt actually
-        succeeded, the command much be idempotent.
+        succeeded, the command must be idempotent.
         """
         try:
             return await call(*args, **kwargs)
