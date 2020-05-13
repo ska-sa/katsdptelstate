@@ -107,6 +107,10 @@ class RedisBackend(Backend):
             return await call(*args, **kwargs)
 
     async def _call(self, script_name: str, *args, **kwargs) -> Any:
+        """Call a Lua script by name.
+
+        This uses _execute, so the script must be idempotent.
+        """
         return await self._execute(self._scripts[script_name], self.client, *args, **kwargs)
 
     async def exists(self, key: bytes) -> bool:
