@@ -1,6 +1,14 @@
 katsdptelstate package
 ======================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   katsdptelstate.aio
+
 Submodules
 ----------
 
@@ -80,6 +88,14 @@ katsdptelstate.telescope\_state module
 --------------------------------------
 
 .. automodule:: katsdptelstate.telescope_state
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+katsdptelstate.telescope\_state\_base module
+--------------------------------------------
+
+.. automodule:: katsdptelstate.telescope_state_base
    :members:
    :undoc-members:
    :show-inheritance:

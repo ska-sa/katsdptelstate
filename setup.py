@@ -25,6 +25,7 @@ here = os.path.dirname(__file__)
 readme = open(os.path.join(here, 'README.rst')).read()
 news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
+tests_require = ['asynctest', 'async_timeout', 'fakeredis[lua,aioredis]>=1.4.0']
 
 setup(name='katsdptelstate',
       description='Karoo Array Telescope - Telescope State Client',
@@ -54,7 +55,11 @@ setup(name='katsdptelstate',
       use_katversion=True,
       install_requires=['redis>=3.3', 'six>=1.12', 'netifaces',
                         'msgpack', 'numpy'],
-      extras_require={'rdb': ['rdbtools', 'python-lzf']},
-      tests_require=['rdbtools', 'fakeredis[lua]>=1.3.1'],
+      extras_require={
+          'rdb': ['rdbtools', 'python-lzf'],
+          'aio': ['aioredis'],
+          'test': tests_require
+      },
+      tests_require=tests_require,
       zip_safe=False     # For py.typed
       )
