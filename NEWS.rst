@@ -1,6 +1,13 @@
 History
 =======
 
+0.9 (2020-05-25)
+----------------
+* Deprecate Python 2 support: this is the last release that will support Python 2 (#94)
+* Remove ``get_message`` and ``send_message``, which were never used (#89)
+* Publish the documentation on https://katsdptelstate.readthedocs.io (#90)
+* Disable pickles by default for security (#92)
+
 0.8 (2019-05-06)
 ----------------
 * The default encoding is now msgpack; warn on loading pickles (#75, #79)
