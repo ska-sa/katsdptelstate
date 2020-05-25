@@ -136,8 +136,10 @@ to the nature of asyncio and partly to streamline and modernise the code:
 - Instead of ``key in ts``, use ``await ts.exists(key)``.
 - The ``wait_key`` and ``wait_indexed`` methods do not take a timeout or a
   cancellation future. They can be used with asyncio's cancellation machinery.
-  The `async_timeout`_ package is useful for timeouts.
+  The `async-timeout`_ package is useful for timeouts.
 - The backend should be closed when no longer needed to avoid warnings.
+
+.. _async-timeout: https://pypi.org/project/async-timeout/
 
 Example
 ^^^^^^^
