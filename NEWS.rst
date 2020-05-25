@@ -1,6 +1,16 @@
 History
 =======
 
+0.10 (2020-05-25)
+-----------------
+* Remove Python 2 support. At least Python 3.5 is required.
+* Remove support for old versions of redis-py (#100)
+* Use redis-py health checks to improve robustness (#99)
+* Add "indexed" keys (#98)
+* Add an asyncio interface (#103)
+* No longer throw InvalidKeyError when setting a key that shadows a method (#102)
+* Add type annotations for mypy (#101)
+
 0.9 (2020-05-25)
 ----------------
 * Deprecate Python 2 support: this is the last release that will support Python 2 (#94)
