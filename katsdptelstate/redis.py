@@ -74,10 +74,9 @@ class RedisCallback(BackendCallback):
 
     def end_hash(self, key: bytes) -> None:
         self.client_busy = True
-        # redis-py's hset doesn't support multiple key/value pairs, and its
-        # hmset takes a mapping rather than interleaved keys and values. To
-        # avoid the cost of building a dict and then flattening it again,
-        # we execute the raw Redis command directly.
+        # redis-py's hset takes a mapping rather than interleaved keys and
+        # values. To avoid the cost of building a dict and then flattening it
+        # again, we execute the raw Redis command directly.
         self.client.execute_command('HSET', key, *self._hash)
         self.client_busy = False
         self._hash = []
