@@ -17,10 +17,10 @@
 import logging
 from typing import Iterable, Union, Optional
 
-import redis
+import aioredis
 
-from .rdb_writer_base import RDBWriterBase
-from .utils import ensure_binary
+from ..rdb_writer_base import RDBWriterBase
+from ..utils import ensure_binary
 from .telescope_state import TelescopeState
 from .backend import Backend
 
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 class RDBWriter(RDBWriterBase):
     __doc__ = RDBWriterBase.__doc__
 
-    def save(self, client: Union[TelescopeState, Backend, redis.Redis],
-             keys: Optional[Iterable[Union[str, bytes]]] = None) -> None:
+    async def save(self, client: Union[TelescopeState, Backend, aioredis.Redis],
+                   keys: Optional[Iterable[Union[str, bytes]]] = None) -> None:
         """Save a specified subset of keys from a Redis DB to the RDB dump file.
 
         This is a very limited RDB dump utility. It takes a Redis database
@@ -42,7 +42,7 @@ class RDBWriter(RDBWriterBase):
 
         Parameters
         ----------
-        client : :class:`~katsdptelstate.telescope_state.TelescopeState` or :class:`~katsdptelstate.telescope_state.Backend` or :class:`~redis.Redis`-like
+        client : :class:`~katsdptelstate.aio.telescope_state.TelescopeState` or :class:`~katsdptelstate.aio.telescope_state.Backend` or :class:`~aioredis.Redis`-like
             A telstate, backend, or Redis-compatible client instance supporting keys() and dump()
         keys : iterable of str or bytes, optional
             The keys to extract from Redis and include in the dump.
@@ -53,48 +53,8 @@ class RDBWriter(RDBWriterBase):
             client = client.backend
         if keys is None:
             logger.info("No keys specified - dumping entire database")
-            keys = client.keys(b'*')
+            keys = await client.keys(b'*')
         for key in keys:
             key = ensure_binary(key)
-            dumped_value = client.dump(key)
+            dumped_value = await client.dump(key)
             self.write_key(key, dumped_value)
-
-
-if __name__ == '__main__':
-    import argparse
-    import redis
-
-    from .endpoint import endpoint_parser
-
-    # Default Redis port for use in endpoint constructors
-    DEFAULT_PORT = 6379
-
-    logging.basicConfig()
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--outfile', default='simple_out.rdb', metavar='FILENAME',
-                        help='Output RDB filename [default=%(default)s]')
-    parser.add_argument('--keys', default=None, metavar='KEYS',
-                        help='Comma-separated list of Redis keys to write to RDB. [default=all]')
-    parser.add_argument('--redis', type=endpoint_parser(DEFAULT_PORT),
-                        default=endpoint_parser(DEFAULT_PORT)('localhost'),
-                        help='host[:port] of the Redis instance to connect to. '
-                             '[default=%(default)s]')
-    args = parser.parse_args()
-
-    endpoint = args.redis
-    logger.info("Connecting to Redis instance at %s", endpoint)
-    client = redis.Redis(host=endpoint.host, port=endpoint.port)
-    logger.info("Saving keys to RDB file %s", args.outfile)
-    keys = args.keys
-    if keys is not None:
-        keys = keys.split(",")
-    with RDBWriter(args.outfile) as rdb_writer:
-        rdb_writer.save(client, keys)
-    if rdb_writer.keys_failed > 0:
-        logger.warning("Done - Warning %d keys failed to be written (%d succeeded)",
-                       rdb_writer.keys_failed, rdb_writer.keys_written)
-    else:
-        logger.info("Done - %d keys written", rdb_writer.keys_written)
