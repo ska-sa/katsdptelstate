@@ -1,4 +1,4 @@
-FROM redis:4.0.9-alpine
+FROM redis:6.0.6-alpine
 LABEL maintainer="sdpdev+katsdptelstate@ska.ac.za"
 
 # Change the redis UID/GID to match our Ubuntu containers
