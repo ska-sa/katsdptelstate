@@ -214,7 +214,6 @@ class RedisBackend(Backend):
                     raise item
         if not ret_vals[0]:
             return None      # Key does not exist
-        print(ret_vals)
         return [utils.split_timestamp(val) for val in itertools.chain(*ret_vals[1:])]
 
     def monitor_keys(self, keys: Iterable[bytes]) \
