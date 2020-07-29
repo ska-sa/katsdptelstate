@@ -16,6 +16,7 @@
 
 import contextlib
 from datetime import datetime
+import itertools
 from typing import List, Tuple, Dict, BinaryIO, Generator, Iterable, Optional, Union, Any
 
 import pkg_resources
@@ -121,7 +122,7 @@ class RedisBackend(Backend):
             raise ConnectionError("could not connect to redis server: {}".format(e))
         self._scripts = {}     # type: Dict[str, redis.client.Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
-                            'add_mutable', 'get_range']:
+                            'add_mutable']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = self.client.register_script(script)
@@ -199,10 +200,21 @@ class RedisBackend(Backend):
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         with _handle_wrongtype():
-            ret_vals = self._call('get_range', [key], [packed_st, packed_et, int(include_previous)])
-        if ret_vals is None:
-            return None     # Key does not exist
-        return [utils.split_timestamp(val) for val in ret_vals]
+            with self.client.pipeline() as pipe:
+                pipe.exists(key)
+                if include_previous and packed_st != b'-':
+                    pipe.zrevrangebylex(key, packed_st, b'-', start=0, num=1)
+                if packed_st != b'+' and packed_et != b'-':
+                    pipe.zrangebylex(key, packed_st, packed_et)
+                # raise_on_error annotates the exception message, which breaks
+                # the _handle_wrongtype detection.
+                ret_vals = pipe.execute(raise_on_error=False)
+            for item in ret_vals:
+                if isinstance(item, redis.ResponseError):
+                    raise item
+        if not ret_vals[0]:
+            return None      # Key does not exist
+        return [utils.split_timestamp(val) for val in itertools.chain(*ret_vals[1:])]
 
     def monitor_keys(self, keys: Iterable[bytes]) \
             -> Generator[Optional[KeyUpdateBase], Optional[float], None]:

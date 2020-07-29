@@ -17,6 +17,7 @@
 import asyncio
 import contextlib
 import hashlib
+import itertools
 import logging
 from typing import (List, Tuple, Dict, Generator, AsyncGenerator, Sequence,
                     Iterable, Callable, Awaitable, Optional, Union, Any)
@@ -34,6 +35,14 @@ from ..utils import KeyType, ensure_str, display_str
 logger = logging.getLogger(__name__)
 
 
+def _is_wrongtype(error: aioredis.ReplyError) -> bool:
+    return (
+        error.args[0].startswith('WRONGTYPE ')
+        or (error.args[0].startswith('ERR Error running script')
+            and 'WRONGTYPE ' in error.args[0])
+    )
+
+
 @contextlib.contextmanager
 def _handle_wrongtype() -> Generator[None, None, None]:
     """Map redis WRONGTYPE error to ImmutableKeyError.
@@ -42,10 +51,13 @@ def _handle_wrongtype() -> Generator[None, None, None]:
     """
     try:
         yield
+    except aioredis.PipelineError as exc:
+        for error in exc.args[1]:
+            if _is_wrongtype(error):
+                raise ImmutableKeyError
+        raise
     except aioredis.ReplyError as error:
-        if (error.args[0].startswith('WRONGTYPE ')
-                or (error.args[0].startswith('ERR Error running script')
-                    and 'WRONGTYPE ' in error.args[0])):
+        if _is_wrongtype(error):
             raise ImmutableKeyError
         raise
 
@@ -68,6 +80,26 @@ class _Script:
         return await client.eval(self.script, keys, args)
 
 
+def _unpack_query_timestamp(packed_timestamp: bytes) -> Tuple[bytes, bool]:
+    """Split the result of :func:`katsdptelstate.utils.pack_query_timestamp`.
+
+    Returns
+    -------
+    value
+        Boundary value
+    include
+        Whether the boundary value is inclusive (false for ``-`` and ``+``).
+    """
+    if packed_timestamp in {b'-', b'+'}:
+        return packed_timestamp, False
+    elif packed_timestamp[:1] == b'[':
+        return packed_timestamp[1:], True
+    elif packed_timestamp[:1] == b'(':
+        return packed_timestamp[1:], False
+    else:
+        raise ValueError('packed_timestamp must be -, +, or start with [ or (')
+
+
 class RedisBackend(Backend):
     """Backend for :class:`TelescopeState` using redis for storage."""
 
@@ -82,7 +114,7 @@ class RedisBackend(Backend):
         self.client = client
         self._scripts = {}     # type: Dict[str, _Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
-                            'add_mutable', 'get_range']:
+                            'add_mutable']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = _Script(script)
@@ -171,17 +203,34 @@ class RedisBackend(Backend):
             else:
                 return result
 
+    async def _get_range(self, key: bytes,
+                         st: bytes, include_st: bool,
+                         et: bytes, include_et: bool,
+                         include_previous: bool) -> list:
+        """Internal part of :meth:`get_range` that is retried if the connection fails."""
+        tr = self.client.multi_exec()
+        tr.exists(key)
+        if include_previous and st != b'-':
+            tr.zrevrangebylex(key, max=st, include_max=False, min=b'-', offset=0, count=1)
+        # aioredis doesn't correctly handle min of + or max of -
+        if st != b'+' and et != b'-':
+            tr.zrangebylex(key, min=st, include_min=include_st, max=et, include_max=include_et)
+        return await tr.execute()
+
     async def get_range(self, key: bytes, start_time: float, end_time: float,
                         include_previous: bool,
                         include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
+        # aioredis wants these split out and combined them itself
+        st, include_st = _unpack_query_timestamp(packed_st)
+        et, include_et = _unpack_query_timestamp(packed_et)
         with _handle_wrongtype():
-            ret_vals = await self._call('get_range', [key],
-                                        [packed_st, packed_et, int(include_previous)])
-        if ret_vals is None:
+            ret_vals = await self._execute(
+                self._get_range, key, st, include_st, et, include_et, include_previous)
+        if not ret_vals[0]:
             return None     # Key does not exist
-        return [utils.split_timestamp(val) for val in ret_vals]
+        return [utils.split_timestamp(val) for val in itertools.chain(*ret_vals[1:])]
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
