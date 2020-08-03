@@ -15,7 +15,6 @@
 ################################################################################
 
 from abc import ABC, abstractmethod
-import asyncio
 from typing import List, Tuple, Dict, Iterable, AsyncGenerator, Optional, Union
 
 from ..utils import KeyType
@@ -161,16 +160,14 @@ class Backend(ABC):
     async def dump(self, key: bytes) -> Optional[bytes]:
         """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
+    @abstractmethod
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         """Report changes to keys in `keys`.
 
         Returns an asynchronous iterator that yields an infinite stream of
         update notifications. When no longer needed it should be closed.
         """
-        # This is a valid but usually suboptimal implementation
-        while True:
-            await asyncio.sleep(1)
-            yield KeyUpdateBase()
+        yield KeyUpdateBase()
 
     @abstractmethod
     def close(self) -> None:

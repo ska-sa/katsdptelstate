@@ -15,7 +15,6 @@
 ################################################################################
 
 from abc import ABC, abstractmethod
-import time
 from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, Optional, Union
 
 from .utils import KeyType, _PathType
@@ -221,6 +220,7 @@ class Backend(ABC):
     def dump(self, key: bytes) -> Optional[bytes]:
         """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
+    @abstractmethod
     def monitor_keys(self, keys: Iterable[bytes]) \
             -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         """Report changes to keys in `keys`.
@@ -237,9 +237,4 @@ class Backend(ABC):
 
         The generator runs until it is closed.
         """
-        # This is a valid but usually suboptimal implementation
-        timeout = yield None
-        while True:
-            assert timeout is not None
-            time.sleep(timeout)
-            timeout = yield KeyUpdateBase()
+        yield None
