@@ -230,6 +230,10 @@ class MemoryBackend(Backend):
             value = self._data.get(key)
             if isinstance(value, list):
                 return utils.split_timestamp(value[-1])
+            elif isinstance(value, dict):
+                # Have to copy because once we exit the _read context manager
+                # the dictionary could be mutated under us.
+                return dict(value), None
             else:
                 # mypy is not smart enough to figure out that this is compatible
                 return value, None     # type: ignore
