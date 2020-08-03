@@ -16,7 +16,6 @@
 
 from abc import ABC, abstractmethod
 import asyncio
-import time
 from typing import List, Tuple, Dict, Iterable, AsyncGenerator, Optional, Union
 
 from ..utils import KeyType
@@ -171,11 +170,6 @@ class Backend(ABC):
         # This is a valid but usually suboptimal implementation
         while True:
             await asyncio.sleep(1)
-            yield KeyUpdateBase()
-        timeout = yield None
-        while True:
-            assert timeout is not None
-            time.sleep(timeout)
             yield KeyUpdateBase()
 
     @abstractmethod
