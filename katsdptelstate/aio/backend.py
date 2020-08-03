@@ -167,7 +167,8 @@ class Backend(ABC):
         Returns an asynchronous iterator that yields an infinite stream of
         update notifications. When no longer needed it should be closed.
         """
-        yield KeyUpdateBase()
+        # Just so that this is recognised as a generator
+        yield KeyUpdateBase()     # pragma: nocover
 
     @abstractmethod
     def close(self) -> None:

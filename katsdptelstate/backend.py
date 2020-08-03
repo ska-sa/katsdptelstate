@@ -237,4 +237,5 @@ class Backend(ABC):
 
         The generator runs until it is closed.
         """
-        yield None
+        # Just so that this is recognised as a generator
+        yield None        # pragma: nocover
