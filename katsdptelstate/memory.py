@@ -315,11 +315,14 @@ class MemoryBackend(Backend):
     def monitor_keys(self, keys: Iterable[bytes]) \
             -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         with self._condition:
-            timeout = yield None
             generation = self._generation
-            while True:
+        # The condition may have been satisfied before we recorded the
+        # generation, so caller should immediately check.
+        timeout = yield KeyUpdateBase()
+        while True:
+            with self._condition:
                 assert timeout is not None
-                if self._condition.wait_for(lambda: self._generation > generation, timeout):
-                    timeout = yield KeyUpdateBase()
-                else:
-                    timeout = yield None
+                updated = self._condition.wait_for(lambda: self._generation > generation, timeout)
+                ret = KeyUpdateBase() if updated else None
+                generation = self._generation
+            timeout = yield ret

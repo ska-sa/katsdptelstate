@@ -225,10 +225,12 @@ class Backend(ABC):
             -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         """Report changes to keys in `keys`.
 
-        Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a timeout and gets back an update event
-        (of type :class:`KeyUpdateBase` or a subclass). If there is no event
-        within the timeout, returns ``None``.
+        Returns a generator. The first yield from the generator may be either
+        ``None`` or an instance of :class:`KeyUpdateBase`; in the latter case,
+        the caller should immediately check the condition again. After that,
+        the caller sends a timeout and gets back an update event (of type
+        :class:`KeyUpdateBase` or a subclass). If there is no event within the
+        timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller
