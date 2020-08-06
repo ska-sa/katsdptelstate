@@ -15,7 +15,6 @@
 ################################################################################
 
 from abc import ABC, abstractmethod
-import time
 from typing import List, Tuple, Dict, Generator, BinaryIO, Iterable, Optional, Union
 
 from .utils import KeyType, _PathType
@@ -221,14 +220,17 @@ class Backend(ABC):
     def dump(self, key: bytes) -> Optional[bytes]:
         """Return a key in the same format as the Redis DUMP command, or None if not present."""
 
+    @abstractmethod
     def monitor_keys(self, keys: Iterable[bytes]) \
             -> Generator[Optional[KeyUpdateBase], Optional[float], None]:
         """Report changes to keys in `keys`.
 
-        Returns a generator. The first yield from the generator is a no-op.
-        After that, the caller sends a timeout and gets back an update event
-        (of type :class:`KeyUpdateBase` or a subclass). If there is no event
-        within the timeout, returns ``None``.
+        Returns a generator. The first yield from the generator may be either
+        ``None`` or an instance of :class:`KeyUpdateBase`; in the latter case,
+        the caller should immediately check the condition again. After that,
+        the caller sends a timeout and gets back an update event (of type
+        :class:`KeyUpdateBase` or a subclass). If there is no event within the
+        timeout, returns ``None``.
 
         It is acceptable (but undesirable) for this function to miss the
         occasional update e.g. due to a network connection outage. The caller
@@ -237,9 +239,5 @@ class Backend(ABC):
 
         The generator runs until it is closed.
         """
-        # This is a valid but usually suboptimal implementation
-        timeout = yield None
-        while True:
-            assert timeout is not None
-            time.sleep(timeout)
-            timeout = yield KeyUpdateBase()
+        # Just so that this is recognised as a generator
+        yield None        # pragma: nocover

@@ -14,11 +14,13 @@
 # limitations under the License.
 ################################################################################
 
+import asyncio
 import logging
-from typing import List, Tuple, Dict, Union, Optional
+from typing import List, Tuple, Dict, Union, Optional, Iterable, AsyncGenerator
 
 from .. import utils
 from .backend import Backend
+from ..backend import KeyUpdateBase
 from ..memory import MemoryBackend as SyncMemoryBackend
 
 
@@ -94,3 +96,27 @@ class MemoryBackend(Backend):
 
     async def wait_closed(self) -> None:
         pass
+
+    async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
+        cancelled = [False]    # Wrapped in a list to make it mutable
+
+        def wait_generation(generation: int) -> int:
+            with self._sync._condition:
+                self._sync._condition.wait_for(
+                    lambda: cancelled[0] or self._sync._generation > generation)
+                return self._sync._generation
+
+        loop = asyncio.get_event_loop()
+        with self._sync._condition:
+            generation = self._sync._generation
+        # Have caller check if the condition is satisfied in this generation
+        yield KeyUpdateBase()
+        try:
+            while True:
+                generation = await loop.run_in_executor(None, wait_generation, generation)
+                yield KeyUpdateBase()
+        finally:
+            # Ensure that wait_generation exits when we're cancelled
+            with self._sync._condition:
+                cancelled[0] = True
+                self._sync._condition.notify_all()

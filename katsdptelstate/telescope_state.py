@@ -507,7 +507,9 @@ class TelescopeState(TelescopeStateBase[Backend]):
         monitor = self._backend.monitor_keys([prefix + key
                                               for prefix in self._prefixes])
         with contextlib.closing(monitor):
-            monitor.send(None)   # Just to start the generator going
+            message = monitor.send(None)   # Just to start the generator going
+            if message and self._check_condition(key, condition):
+                return
             start = time.time()
             while True:
                 # redis-py automatically reconnects to the server if the connection
@@ -626,7 +628,9 @@ class TelescopeState(TelescopeStateBase[Backend]):
         monitor = self._backend.monitor_keys([prefix + key
                                               for prefix in self._prefixes])
         with contextlib.closing(monitor):
-            monitor.send(None)   # Just to start the generator going
+            message = monitor.send(None)   # Just to start the generator going
+            if message is not None and self._check_indexed_condition(key, sub_key_enc, condition):
+                return
             start = time.time()
             while True:
                 check_cancelled()
