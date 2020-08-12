@@ -144,10 +144,11 @@ class RedisBackend(Backend):
 
     def delete(self, key: bytes) -> None:
         # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-        self.client.delete(key)                  # type: ignore
+        self.client.unlink(key)                  # type: ignore
 
     def clear(self) -> None:
-        self.client.flushdb()
+        # typeshed doesn't know about the asynchronous argument
+        self.client.flushdb(asynchronous=True)   # type: ignore
 
     def key_type(self, key: bytes) -> Optional[KeyType]:
         type_ = self.client.type(key)

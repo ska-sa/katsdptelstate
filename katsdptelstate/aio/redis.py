@@ -152,10 +152,10 @@ class RedisBackend(Backend):
         return await self._execute(self.client.keys, filter)
 
     async def delete(self, key: bytes) -> None:
-        await self._execute(self.client.delete, key)
+        await self._execute(self.client.unlink, key)
 
     async def clear(self) -> None:
-        await self._execute(self.client.flushdb)
+        await self._execute(self.client.flushdb, async_op=True)
 
     async def key_type(self, key: bytes) -> Optional[KeyType]:
         type_ = await self._execute(self.client.type, key)
