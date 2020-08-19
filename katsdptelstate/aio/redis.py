@@ -19,11 +19,12 @@ import contextlib
 import hashlib
 import itertools
 import logging
-from typing import (List, Tuple, Dict, Generator, AsyncGenerator, Sequence,
+from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator, Sequence,
                     Iterable, Callable, Awaitable, Optional, Union, Any)
 
 import pkg_resources
 import aioredis
+import aioredis.abc
 
 from .. import utils
 from .backend import Backend
@@ -33,6 +34,7 @@ from ..utils import KeyType, ensure_str, display_str
 
 
 logger = logging.getLogger(__name__)
+_QueueItem = Union[Exception, Tuple[bytes, bytes]]
 
 
 def _is_wrongtype(error: aioredis.ReplyError) -> bool:
@@ -80,6 +82,47 @@ class _Script:
         return await client.eval(self.script, keys, args)
 
 
+class _Channel(aioredis.abc.AbcChannel):
+    """Handle pubsub notifications from aioredis.
+
+    The :class:`aioredis.pubsub.Receiver` class is not quite general enough,
+    because it assumes a single consumer, and we may need to broadcast pubsub
+    messages. We do this by maintaining a set of queues.
+    """
+
+    def __init__(self, name: bytes) -> None:
+        self.queues = set()     # type: Set[asyncio.Queue[_QueueItem]]
+        self._name = name
+        self._closed = False
+
+    @property
+    def name(self) -> bytes:
+        return self._name
+
+    @property
+    def is_pattern(self) -> bool:
+        return False
+
+    @property
+    def is_active(self) -> bool:
+        # This has to be implemented for the ABC, but it's never used.
+        raise NotImplementedError
+
+    async def get(self) -> Any:
+        # This has to be implemented for the ABC, but it's never used.
+        raise NotImplementedError
+
+    def put_nowait(self, data: bytes) -> None:
+        for queue in self.queues:
+            queue.put_nowait((self._name, data))
+
+    def close(self, exc: Optional[Exception] = None) -> None:
+        if exc is None:
+            exc = aioredis.errors.ChannelClosedError('channel closed')
+        for queue in self.queues:
+            queue.put_nowait(exc)
+
+
 def _unpack_query_timestamp(packed_timestamp: bytes) -> Tuple[bytes, bool]:
     """Split the result of :func:`katsdptelstate.utils.pack_query_timestamp`.
 
@@ -101,7 +144,14 @@ def _unpack_query_timestamp(packed_timestamp: bytes) -> Tuple[bytes, bool]:
 
 
 class RedisBackend(Backend):
-    """Backend for :class:`TelescopeState` using redis for storage."""
+    """Backend for :class:`TelescopeState` using redis for storage.
+
+    .. warning::
+
+        Different backends must not share the same redis connection pool. It
+        will mostly work, but will break down if they try to use pub/sub to
+        monitor the same keys.
+    """
 
     _KEY_TYPES = {
         b'none': None,
@@ -112,6 +162,7 @@ class RedisBackend(Backend):
 
     def __init__(self, client: aioredis.Redis) -> None:
         self.client = client
+        self._subscribe_lock = asyncio.Lock()
         self._scripts = {}     # type: Dict[str, _Script]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:
@@ -235,22 +286,37 @@ class RedisBackend(Backend):
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
         while True:
-            receiver = aioredis.pubsub.Receiver()
-            # We use a dedicated connection for the lifetime of this generator.
-            # While the connection pool also has a member to hold a pubsub
-            # connection, it's more robust to just close a connection than to
-            # try to manage unsubscriptions.
-            client: Optional[aioredis.Redis] = None
+            queue = asyncio.Queue()    # type: asyncio.Queue[_QueueItem]
             try:
-                conn = await self.client.connection.acquire()
-                client = aioredis.Redis(conn)
-                await client.subscribe(*(receiver.channel(b'update/' + key) for key in keys))
+                # We need to serialise subscriptions because otherwise two
+                # monitors that wish to monitor the same key may each create
+                # a channel and try to subscribe to it, and only one of them
+                # will actually receive events. Unsubscriptions do not take
+                # the lock: the worst that can happen is that we get
+                # accidentally unsubscribed after we think we've subscribed,
+                # but that will close the channel and hence we'll try again.
+                async with self._subscribe_lock:
+                    new_channels = []
+                    for key in keys:
+                        channel_name = b'update/' + key
+                        channel = self.client.connection.pubsub_channels.get(channel_name)
+                        if channel is None:
+                            channel = _Channel(channel_name)
+                            new_channels.append(channel)
+                        channel.queues.add(queue)
+                    if new_channels:
+                        await self.client.subscribe(*new_channels)
+                        new_channels = []
                 # Condition may have been satisfied while we were busy subscribing
                 logger.debug('Subscribed to channels, notifying caller to check')
                 yield KeyUpdateBase()
-                async for channel, data in receiver.iter():
-                    assert channel.name.startswith(b'update/')
-                    key = channel.name[7:]
+                while True:
+                    update = await queue.get()
+                    if isinstance(update, Exception):
+                        raise update
+                    channel_name, data = update
+                    assert channel_name.startswith(b'update/')
+                    key = channel_name[7:]
                     logger.debug('Received update on channel %r', key)
                     # First check if there is a key type byte in the message.
                     try:
@@ -282,10 +348,19 @@ class RedisBackend(Backend):
             except (ConnectionError, aioredis.ConnectionClosedError) as exc:
                 logger.warning('pubsub connection error (%s), retrying in 1s', exc)
             finally:
-                if client is not None:
-                    client.close()
-                    await client.wait_closed()
-                receiver.stop()
+                close_channels = []
+                for key in keys:
+                    channel_name = b'update/' + key
+                    channel = self.client.connection.pubsub_channels.get(channel_name)
+                    if channel:
+                        channel.queues.discard(queue)
+                        if not channel.queues:
+                            close_channels.append(channel)
+                if close_channels:
+                    # We don't need to wait until redis confirms that the
+                    # unsubscription has taken effect, so fire and forget.
+                    asyncio.ensure_future(self.client.unsubscribe(*close_channels))
+                    close_channels = []
             await asyncio.sleep(1)
 
     async def dump(self, key: bytes) -> Optional[bytes]:
