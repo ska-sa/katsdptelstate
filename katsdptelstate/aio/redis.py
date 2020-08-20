@@ -306,7 +306,6 @@ class RedisBackend(Backend):
                         channel.queues.add(queue)
                     if new_channels:
                         await self.client.subscribe(*new_channels)
-                        new_channels = []
                 # Condition may have been satisfied while we were busy subscribing
                 logger.debug('Subscribed to channels, notifying caller to check')
                 yield KeyUpdateBase()
@@ -360,7 +359,6 @@ class RedisBackend(Backend):
                     # We don't need to wait until redis confirms that the
                     # unsubscription has taken effect, so fire and forget.
                     asyncio.ensure_future(self.client.unsubscribe(*close_channels))
-                    close_channels = []
             await asyncio.sleep(1)
 
     async def dump(self, key: bytes) -> Optional[bytes]:
