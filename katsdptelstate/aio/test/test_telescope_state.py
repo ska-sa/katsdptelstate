@@ -374,6 +374,37 @@ class TestTelescopeState(asynctest.TestCase):
             await ns2.wait_key('test_key', lambda value, ts: value is True)
         await task
 
+    async def test_wait_key_concurrent(self) -> None:
+        task1 = asyncio.ensure_future(self.ts.wait_key('key1'))
+        task2 = asyncio.ensure_future(self.ts.wait_key('key2'))
+        await asyncio.sleep(0.1)
+        self.assertFalse(task1.done())
+        self.assertFalse(task2.done())
+        await self.ts.add('key1', 1, immutable=True)
+        await self.ts.add('key2', 2)
+        await task1
+        await task2
+        # Make sure we unsubscribed. Unsubscriptions are done asynchronously,
+        # so we need to sleep a bit to let them take place.
+        if isinstance(self.ts.backend, RedisBackend):
+            await asyncio.sleep(0.1)
+            self.assertEqual(self.ts.backend.client.connection.pubsub_channels, {})
+
+    async def test_wait_key_concurrent_same(self) -> None:
+        task1 = asyncio.ensure_future(self.ts.wait_key('key'))
+        task2 = asyncio.ensure_future(self.ts.wait_key('key'))
+        await asyncio.sleep(0.1)
+        self.assertFalse(task1.done())
+        self.assertFalse(task2.done())
+        await self.ts.add('key', 1)
+        await task1
+        await task2
+        # Make sure we unsubscribed. Unsubscriptions are done asynchronously,
+        # so we need to sleep a bit to let them take place.
+        if isinstance(self.ts.backend, RedisBackend):
+            await asyncio.sleep(0.1)
+            self.assertEqual(self.ts.backend.client.connection.pubsub_channels, {})
+
     async def test_wait_indexed_already_done(self) -> None:
         await self.ts.set_indexed('test_key', 'sub_key', 5)
         await self.ts.wait_indexed('test_key', 'sub_key')
