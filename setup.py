@@ -57,7 +57,7 @@ setup(name='katsdptelstate',
                         'msgpack', 'numpy'],
       extras_require={
           'rdb': ['rdbtools', 'python-lzf'],
-          'aio': ['aioredis'],
+          'aio': ['aioredis<2'],
           'test': tests_require
       },
       tests_require=tests_require,
