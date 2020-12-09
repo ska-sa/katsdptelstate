@@ -1,4 +1,4 @@
-aioredis==1.3.1
+aioredis
 async_timeout           # via aioredis
 hiredis                 # via aioredis
 msgpack
