@@ -15,6 +15,7 @@
 ################################################################################
 
 import asyncio
+import concurrent.futures
 import logging
 from typing import List, Tuple, Dict, Union, Optional, Iterable, AsyncGenerator
 
@@ -111,12 +112,13 @@ class MemoryBackend(Backend):
             generation = self._sync._generation
         # Have caller check if the condition is satisfied in this generation
         yield KeyUpdateBase()
-        try:
-            while True:
-                generation = await loop.run_in_executor(None, wait_generation, generation)
-                yield KeyUpdateBase()
-        finally:
-            # Ensure that wait_generation exits when we're cancelled
-            with self._sync._condition:
-                cancelled[0] = True
-                self._sync._condition.notify_all()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                while True:
+                    generation = await loop.run_in_executor(executor, wait_generation, generation)
+                    yield KeyUpdateBase()
+            finally:
+                # Ensure that wait_generation exits when we're cancelled
+                with self._sync._condition:
+                    cancelled[0] = True
+                    self._sync._condition.notify_all()
