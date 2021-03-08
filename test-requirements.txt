@@ -1,4 +1,5 @@
--c https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
+# TODO: change to -d and unpin fakeredis once katsdpdockerbase updates fakeredis
+-d https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
 
 asynctest
 async_timeout
@@ -7,4 +8,4 @@ fakeredis[lua,aioredis]==1.4.1
 lupa==1.9                  # via fakeredis[lua]
 nose
 python-lzf==0.2.4
-rdbtools==0.1.12
+rdbtools
