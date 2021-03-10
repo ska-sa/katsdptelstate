@@ -1,6 +1,7 @@
 -c https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
 
 aioredis
+hiredis
 msgpack
 netifaces
 numpy
