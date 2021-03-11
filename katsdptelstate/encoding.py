@@ -27,6 +27,7 @@ from typing import Optional, Any
 
 import msgpack
 import numpy as np
+import numpy.lib.format as _np_format    # noqa: F401   # Keeps mypy happy with np.lib.format
 
 from .errors import EncodeError, DecodeError
 from .utils import ensure_binary
