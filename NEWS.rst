@@ -1,6 +1,16 @@
 History
 =======
 
+0.11 (2021-05-06)
+-----------------
+* Add asynchronous RDBWriter class (#108)
+* Use a transaction for get_range instead of Lua: faster on server side (#110)
+* Multiplex aio pubsubs over pool's standard connection (#113)
+* Require hiredis for speed and aioredis<2 for compatibility (#114, #118)
+* Improve unit tests, especially async memory backend (#107, #111, #112, #116)
+* Update Docker image to use Redis 6.x instead of 4.x (#109)
+* Requirements cleanup (#115, #117, #120)
+
 0.10 (2020-05-25)
 -----------------
 * Remove Python 2 support. At least Python 3.5 is required.
