@@ -8,8 +8,9 @@ History
 * Multiplex aio pubsubs over pool's standard connection (#113)
 * Require hiredis for speed and aioredis<2 for compatibility (#114, #118)
 * Improve `wait_keys` responsiveness for `MemoryBackend` (#111, #116)
-* Speed up telstate.clear and support older HMSET command in unit tests (#107, #112)
+* Avoid blocking the Redis server on telstate.clear (#112)
 * Update Docker image to use Redis 6.x instead of 4.x (#109)
+* Support older HMSET Redis command in unit tests (#107)
 * Requirements cleanup (#115, #117, #119, #120)
 
 0.10 (2020-05-25)
