@@ -111,7 +111,6 @@ class RedisBackend(Backend):
 
     def __init__(self, client: redis.Redis) -> None:
         self.client = client
-        self._ps = self.client.pubsub(ignore_subscribe_messages=True)
         try:
             # This is the first command to the server and therefore
             # the first test of its availability
