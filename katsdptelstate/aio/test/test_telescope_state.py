@@ -388,7 +388,7 @@ class TestTelescopeState(asynctest.TestCase):
         # so we need to sleep a bit to let them take place.
         if isinstance(self.ts.backend, RedisBackend):
             await asyncio.sleep(0.1)
-            self.assertEqual(self.ts.backend.client.connection.pubsub_channels, {})
+            self.assertEqual(self.ts.backend._pubsub.channels, {})  # type: ignore
 
     async def test_wait_key_concurrent_same(self) -> None:
         task1 = asyncio.ensure_future(self.ts.wait_key('key'))
@@ -403,7 +403,7 @@ class TestTelescopeState(asynctest.TestCase):
         # so we need to sleep a bit to let them take place.
         if isinstance(self.ts.backend, RedisBackend):
             await asyncio.sleep(0.1)
-            self.assertEqual(self.ts.backend.client.connection.pubsub_channels, {})
+            self.assertEqual(self.ts.backend._pubsub.channels, {})  # type: ignore
 
     async def test_wait_indexed_already_done(self) -> None:
         await self.ts.set_indexed('test_key', 'sub_key', 5)
@@ -424,6 +424,7 @@ class TestTelescopeState(asynctest.TestCase):
 
     async def test_wait_indexed_delayed(self) -> None:
         async def set_key():
+            await asyncio.sleep(0.05)
             await self.ts.set_indexed('test_key', 'foo', 1)
             await asyncio.sleep(0.05)
             await self.ts.set_indexed('test_key', 'bar', 2)
@@ -548,7 +549,7 @@ class TestTelescopeState(asynctest.TestCase):
 
 class TestTelescopeStateRedis(TestTelescopeState):
     async def make_telescope_state(self) -> TelescopeState:
-        client = await fakeredis.aioredis.create_redis_pool()
+        client = await fakeredis.aioredis.FakeRedis()
         return TelescopeState(RedisBackend(client))
 
 

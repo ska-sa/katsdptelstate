@@ -63,7 +63,7 @@ setup(name='katsdptelstate',
       ],
       extras_require={
           'rdb': ['rdbtools', 'python-lzf'],
-          'aio': ['aioredis<2'],
+          'aio': ['aioredis>=2.0.0a1'],
           'test': tests_require
       },
       tests_require=tests_require,

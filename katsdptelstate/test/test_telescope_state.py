@@ -424,6 +424,7 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_wait_indexed_delayed(self) -> None:
         def set_key():
+            time.sleep(0.05)
             self.ts.set_indexed('test_key', 'foo', 1)
             time.sleep(0.05)
             self.ts.set_indexed('test_key', 'bar', 2)

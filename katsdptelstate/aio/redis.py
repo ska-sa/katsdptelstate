@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2019-2020, National Research Foundation (Square Kilometre Array)
+# Copyright (c) 2019-2021, National Research Foundation (Square Kilometre Array)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -16,15 +16,13 @@
 
 import asyncio
 import contextlib
-import hashlib
 import itertools
 import logging
-from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator, Sequence,
+from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator,
                     Iterable, Callable, Awaitable, Optional, Union, Any)
 
 import pkg_resources
 import aioredis
-import aioredis.abc
 
 from .. import utils
 from .backend import Backend
@@ -34,15 +32,7 @@ from ..utils import KeyType, ensure_str, display_str
 
 
 logger = logging.getLogger(__name__)
-_QueueItem = Union[Exception, Tuple[bytes, bytes]]
-
-
-def _is_wrongtype(error: aioredis.ReplyError) -> bool:
-    return (
-        error.args[0].startswith('WRONGTYPE ')
-        or (error.args[0].startswith('ERR Error running script')
-            and 'WRONGTYPE ' in error.args[0])
-    )
+_QueueItem = Tuple[bytes, Optional[bytes]]
 
 
 @contextlib.contextmanager
@@ -53,94 +43,39 @@ def _handle_wrongtype() -> Generator[None, None, None]:
     """
     try:
         yield
-    except aioredis.PipelineError as exc:
-        for error in exc.args[1]:
-            if _is_wrongtype(error):
-                raise ImmutableKeyError
-        raise
-    except aioredis.ReplyError as error:
-        if _is_wrongtype(error):
+    except aioredis.ResponseError as error:
+        if (error.args[0].startswith('WRONGTYPE ')
+                or (error.args[0].startswith('Error running script')
+                    and 'WRONGTYPE ' in error.args[0])):
             raise ImmutableKeyError
         raise
 
 
-class _Script:
-    """Handle caching of scripts on the redis server."""
+class _Channel:
+    """Handle demultiplexing pubsub notifications from aioredis.
 
-    def __init__(self, script: bytes) -> None:
-        self.script = script
-        self.digest = hashlib.sha1(self.script).hexdigest()
+    A channel has multiple queues which wish to receive the notifications.
+    Once all queues have been removed, unsubscription begins, which is a
+    multi-step process:
 
-    async def __call__(self, client: aioredis.Redis,
-                       keys: Sequence = [], args: Sequence = []) -> Any:
-        try:
-            return await client.evalsha(self.digest, keys, args)
-        except aioredis.ReplyError as exc:
-            if not exc.args[0].startswith('NOSCRIPT '):
-                raise
-        # The script wasn't cached, so try again with original source
-        return await client.eval(self.script, keys, args)
+    1. :attr:`unsubscribe` is populated with an :class:`asyncio.Event`.
 
+    2. An asyncio task is created to issue the unsubscription.
 
-class _Channel(aioredis.abc.AbcChannel):
-    """Handle pubsub notifications from aioredis.
+    3. Once it has been issued (not necessarily acted on by the server),
+       the event is set ready.
 
-    The :class:`aioredis.pubsub.Receiver` class is not quite general enough,
-    because it assumes a single consumer, and we may need to broadcast pubsub
-    messages. We do this by maintaining a set of queues.
+    4. The channel is removed from the list of channels.
+
+    If a new subscriber arrives after step 1, it cannot reuse this object. It
+    must wait for the event and try again, as otherwise it may request
+    subscription prior to step 2 and the subscription will be cancelled by step
+    2.
     """
 
-    def __init__(self, name: bytes) -> None:
-        self.queues = set()     # type: Set[asyncio.Queue[_QueueItem]]
-        self._name = name
-        self._closed = False
-
-    @property
-    def name(self) -> bytes:
-        return self._name
-
-    @property
-    def is_pattern(self) -> bool:
-        return False
-
-    @property
-    def is_active(self) -> bool:
-        # This has to be implemented for the ABC, but it's never used.
-        raise NotImplementedError
-
-    async def get(self) -> Any:
-        # This has to be implemented for the ABC, but it's never used.
-        raise NotImplementedError
-
-    def put_nowait(self, data: bytes) -> None:
-        for queue in self.queues:
-            queue.put_nowait((self._name, data))
-
-    def close(self, exc: Optional[Exception] = None) -> None:
-        if exc is None:
-            exc = aioredis.errors.ChannelClosedError('channel closed')
-        for queue in self.queues:
-            queue.put_nowait(exc)
-
-
-def _unpack_query_timestamp(packed_timestamp: bytes) -> Tuple[bytes, bool]:
-    """Split the result of :func:`katsdptelstate.utils.pack_query_timestamp`.
-
-    Returns
-    -------
-    value
-        Boundary value
-    include
-        Whether the boundary value is inclusive (false for ``-`` and ``+``).
-    """
-    if packed_timestamp in {b'-', b'+'}:
-        return packed_timestamp, False
-    elif packed_timestamp[:1] == b'[':
-        return packed_timestamp[1:], True
-    elif packed_timestamp[:1] == b'(':
-        return packed_timestamp[1:], False
-    else:
-        raise ValueError('packed_timestamp must be -, +, or start with [ or (')
+    def __init__(self):
+        self.queues = set()      # type: Set[asyncio.Queue[_QueueItem]]
+        self.unsubscribe = None  # type: Optional[asyncio.Event]
 
 
 class RedisBackend(Backend):
@@ -162,13 +97,16 @@ class RedisBackend(Backend):
 
     def __init__(self, client: aioredis.Redis) -> None:
         self.client = client
-        self._subscribe_lock = asyncio.Lock()
-        self._scripts = {}     # type: Dict[str, _Script]
+        self._pubsub = None       # type: Optional[aioredis.client.PubSub]
+        self._pubsub_task = None  # type: Optional[asyncio.Task]
+        self._channels = {}       # type: Dict[bytes, _Channel]  # indexed by key, not channel
+        self._scripts = {}        # type: Dict[str, aioredis.client.Script]
+        self._close_task = None   # type: Optional[asyncio.Task]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
-            self._scripts[script_name] = _Script(script)
+            self._scripts[script_name] = self.client.register_script(script)  # type: ignore
 
     async def _execute(self, call: Callable[..., Awaitable], *args, **kwargs) -> Any:
         """Execute a redis command, retrying if the connection died.
@@ -182,11 +120,10 @@ class RedisBackend(Backend):
         """
         try:
             return await call(*args, **kwargs)
-        except (ConnectionError, aioredis.ConnectionClosedError) as exc:
+        except (ConnectionError, aioredis.ConnectionError) as exc:
             # Closes all connections in the pool to ensure that we get a
             # fresh connection.
             logger.warning('redis connection error (%s), trying again', exc)
-            await self.client.connection.clear()
             return await call(*args, **kwargs)
 
     async def _call(self, script_name: str, *args, **kwargs) -> Any:
@@ -194,7 +131,7 @@ class RedisBackend(Backend):
 
         This uses _execute, so the script must be idempotent.
         """
-        return await self._execute(self._scripts[script_name], self.client, *args, **kwargs)
+        return await self._execute(self._scripts[script_name], *args, **kwargs)
 
     async def exists(self, key: bytes) -> bool:
         return bool(await self._execute(self.client.exists, key))
@@ -206,7 +143,7 @@ class RedisBackend(Backend):
         await self._execute(self.client.unlink, key)
 
     async def clear(self) -> None:
-        await self._execute(self.client.flushdb, async_op=True)
+        await self._execute(self.client.flushdb, asynchronous=True)
 
     async def key_type(self, key: bytes) -> Optional[KeyType]:
         type_ = await self._execute(self.client.type, key)
@@ -255,68 +192,110 @@ class RedisBackend(Backend):
                 return result
 
     async def _get_range(self, key: bytes,
-                         st: bytes, include_st: bool,
-                         et: bytes, include_et: bool,
-                         include_previous: bool) -> list:
+                         packed_st: bytes, packed_et: bytes,
+                         include_previous: bool) -> Optional[List[Tuple[bytes, float]]]:
         """Internal part of :meth:`get_range` that is retried if the connection fails."""
-        tr = self.client.multi_exec()
-        tr.exists(key)
-        if include_previous and st != b'-':
-            tr.zrevrangebylex(key, max=st, include_max=False, min=b'-', offset=0, count=1)
-        # aioredis doesn't correctly handle min of + or max of -
-        if st != b'+' and et != b'-':
-            tr.zrangebylex(key, min=st, include_min=include_st, max=et, include_max=include_et)
-        return await tr.execute()
+        with _handle_wrongtype():
+            async with self.client.pipeline() as pipe:
+                pipe.exists(key)  # type: ignore
+                if include_previous and packed_st != b'-':
+                    pipe.zrevrangebylex(key, packed_st, b'-', start=0, num=1)  # type: ignore
+                if packed_st != b'+' and packed_et != b'-':
+                    pipe.zrangebylex(key, packed_st, packed_et)  # type: ignore
+                # raise_on_error annotates the exception message, which breaks
+                # the _handle_wrongtype detection.
+                ret_vals = await pipe.execute(raise_on_error=False)
+            for item in ret_vals:
+                if isinstance(item, aioredis.ResponseError):
+                    raise item
+        if not ret_vals[0]:
+            return None      # Key does not exist
+        return [utils.split_timestamp(val) for val in itertools.chain(*ret_vals[1:])]
 
     async def get_range(self, key: bytes, start_time: float, end_time: float,
                         include_previous: bool,
                         include_end: bool) -> Optional[List[Tuple[bytes, float]]]:
         packed_st = utils.pack_query_timestamp(start_time, False)
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
-        # aioredis wants these split out and combined them itself
-        st, include_st = _unpack_query_timestamp(packed_st)
-        et, include_et = _unpack_query_timestamp(packed_et)
-        with _handle_wrongtype():
-            ret_vals = await self._execute(
-                self._get_range, key, st, include_st, et, include_et, include_previous)
-        if not ret_vals[0]:
-            return None     # Key does not exist
-        return [utils.split_timestamp(val) for val in itertools.chain(*ret_vals[1:])]
+        return await self._execute(self._get_range, key, packed_st, packed_et, include_previous)
+
+    async def _unsubscribe(self, keys: List[bytes], event: asyncio.Event) -> None:
+        """Handle unsubscription in the background."""
+        assert self._pubsub is not None
+        try:
+            channels = [b'update/' + key for key in keys]
+            await self._pubsub.unsubscribe(*channels)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning('Exception while unsubscribing', exc_info=True)
+        finally:
+            for key in keys:
+                del self._channels[key]
+            event.set()
+
+    async def _run_pubsub(self) -> None:
+        assert self._pubsub is not None
+        while True:
+            # Using a small timeout ensures that health checks get run
+            message = await self._pubsub.get_message(timeout=1)
+            if message is None or message['channel'] is None:
+                continue
+            channel_name = message['channel']
+            assert channel_name.startswith(b'update/')
+            key = channel_name[7:]
+            channel = self._channels.get(key)
+            if not channel:
+                continue
+            if message['type'] == 'subscribe':
+                update = (key, None)
+            elif message['type'] == 'message':
+                update = (key, message['data'])
+            else:
+                continue
+            for queue in channel.queues:
+                queue.put_nowait(update)
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
-        while True:
-            queue = asyncio.Queue()    # type: asyncio.Queue[_QueueItem]
-            try:
-                # We need to serialise subscriptions because otherwise two
-                # monitors that wish to monitor the same key may each create
-                # a channel and try to subscribe to it, and only one of them
-                # will actually receive events. Unsubscriptions do not take
-                # the lock: the worst that can happen is that we get
-                # accidentally unsubscribed after we think we've subscribed,
-                # but that will close the channel and hence we'll try again.
-                async with self._subscribe_lock:
-                    new_channels = []
-                    for key in keys:
-                        channel_name = b'update/' + key
-                        channel = self.client.connection.pubsub_channels.get(channel_name)
-                        if channel is None:
-                            channel = _Channel(channel_name)
-                            new_channels.append(channel)
-                        channel.queues.add(queue)
-                    if new_channels:
-                        await self.client.subscribe(*new_channels)
-                # Condition may have been satisfied while we were busy subscribing
-                logger.debug('Subscribed to channels, notifying caller to check')
-                yield KeyUpdateBase()
+        if self._pubsub is None:
+            self._pubsub = self.client.pubsub()
+
+        queue = asyncio.Queue()  # type: asyncio.Queue[_QueueItem]
+        try:
+            new_channels = []
+            for key in keys:
                 while True:
-                    update = await queue.get()
-                    if isinstance(update, Exception):
-                        raise update
-                    channel_name, data = update
-                    assert channel_name.startswith(b'update/')
-                    key = channel_name[7:]
-                    logger.debug('Received update on channel %r', key)
+                    if key not in self._channels:
+                        channel_name = b'update/' + key
+                        new_channels.append(channel_name)
+                        self._channels[key] = _Channel()
+                    channel = self._channels[key]
+                    if channel.unsubscribe:
+                        await channel.unsubscribe.wait()
+                        # Go around the loop again
+                    else:
+                        break
+                channel.queues.add(queue)
+            if new_channels:
+                await self._pubsub.subscribe(*new_channels)
+
+            # This can only be done now as it fails if we haven't subscribed to
+            # anything yet.
+            if not self._pubsub_task:
+                self._pubsub_task = asyncio.get_event_loop().create_task(self._run_pubsub())
+
+            # Condition may have been satisfied while we were busy subscribing
+            logger.debug('Requested subscription to channels, notifying caller to check')
+            yield KeyUpdateBase()
+            while True:
+                update = await queue.get()
+                key, data = update
+                logger.debug('Received update on channel %r', key)
+                if data is None:
+                    # A subscription has been completed; just recheck
+                    yield KeyUpdateBase()
+                else:
                     # First check if there is a key type byte in the message.
                     try:
                         key_type = KeyType(data[0])
@@ -344,28 +323,47 @@ class RedisBackend(Backend):
                         yield MutableKeyUpdate(key, value, timestamp)
                     else:
                         raise RuntimeError('Unhandled key type {}'.format(key_type))
-            except (ConnectionError, aioredis.ConnectionClosedError) as exc:
-                logger.warning('pubsub connection error (%s), retrying in 1s', exc)
-            finally:
-                close_channels = []
-                for key in keys:
+
+        finally:
+            close_keys = []
+            event = None
+            for key in keys:
+                old_channel = self._channels.get(key)
+                if not old_channel or queue not in old_channel.queues:
+                    continue     # An exception was thrown before we could register the queue
+                old_channel.queues.remove(queue)
+                if not old_channel.queues:
+                    assert old_channel.unsubscribe is None
                     channel_name = b'update/' + key
-                    channel = self.client.connection.pubsub_channels.get(channel_name)
-                    if channel:
-                        channel.queues.discard(queue)
-                        if not channel.queues:
-                            close_channels.append(channel)
-                if close_channels:
-                    # We don't need to wait until redis confirms that the
-                    # unsubscription has taken effect, so fire and forget.
-                    asyncio.ensure_future(self.client.unsubscribe(*close_channels))
-            await asyncio.sleep(1)
+                    close_keys.append(key)
+                    if event is None:
+                        event = asyncio.Event()
+                    old_channel.unsubscribe = event
+            if event:
+                asyncio.get_event_loop().create_task(self._unsubscribe(close_keys, event))
 
     async def dump(self, key: bytes) -> Optional[bytes]:
         return await self._execute(self.client.dump, key)
 
+    async def _close(self) -> None:
+        if self._pubsub_task is not None:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+        for channel in self._channels.values():
+            if channel.unsubscribe:
+                await channel.unsubscribe.wait()
+        await self.client.close()
+        await self.client.connection_pool.disconnect()
+
     def close(self) -> None:
-        self.client.close()
+        if self._close_task is None:
+            self._close_task = asyncio.get_event_loop().create_task(self._close())
 
     async def wait_closed(self) -> None:
-        await self.client.wait_closed()
+        if self._close_task is None:
+            self.close()
+        assert self._close_task is not None
+        await self._close_task
