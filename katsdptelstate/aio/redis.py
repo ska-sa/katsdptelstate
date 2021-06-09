@@ -236,25 +236,36 @@ class RedisBackend(Backend):
 
     async def _run_pubsub(self) -> None:
         assert self._pubsub is not None
-        while True:
-            # Using a small timeout ensures that health checks get run
-            message = await self._pubsub.get_message(timeout=1)
-            if message is None or message['channel'] is None:
-                continue
-            channel_name = message['channel']
-            assert channel_name.startswith(b'update/')
-            key = channel_name[7:]
-            channel = self._channels.get(key)
-            if not channel:
-                continue
-            if message['type'] == 'subscribe':
-                update = (key, None)
-            elif message['type'] == 'message':
-                update = (key, message['data'])
-            else:
-                continue
-            for queue in channel.queues:
-                queue.put_nowait(update)
+        try:
+            while True:
+                # Using a small timeout ensures that health checks get run
+                try:
+                    message = await self._pubsub.get_message(timeout=1)
+                except aioredis.ConnectionError as exc:
+                    logger.warning('redis connection error (%s), trying again', exc)
+                    message = None
+                    await asyncio.sleep(1)  # Avoid spamming the server with connection attempts
+                if message is None or message['channel'] is None:
+                    continue
+                channel_name = message['channel']
+                assert channel_name.startswith(b'update/')
+                key = channel_name[7:]
+                channel = self._channels.get(key)
+                if not channel:
+                    continue
+                if message['type'] == 'subscribe':
+                    update = (key, None)
+                elif message['type'] == 'message':
+                    update = (key, message['data'])
+                else:
+                    continue
+                for queue in channel.queues:
+                    queue.put_nowait(update)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception('Unexpected error in pubsub task')
+            raise
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
