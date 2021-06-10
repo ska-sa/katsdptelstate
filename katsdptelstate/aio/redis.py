@@ -242,9 +242,16 @@ class RedisBackend(Backend):
                 try:
                     message = await self._pubsub.get_message(timeout=1)
                 except aioredis.ConnectionError as exc:
-                    logger.warning('redis connection error (%s), trying again', exc)
                     message = None
-                    await asyncio.sleep(1)  # Avoid spamming the server with connection attempts
+                    logger.warning('redis connection error (%s), trying to reconnect', exc)
+                    # aioredis doesn't automatically reconnect
+                    # (see https://github.com/andymccurdy/redis-py/issues/1464).
+                    try:
+                        await self._pubsub.connection.disconnect()
+                        await self._pubsub.connection.connect()
+                    except aioredis.ConnectionError as exc:
+                        logger.warning('redis reconnect attempt failed (%s), trying in 1s', exc)
+                        await asyncio.sleep(1)  # Avoid spamming the server with connection attempts
                 if message is None or message['channel'] is None:
                     continue
                 channel_name = message['channel']
