@@ -16,6 +16,7 @@
 
 import asyncio
 import contextlib
+import enum
 import itertools
 import logging
 from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator,
@@ -51,31 +52,22 @@ def _handle_wrongtype() -> Generator[None, None, None]:
         raise
 
 
-class _Channel:
-    """Handle demultiplexing pubsub notifications from aioredis.
+class _CommandType(enum.Enum):
+    SUBSCRIBE = 1
+    UNSUBSCRIBE = 2
 
-    A channel has multiple queues which wish to receive the notifications.
-    Once all queues have been removed, unsubscription begins, which is a
-    multi-step process:
 
-    1. :attr:`unsubscribe` is populated with an :class:`asyncio.Event`.
+class _Command:
+    """Request to the pub/sub loop to subscribe or unsubscribe a queue."""
 
-    2. An asyncio task is created to issue the unsubscription.
+    def __init__(self, keys: Iterable[bytes], queue: 'asyncio.Queue[_QueueItem]',
+                 type: _CommandType) -> None:
+        self.keys = list(keys)
+        self.queue = queue
+        self.type = type
 
-    3. Once it has been issued (not necessarily acted on by the server),
-       the event is set ready.
-
-    4. The channel is removed from the list of channels.
-
-    If a new subscriber arrives after step 1, it cannot reuse this object. It
-    must wait for the event and try again, as otherwise it may request
-    subscription prior to step 2 and the subscription will be cancelled by step
-    2.
-    """
-
-    def __init__(self):
-        self.queues = set()      # type: Set[asyncio.Queue[_QueueItem]]
-        self.unsubscribe = None  # type: Optional[asyncio.Event]
+    def __repr__(self) -> str:
+        return f'{self.__class__}({self.keys!r}, {self.queue!r}, {self.type!r}'
 
 
 class RedisBackend(Backend):
@@ -97,9 +89,11 @@ class RedisBackend(Backend):
 
     def __init__(self, client: aioredis.Redis) -> None:
         self.client = client
-        self._pubsub = None       # type: Optional[aioredis.client.PubSub]
-        self._pubsub_task = None  # type: Optional[asyncio.Task]
-        self._channels = {}       # type: Dict[bytes, _Channel]  # indexed by key, not channel
+        self._pubsub = client.pubsub()  # type: aioredis.client.PubSub
+        self._pubsub_task = asyncio.get_event_loop().create_task(self._run_pubsub())
+        self._commands = asyncio.Queue()  # type: asyncio.Queue[_Command]
+        # Channels are indexed by key, not pub/sub channel name
+        self._channels = {}       # type: Dict[bytes, Set[asyncio.Queue[_QueueItem]]]
         self._scripts = {}        # type: Dict[str, aioredis.client.Script]
         self._close_task = None   # type: Optional[asyncio.Task]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
@@ -219,89 +213,137 @@ class RedisBackend(Backend):
         packed_et = utils.pack_query_timestamp(end_time, True, include_end)
         return await self._execute(self._get_range, key, packed_st, packed_et, include_previous)
 
-    async def _unsubscribe(self, keys: List[bytes], event: asyncio.Event) -> None:
-        """Handle unsubscription in the background."""
-        assert self._pubsub is not None
-        try:
-            channels = [b'update/' + key for key in keys]
-            await self._pubsub.unsubscribe(*channels)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.warning('Exception while unsubscribing', exc_info=True)
-        finally:
-            for key in keys:
-                del self._channels[key]
-            event.set()
+    def _handle_message(self, message: Dict[str, Any]) -> None:
+        """Process a message received via pub/sub."""
+        logger.debug('Received pub/sub message %s', message)
+        channel_name = message['channel']
+        assert channel_name.startswith(b'update/')
+        key = channel_name[7:]
+        channel = self._channels.get(key)
+        if not channel:
+            return
+        if message['type'] == 'subscribe':
+            update = (key, None)
+        elif message['type'] == 'message':
+            update = (key, message['data'])
+        else:
+            return
+        for queue in channel:
+            queue.put_nowait(update)
+
+    async def _handle_command(self, command: _Command) -> None:
+        """Process a :class:`_Command` received on the command queue."""
+        logger.debug('Received command %s', command)
+        if command.type == _CommandType.SUBSCRIBE:
+            channel_updates = {}
+            to_subscribe = []
+            for key in command.keys:
+                channel = self._channels.get(key)
+                if channel is None:
+                    channel = set()
+                    channel_updates[key] = channel
+                    to_subscribe.append(b'update/' + key)
+                channel.add(command.queue)
+            if to_subscribe:
+                await self._pubsub.subscribe(*to_subscribe)
+            # Only update the dict after subscription is successful; if it
+            # fails the command will be retried.
+            self._channels.update(channel_updates)
+        elif command.type == _CommandType.UNSUBSCRIBE:
+            to_unsubscribe = []
+            channel_removals = []
+            for key in command.keys:
+                channel = self._channels.get(key)
+                if channel is None:
+                    # Should never happen, but exception handling gets tricky
+                    # so rather be robust.
+                    continue  # pragma: nocover
+                channel.discard(command.queue)
+                if not channel:
+                    to_unsubscribe.append(b'update/' + key)
+                    channel_removals.append(key)
+            if to_unsubscribe:
+                await self._pubsub.unsubscribe(*to_unsubscribe)
+            # Only update the dict after unsubscription is successful; if it
+            # fails the command will be retried.
+            for key in channel_removals:
+                self._channels.pop(key, None)
+        else:
+            raise RuntimeError(f'Unknown command type {command.type}')
 
     async def _run_pubsub(self) -> None:
-        assert self._pubsub is not None
+        """Background task for handling pub/sub messages.
+
+        It has two sources of input: messages on the pub/sub connection, and
+        commands to add or remove subscriptions. These are multiplexed
+        together rather than handled independently, because it's not clear
+        that a single :class:`aioredis.client.PubSub` is async-safe.
+        """
         try:
+            loop = asyncio.get_event_loop()
+            get_message_task: Optional[asyncio.Task] = None
+            command_queue_task: asyncio.Task = loop.create_task(self._commands.get())
+            tasks: Set[asyncio.Future] = {command_queue_task}
             while True:
-                # Using a small timeout ensures that health checks get run
-                try:
-                    message = await self._pubsub.get_message(timeout=1)
-                except aioredis.ConnectionError as exc:
-                    message = None
-                    logger.warning('redis connection error (%s), trying to reconnect', exc)
-                    # aioredis doesn't automatically reconnect
-                    # (see https://github.com/andymccurdy/redis-py/issues/1464).
+                # get_message raises an error if we try this before the first
+                # connection attempt.
+                if get_message_task is None and self._pubsub.connection:
+                    # Using a small timeout ensures that health checks get run
+                    get_message_task = loop.create_task(self._pubsub.get_message(timeout=1))
+                    tasks.add(get_message_task)
+                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+                if get_message_task is not None and get_message_task in done:
                     try:
-                        await self._pubsub.connection.disconnect()
-                        await self._pubsub.connection.connect()
+                        message = await get_message_task
                     except aioredis.ConnectionError as exc:
-                        logger.warning('redis reconnect attempt failed (%s), trying in 1s', exc)
-                        await asyncio.sleep(1)  # Avoid spamming the server with connection attempts
-                if message is None or message['channel'] is None:
-                    continue
-                channel_name = message['channel']
-                assert channel_name.startswith(b'update/')
-                key = channel_name[7:]
-                channel = self._channels.get(key)
-                if not channel:
-                    continue
-                if message['type'] == 'subscribe':
-                    update = (key, None)
-                elif message['type'] == 'message':
-                    update = (key, message['data'])
-                else:
-                    continue
-                for queue in channel.queues:
-                    queue.put_nowait(update)
+                        message = None
+                        logger.warning('redis connection error (%s), trying to reconnect', exc)
+                        # aioredis doesn't automatically reconnect
+                        # (see https://github.com/andymccurdy/redis-py/issues/1464).
+                        try:
+                            await self._pubsub.connection.disconnect()
+                            await self._pubsub.connection.connect()
+                        except aioredis.ConnectionError as exc:
+                            # Avoid spamming the server with connection attempts
+                            logger.warning('redis reconnect attempt failed (%s), trying in 1s', exc)
+                            await asyncio.sleep(1)
+                    finally:
+                        # Causes new task to created on next iteration
+                        get_message_task = None
+                    if message is not None:
+                        self._handle_message(message)
+
+                if command_queue_task in done:
+                    try:
+                        command = await command_queue_task
+                        await self._handle_command(command)
+                    except aioredis.ConnectionError as exc:
+                        # Put the task back on the pending list, so that next
+                        # time around the loop we'll process it again.
+                        tasks.add(command_queue_task)
+                        logger.warning('subscribe/unsubscribe failed (%s), trying in 1s', exc)
+                        await asyncio.sleep(1)
+                    else:
+                        # Get ready to retrieve the next task
+                        command_queue_task = loop.create_task(self._commands.get())
+                        tasks.add(command_queue_task)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception('Unexpected error in pubsub task')
             raise
+        finally:
+            if get_message_task is not None:
+                get_message_task.cancel()
+            command_queue_task.cancel()
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
-        if self._pubsub is None:
-            self._pubsub = self.client.pubsub()
-
+        keys = list(keys)  # Protect against generators that can only be iterated once
         queue = asyncio.Queue()  # type: asyncio.Queue[_QueueItem]
         try:
-            new_channels = []
-            for key in keys:
-                while True:
-                    if key not in self._channels:
-                        channel_name = b'update/' + key
-                        new_channels.append(channel_name)
-                        self._channels[key] = _Channel()
-                    channel = self._channels[key]
-                    if channel.unsubscribe:
-                        await channel.unsubscribe.wait()
-                        # Go around the loop again
-                    else:
-                        break
-                channel.queues.add(queue)
-            if new_channels:
-                await self._pubsub.subscribe(*new_channels)
-
-            # This can only be done now as it fails if we haven't subscribed to
-            # anything yet.
-            if not self._pubsub_task:
-                self._pubsub_task = asyncio.get_event_loop().create_task(self._run_pubsub())
+            self._commands.put_nowait(_Command(keys, queue, _CommandType.SUBSCRIBE))
 
             # Condition may have been satisfied while we were busy subscribing
             logger.debug('Requested subscription to channels, notifying caller to check')
@@ -343,36 +385,19 @@ class RedisBackend(Backend):
                         raise RuntimeError('Unhandled key type {}'.format(key_type))
 
         finally:
-            close_keys = []
-            event = None
-            for key in keys:
-                old_channel = self._channels.get(key)
-                if not old_channel or queue not in old_channel.queues:
-                    continue     # An exception was thrown before we could register the queue
-                old_channel.queues.remove(queue)
-                if not old_channel.queues:
-                    assert old_channel.unsubscribe is None
-                    channel_name = b'update/' + key
-                    close_keys.append(key)
-                    if event is None:
-                        event = asyncio.Event()
-                    old_channel.unsubscribe = event
-            if event:
-                asyncio.get_event_loop().create_task(self._unsubscribe(close_keys, event))
+            self._commands.put_nowait(_Command(keys, queue, _CommandType.UNSUBSCRIBE))
 
     async def dump(self, key: bytes) -> Optional[bytes]:
         return await self._execute(self.client.dump, key)
 
     async def _close(self) -> None:
-        if self._pubsub_task is not None:
-            self._pubsub_task.cancel()
-            try:
-                await self._pubsub_task
-            except asyncio.CancelledError:
-                pass
-        for channel in self._channels.values():
-            if channel.unsubscribe:
-                await channel.unsubscribe.wait()
+        self._pubsub_task.cancel()
+        try:
+            await self._pubsub_task
+        except asyncio.CancelledError:
+            pass
+        if self._pubsub.connection and self._pubsub.connection.is_connected:
+            await self._pubsub.connection.disconnect()
         await self.client.close()
         await self.client.connection_pool.disconnect()
 
