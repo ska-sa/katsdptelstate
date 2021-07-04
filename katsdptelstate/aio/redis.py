@@ -302,8 +302,9 @@ class RedisBackend(Backend):
                         # aioredis doesn't automatically reconnect
                         # (see https://github.com/andymccurdy/redis-py/issues/1464).
                         try:
-                            await self._pubsub.connection.disconnect()
-                            await self._pubsub.connection.connect()
+                            if self._pubsub.connection is not None:
+                                await self._pubsub.connection.disconnect()
+                                await self._pubsub.connection.connect()
                         except aioredis.ConnectionError as exc:
                             # Avoid spamming the server with connection attempts
                             logger.warning('redis reconnect attempt failed (%s), trying in 1s', exc)
