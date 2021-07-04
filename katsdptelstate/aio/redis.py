@@ -100,7 +100,7 @@ class RedisBackend(Backend):
                             'add_mutable']:
             script = pkg_resources.resource_string(
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
-            self._scripts[script_name] = self.client.register_script(script)  # type: ignore
+            self._scripts[script_name] = self.client.register_script(script)
 
     async def _execute(self, call: Callable[..., Awaitable], *args, **kwargs) -> Any:
         """Execute a redis command, retrying if the connection died.
@@ -191,11 +191,11 @@ class RedisBackend(Backend):
         """Internal part of :meth:`get_range` that is retried if the connection fails."""
         with _handle_wrongtype():
             async with self.client.pipeline() as pipe:
-                pipe.exists(key)  # type: ignore
+                pipe.exists(key)
                 if include_previous and packed_st != b'-':
-                    pipe.zrevrangebylex(key, packed_st, b'-', start=0, num=1)  # type: ignore
+                    pipe.zrevrangebylex(key, packed_st, b'-', start=0, num=1)
                 if packed_st != b'+' and packed_et != b'-':
-                    pipe.zrangebylex(key, packed_st, packed_et)  # type: ignore
+                    pipe.zrangebylex(key, packed_st, packed_et)
                 # raise_on_error annotates the exception message, which breaks
                 # the _handle_wrongtype detection.
                 ret_vals = await pipe.execute(raise_on_error=False)
