@@ -19,6 +19,7 @@
 import asyncio
 from unittest import mock
 
+import aioredis
 import asynctest
 import async_timeout
 import numpy as np
@@ -550,6 +551,17 @@ class TestTelescopeStateRedis(TestTelescopeState):
     async def make_telescope_state(self) -> TelescopeState:
         client = await fakeredis.aioredis.create_redis_pool()
         return TelescopeState(RedisBackend(client))
+
+
+class TestTelescopeStateRedisFromUrl(TestTelescopeState):
+    async def make_telescope_state(self) -> TelescopeState:
+        client = await fakeredis.aioredis.create_redis_pool()
+        with asynctest.patch('aioredis.create_redis_pool', return_value=client, autospec=True):
+            backend = await RedisBackend.from_url('redis://example.invalid/')
+            aioredis.create_redis_pool.assert_called_once_with(
+                'redis://example.invalid/', timeout=mock.ANY
+            )
+        return TelescopeState(backend)
 
 
 class TestSharedMemoryBackend(asynctest.TestCase):
