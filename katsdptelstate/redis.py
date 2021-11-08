@@ -126,6 +126,21 @@ class RedisBackend(Backend):
                 'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
             self._scripts[script_name] = self.client.register_script(script)
 
+    @classmethod
+    def from_url(cls, url: str, *, db: Optional[int] = None) -> 'RedisBackend':
+        """Create a backend from a redis URL.
+
+        This is the recommended approach as it ensures that the server is
+        reachable, and sets some timeouts to reasonable values.
+        """
+        client = redis.Redis.from_url(
+            url,
+            db=db,
+            socket_timeout=5,
+            health_check_interval=30
+        )
+        return cls(client)
+
     def _call(self, script_name: str, *args, **kwargs) -> Any:
         return self._scripts[script_name](*args, **kwargs)
 
