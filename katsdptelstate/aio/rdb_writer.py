@@ -53,8 +53,8 @@ class RDBWriter(RDBWriterBase):
             client = client.backend
         if keys is None:
             logger.info("No keys specified - dumping entire database")
-            keys = await client.keys(b'*')  # type: ignore
+            keys = await client.keys(b'*')
         for key in keys:
             key = ensure_binary(key)
-            dumped_value = await client.dump(key)  # type: ignore
+            dumped_value = await client.dump(key)
             self.write_key(key, dumped_value)
