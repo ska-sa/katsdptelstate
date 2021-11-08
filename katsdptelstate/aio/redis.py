@@ -71,14 +71,7 @@ class _Command:
 
 
 class RedisBackend(Backend):
-    """Backend for :class:`TelescopeState` using redis for storage.
-
-    .. warning::
-
-        Different backends must not share the same redis connection pool. It
-        will mostly work, but will break down if they try to use pub/sub to
-        monitor the same keys.
-    """
+    """Backend for :class:`TelescopeState` using redis for storage."""
 
     _KEY_TYPES = {
         b'none': None,
