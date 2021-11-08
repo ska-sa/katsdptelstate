@@ -171,13 +171,13 @@ class RedisBackend(Backend):
             self._scripts[script_name] = _Script(script)
 
     @classmethod
-    async def from_url(cls, url: str) -> 'RedisBackend':
+    async def from_url(cls, url: str, *, db: Optional[int] = None) -> 'RedisBackend':
         """Create a backend from a redis URL.
 
         This is the recommended approach as it ensures that the server is
         reachable, and sets some timeouts to reasonable values.
         """
-        client = await aioredis.create_redis_pool(url, timeout=5)
+        client = await aioredis.create_redis_pool(url, db=db, timeout=5)
         return cls(client)
 
     async def _execute(self, call: Callable[..., Awaitable], *args, **kwargs) -> Any:
