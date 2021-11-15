@@ -550,7 +550,8 @@ class TelescopeState(TelescopeStateBase[Backend]):
             If specified, this is used to find the latest value instead of
             retrieving it from the backend.
         """
-        assert message is None or message.sub_key == sub_key
+        if message is not None and message.sub_key != sub_key:
+            return False           # This update is not applicable
         for prefix in self._prefixes:
             full_key = prefix + key
             if message is not None and full_key == message.key:
