@@ -4,7 +4,7 @@
 asynctest
 async_timeout
 coverage
-fakeredis[lua,aioredis]==1.4.1
+fakeredis[lua,aioredis]
 lupa==1.9                  # via fakeredis[lua]
 nose
 python-lzf==0.2.4
