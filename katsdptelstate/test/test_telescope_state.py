@@ -28,6 +28,7 @@ from katsdptelstate import (TelescopeState, ImmutableKeyError,
                             TimeoutError, CancelledError, encode_value, KeyType,
                             ENCODING_MSGPACK)
 from katsdptelstate.memory import MemoryBackend
+from katsdptelstate.redis import RedisBackend
 
 
 class TestTelescopeState(unittest.TestCase):
@@ -593,6 +594,20 @@ class TestTelescopeStateRedisUrl(TestTelescopeState):
 
         with mock.patch('redis.Redis.from_url', side_effect=make_fakeredis) as mock_redis:
             ts = TelescopeState('redis://example.com', db=1)
+            mock_redis.assert_called_with(
+                'redis://example.com',
+                db=1, socket_timeout=mock.ANY, health_check_interval=mock.ANY)
+        return ts
+
+
+class TestTelescopeStateRedisBackendFromUrl(TestTelescopeState):
+    def make_telescope_state(self) -> TelescopeState:
+        def make_fakeredis(cls, **kwargs):
+            return fakeredis.FakeRedis()
+
+        with mock.patch('redis.Redis.from_url', side_effect=make_fakeredis) as mock_redis:
+            backend = RedisBackend.from_url('redis://example.com', db=1)
+            ts = TelescopeState(backend)
             mock_redis.assert_called_with(
                 'redis://example.com',
                 db=1, socket_timeout=mock.ANY, health_check_interval=mock.ANY)

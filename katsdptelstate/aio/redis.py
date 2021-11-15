@@ -96,14 +96,15 @@ class RedisBackend(Backend):
             self._scripts[script_name] = self.client.register_script(script)
 
     @classmethod
-    async def from_url(cls, url: str) -> 'RedisBackend':
+    async def from_url(cls, url: str, *, db: Optional[int] = None) -> 'RedisBackend':
         """Create a backend from a redis URL.
 
         This is the recommended approach as it ensures that the server is
         reachable, and sets some timeouts to reasonable values.
         """
         # These are the same timeouts as the synchronous client
-        client = aioredis.Redis.from_url(url, socket_timeout=5, health_check_interval=30)
+        client = aioredis.Redis.from_url(
+            url, db=db, socket_timeout=5, health_check_interval=30)
         # The above doesn't actually try to talk to the server. Do that before
         # claiming success.
         await client.ping()
