@@ -34,6 +34,9 @@ from ..utils import KeyType, ensure_str, display_str
 
 logger = logging.getLogger(__name__)
 _QueueItem = Tuple[bytes, Optional[bytes]]
+# Note: this must be valid UTF-8, because aioredis decodes it if it needs to
+# reconnect to the server.
+_dummy_channel = b'\0katsdptelstate-internal0\001'
 
 
 @contextlib.contextmanager
@@ -225,6 +228,13 @@ class RedisBackend(Backend):
         """Process a message received via pub/sub."""
         logger.debug('Received pub/sub message %s', message)
         channel_name = message['channel']
+        if channel_name == _dummy_channel:
+            return
+        if isinstance(channel_name, int):
+            # Extra workaround for
+            # https://github.com/aio-libs/aioredis-py/issues/1206,
+            # although subscribing to _dummy_channel should be sufficient.
+            return
         assert channel_name.startswith(b'update/')
         key = channel_name[7:]
         channel = self._channels.get(key)
@@ -289,12 +299,14 @@ class RedisBackend(Backend):
         """
         try:
             loop = asyncio.get_event_loop()
+            # Ensure we are always subscribed to something, as a workaround for
+            # https://github.com/aio-libs/aioredis-py/issues/1206.
+            await self._pubsub.subscribe(_dummy_channel)
             get_message_task: Optional[asyncio.Task] = None
             command_queue_task: asyncio.Task = loop.create_task(self._commands.get())
             tasks: Set[asyncio.Future] = {command_queue_task}
             while True:
-                # get_message raises an error if we try this before the first
-                # connection attempt.
+                # get_message raises an error if we try this when not connected.
                 if get_message_task is None and self._pubsub.connection:
                     # Using a small timeout ensures that health checks get run
                     get_message_task = loop.create_task(self._pubsub.get_message(timeout=1))

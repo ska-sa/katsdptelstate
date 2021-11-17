@@ -28,7 +28,7 @@ import katsdptelstate
 from katsdptelstate import ImmutableKeyError, encode_value, KeyType, ENCODING_MSGPACK
 from katsdptelstate.aio import TelescopeState
 from katsdptelstate.aio.memory import MemoryBackend
-from katsdptelstate.aio.redis import RedisBackend
+from katsdptelstate.aio.redis import RedisBackend, _dummy_channel
 
 
 class TestTelescopeState(asynctest.TestCase):
@@ -388,7 +388,7 @@ class TestTelescopeState(asynctest.TestCase):
         # so we need to sleep a bit to let them take place.
         if isinstance(self.ts.backend, RedisBackend):
             await asyncio.sleep(0.1)
-            self.assertEqual(self.ts.backend._pubsub.channels, {})
+            self.assertEqual(self.ts.backend._pubsub.channels, {_dummy_channel: None})
 
     async def test_wait_key_concurrent_same(self) -> None:
         task1 = asyncio.ensure_future(self.ts.wait_key('key'))
@@ -403,7 +403,7 @@ class TestTelescopeState(asynctest.TestCase):
         # so we need to sleep a bit to let them take place.
         if isinstance(self.ts.backend, RedisBackend):
             await asyncio.sleep(0.1)
-            self.assertEqual(self.ts.backend._pubsub.channels, {})
+            self.assertEqual(self.ts.backend._pubsub.channels, {_dummy_channel: None})
 
     async def test_wait_indexed_already_done(self) -> None:
         await self.ts.set_indexed('test_key', 'sub_key', 5)
