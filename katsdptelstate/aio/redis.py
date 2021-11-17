@@ -316,7 +316,7 @@ class RedisBackend(Backend):
                 if get_message_task is not None and get_message_task in done:
                     try:
                         message = await get_message_task
-                    except aioredis.ConnectionError as exc:
+                    except (ConnectionError, aioredis.ConnectionError) as exc:
                         message = None
                         logger.warning('redis connection error (%s), trying to reconnect', exc)
                         # aioredis doesn't automatically reconnect
@@ -325,10 +325,10 @@ class RedisBackend(Backend):
                             if self._pubsub.connection is not None:
                                 await self._pubsub.connection.disconnect()
                                 await self._pubsub.connection.connect()
-                        except aioredis.ConnectionError as exc:
+                        except (ConnectionError, aioredis.ConnectionError) as exc:
                             # Avoid spamming the server with connection attempts
                             logger.warning('redis reconnect attempt failed (%s), trying in 1s', exc)
-                            await asyncio.sleep(1)
+                        await asyncio.sleep(1)
                     finally:
                         # Causes new task to created on next iteration
                         get_message_task = None
