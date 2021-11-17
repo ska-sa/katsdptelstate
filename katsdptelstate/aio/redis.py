@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 _QueueItem = Tuple[bytes, Optional[bytes]]
 # Note: this must be valid UTF-8, because aioredis decodes it if it needs to
 # reconnect to the server.
-_dummy_channel = b'\0katsdptelstate-internal0\001'
+_DUMMY_CHANNEL = b'\0katsdptelstate-internal0\001'
 
 
 @contextlib.contextmanager
@@ -228,12 +228,12 @@ class RedisBackend(Backend):
         """Process a message received via pub/sub."""
         logger.debug('Received pub/sub message %s', message)
         channel_name = message['channel']
-        if channel_name == _dummy_channel:
+        if channel_name == _DUMMY_CHANNEL:
             return
         if isinstance(channel_name, int):
             # Extra workaround for
             # https://github.com/aio-libs/aioredis-py/issues/1206,
-            # although subscribing to _dummy_channel should be sufficient.
+            # although subscribing to _DUMMY_CHANNEL should be sufficient.
             return
         assert channel_name.startswith(b'update/')
         key = channel_name[7:]
@@ -301,7 +301,7 @@ class RedisBackend(Backend):
             loop = asyncio.get_event_loop()
             # Ensure we are always subscribed to something, as a workaround for
             # https://github.com/aio-libs/aioredis-py/issues/1206.
-            await self._pubsub.subscribe(_dummy_channel)
+            await self._pubsub.subscribe(_DUMMY_CHANNEL)
             get_message_task: Optional[asyncio.Task] = None
             command_queue_task: asyncio.Task = loop.create_task(self._commands.get())
             tasks: Set[asyncio.Future] = {command_queue_task}
