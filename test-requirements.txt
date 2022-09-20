@@ -1,11 +1,12 @@
 # TODO: change to -d and unpin fakeredis once katsdpdockerbase updates fakeredis
 -d https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
 
-asynctest
 async_timeout
 coverage
 fakeredis[lua,aioredis]
 lupa==1.9                  # via fakeredis[lua]
-nose
+pytest
+pytest-asyncio==0.19.0
+pytest-cov
 python-lzf==0.2.4
 rdbtools

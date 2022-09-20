@@ -25,7 +25,7 @@ here = os.path.dirname(__file__)
 readme = open(os.path.join(here, 'README.rst')).read()
 news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
-tests_require = ['asynctest', 'async_timeout', 'fakeredis[lua,aioredis]>=1.4.0']
+tests_require = ['async_timeout', 'fakeredis[lua,aioredis]>=1.4.0', 'pytest', 'pytest-asyncio']
 
 setup(name='katsdptelstate',
       description='Karoo Array Telescope - Telescope State Client',

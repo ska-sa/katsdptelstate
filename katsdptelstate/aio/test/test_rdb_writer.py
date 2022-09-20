@@ -5,11 +5,12 @@ Most of the core functionality is tested via
 the async bits.
 """
 
+import logging
 import os
-import shutil
-import tempfile
+from typing import AsyncGenerator
 
-import asynctest
+import pytest
+import pytest_asyncio
 
 import katsdptelstate
 from katsdptelstate import KeyType
@@ -17,37 +18,59 @@ from katsdptelstate.aio import TelescopeState
 from katsdptelstate.aio.rdb_writer import RDBWriter
 
 
-class TestRdbWriter(asynctest.TestCase):
-    async def setUp(self):
-        self.telstate = TelescopeState()
-        await self.telstate.set('immutable', 'abc')
-        await self.telstate.add('mutable', 'def', ts=1234567890.0)
-        await self.telstate.set_indexed('indexed', 'subkey', 'xyz')
-        base_dir = tempfile.mkdtemp()
-        self.filename = os.path.join(base_dir, 'test.rdb')
-        self.addCleanup(shutil.rmtree, base_dir)
-        self.reader = katsdptelstate.TelescopeState()  # Synchronous
+class TestRdbWriter:
+    @pytest_asyncio.fixture
+    async def telstate(self) -> AsyncGenerator[TelescopeState, None]:
+        telstate = TelescopeState()
+        await telstate.set('immutable', 'abc')
+        await telstate.add('mutable', 'def', ts=1234567890.0)
+        await telstate.set_indexed('indexed', 'subkey', 'xyz')
+        yield telstate
+        telstate.backend.close()
+        await telstate.backend.wait_closed()
 
-    async def test_write_all(self):
-        writer = RDBWriter(self.filename)
-        await writer.save(self.telstate)
-        writer.close()
-        self.assertEqual(writer.keys_written, 3)
-        self.assertEqual(writer.keys_failed, 0)
-        self.reader.load_from_file(self.filename)
-        self.assertEqual(set(self.reader.keys()), {'immutable', 'indexed', 'mutable'})
-        self.assertEqual(self.reader.key_type('immutable'), KeyType.IMMUTABLE)
-        self.assertEqual(self.reader.get('immutable'), 'abc')
-        self.assertEqual(self.reader.get_range('mutable', st=0), [('def', 1234567890.0)])
-        self.assertEqual(self.reader.get('indexed'), {'subkey': 'xyz'})
+    @pytest.fixture
+    def reader(self) -> katsdptelstate.TelescopeState:  # Synchronous
+        return katsdptelstate.TelescopeState()
 
-    async def test_write_some(self):
-        writer = RDBWriter(self.filename)
-        with self.assertLogs('katsdptelstate.rdb_writer_base', level='ERROR'):
-            await writer.save(self.telstate, ['immutable', 'missing'])
+    @pytest.fixture
+    def filename(self, tmpdir) -> str:
+        return os.path.join(tmpdir, 'test.rdb')
+
+    async def test_write_all(
+            self,
+            filename: str,
+            telstate: TelescopeState,
+            reader: katsdptelstate.TelescopeState) -> None:
+        writer = RDBWriter(filename)
+        await writer.save(telstate)
         writer.close()
-        self.assertEqual(writer.keys_written, 1)
-        self.assertEqual(writer.keys_failed, 1)
-        self.reader.load_from_file(self.filename)
-        self.assertEqual(self.reader.keys(), ['immutable'])
-        self.assertEqual(self.reader.get('immutable'), 'abc')
+        assert writer.keys_written == 3
+        assert writer.keys_failed == 0
+        reader.load_from_file(filename)
+        assert set(reader.keys()) == {'immutable', 'indexed', 'mutable'}
+        assert reader.key_type('immutable') == KeyType.IMMUTABLE
+        assert reader.get('immutable') == 'abc'
+        assert reader.get_range('mutable', st=0) == [('def', 1234567890.0)]
+        assert reader.get('indexed') == {'subkey': 'xyz'}
+
+    async def test_write_some(
+            self,
+            filename: str,
+            telstate: TelescopeState,
+            reader: katsdptelstate.TelescopeState,
+            caplog) -> None:
+        writer = RDBWriter(filename)
+        with caplog.at_level(logging.ERROR, logger='katsdptelstate.rdb_writer_base'):
+            await writer.save(telstate, ['immutable', 'missing'])
+        assert caplog.record_tuples[-1] == (
+            'katsdptelstate.rdb_writer_base',
+            logging.ERROR,
+            "Failed to save key 'missing': 'Key not found in Redis'"
+        )
+        writer.close()
+        assert writer.keys_written == 1
+        assert writer.keys_failed == 1
+        reader.load_from_file(filename)
+        assert reader.keys() == ['immutable']
+        assert reader.get('immutable') == 'abc'

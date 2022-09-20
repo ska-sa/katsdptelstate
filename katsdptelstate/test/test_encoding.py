@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2015-2020, National Research Foundation (Square Kilometre Array)
+# Copyright (c) 2015-2020, 2022, National Research Foundation (Square Kilometre Array)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -14,7 +14,7 @@
 # limitations under the License.
 ################################################################################
 
-import unittest
+import pytest
 from unittest import mock
 from typing import Any
 
@@ -24,7 +24,7 @@ from ..encoding import encode_value, decode_value, ENCODING_PICKLE, ENCODING_MSG
 from ..errors import EncodeError, DecodeError
 
 
-class _TestEncoding(unittest.TestCase):
+class _TestEncoding:
     """Test encode_value and decode_value.
 
     This must be subclassed to specify the encoding type.
@@ -35,11 +35,11 @@ class _TestEncoding(unittest.TestCase):
     def _test_value(self, value: Any) -> None:
         encoded = encode_value(value, encoding=self.encoding)
         decoded = decode_value(encoded)
-        self.assertEqual(type(value), type(decoded))
+        assert type(value) == type(decoded)
         if isinstance(value, np.ndarray):
             np.testing.assert_array_equal(value, decoded)
         else:
-            self.assertEqual(value, decoded)
+            assert value == decoded
 
     def test_list_tuple(self) -> None:
         self._test_value(('a', 'tuple', ['with', ('embedded', 'list')]))
@@ -78,12 +78,12 @@ class _TestEncoding(unittest.TestCase):
     def test_nan(self) -> None:
         encoded = encode_value(np.nan, encoding=self.encoding)
         decoded = decode_value(encoded)
-        self.assertTrue(np.isnan(decoded))
+        assert np.isnan(decoded)
 
     @mock.patch('katsdptelstate.encoding._allow_pickle', False)
     def test_fuzz(self) -> None:
         if self.encoding == ENCODING_PICKLE:
-            raise unittest.SkipTest("Pickles will exhaust memory or crash given a bad pickle")
+            pytest.skip("Pickles will exhaust memory or crash given a bad pickle")
         # Create an encoded string with a bit of everything
         orig = [('a str', b'bytes'), 3, 4.0, 5 + 6j, np.int32(1),
                 True, False, None, np.array([[1, 2, 3]])]
@@ -114,18 +114,18 @@ class TestEncodingPickle(_TestEncoding):
 class TestEncodingMsgpack(_TestEncoding):
     encoding = ENCODING_MSGPACK
 
-    def setUp(self) -> None:
+    def setup_method(self) -> None:
         self.object_dtype = np.dtype([('a', np.int32), ('b', np.object_)])
         self.object_array = np.zeros((3,), self.object_dtype)
 
     def test_ndarray_with_object(self) -> None:
-        with self.assertRaises(EncodeError):
+        with pytest.raises(EncodeError):
             encode_value(self.object_array, encoding=self.encoding)
 
     def test_numpy_scalar_with_object(self) -> None:
-        with self.assertRaises(EncodeError):
+        with pytest.raises(EncodeError):
             encode_value(self.object_array[0], encoding=self.encoding)
 
     def test_unhandled_type(self) -> None:
-        with self.assertRaises(EncodeError):
+        with pytest.raises(EncodeError):
             encode_value(self, encoding=self.encoding)
