@@ -42,7 +42,8 @@ class TestEndpoint:
 
     def test_bad_ipv6(self) -> None:
         parser = endpoint_parser(1234)
-        pytest.raises(ValueError, parser, '[notipv6]:1234')
+        with pytest.raises(ValueError):
+            parser('[notipv6]:1234')
 
     def test_iter(self) -> None:
         endpoint = Endpoint('hello', 80)
@@ -99,7 +100,8 @@ class TestEndpointList:
         assert expected == endpoints
 
     def test_parser_single_port_bad(self) -> None:
-        pytest.raises(ValueError, endpoint_list_parser(1234, single_port=True), 'x:123,y:456')
+        with pytest.raises(ValueError):
+            endpoint_list_parser(1234, single_port=True)('x:123,y:456')
 
 
 def test_endpoints_to_str() -> None:
