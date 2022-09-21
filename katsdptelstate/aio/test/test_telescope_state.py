@@ -18,7 +18,7 @@
 
 import asyncio
 from unittest import mock
-from typing import AsyncGenerator
+from typing import AsyncGenerator, AnyStr
 
 import async_timeout
 import numpy as np
@@ -466,7 +466,8 @@ class TestTelescopeState:
         with pytest.raises(ImmutableKeyError):
             await ts.wait_indexed('test_key', 'value')
 
-    async def _test_mixed_unicode_bytes(self, ts: TelescopeState, ns: TelescopeState, key) -> None:
+    async def _test_mixed_unicode_bytes(
+            self, ts: TelescopeState, ns: TelescopeState, key: AnyStr) -> None:
         await ts.clear()
         await ns.add(key, 'value', immutable=True)
         assert await ns.get(key) == 'value'
