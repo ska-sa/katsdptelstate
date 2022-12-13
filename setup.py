@@ -61,7 +61,6 @@ setup(name='katsdptelstate',
       install_requires=[
           'hiredis',          # Not strictly required, but improves performance
           'msgpack',
-          'netifaces',
           'numpy',
           'redis>=3.3',
           'six>=1.12'

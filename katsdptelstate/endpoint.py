@@ -19,7 +19,6 @@ import struct
 from typing import List, Iterable, Iterator, Callable, Any
 
 import ipaddress
-import netifaces
 
 
 class Endpoint:
@@ -55,31 +54,6 @@ class Endpoint:
     def __iter__(self) -> Iterator:
         """Support `tuple(endpoint)` for passing to a socket function"""
         return iter((self.host, self.port))
-
-    def multicast_subscribe(self, sock: socket.socket) -> bool:
-        """If the address is an IPv4 multicast address, subscribe to the group on `sock`.
-
-        Return `True` if the host is a multicast address.
-        """
-        try:
-            raw = socket.inet_aton(str(self.host))
-        except OSError:
-            return False
-        else:
-            # IPv4 multicast is the range 224.0.0.0 - 239.255.255.255
-            if raw[0] >= 224 and raw[0] <= 239:
-                for iface in netifaces.interfaces():
-                    for addr in netifaces.ifaddresses(iface).get(netifaces.AF_INET, []):
-                        # Skip point-to-point links (includes loopback)
-                        if 'peer' in addr:
-                            continue
-                        if_raw = socket.inet_aton(addr['addr'])
-                        mreq = struct.pack("4s4s", raw, if_raw)
-                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                        break  # Should only need to subscribe once per interface
-                return True
-            else:
-                return False
 
 
 def endpoint_parser(default_port: Any) -> Callable[[str], Endpoint]:

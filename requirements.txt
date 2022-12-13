@@ -3,7 +3,6 @@
 aioredis
 hiredis
 msgpack
-netifaces
 numpy
 redis
 six
