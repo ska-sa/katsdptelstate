@@ -146,13 +146,12 @@ Example
 
 .. code:: python
 
-  import aioredis
   from katsdptelstate.aio import TelescopeState
   from katsdptelstate.aio.redis import RedisBackend
 
   # Create a connection to localhost redis server
-  client = await aioredis.create_redis_pool('redis://localhost')
-  ts = TelescopeState(RedisBackend(client))
+  backend = await RedisBackend.from_url('redis://localhost')
+  ts = TelescopeState(backend)
 
   # Store and retrieve some data
   await ts.set('key', 'value')

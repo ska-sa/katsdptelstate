@@ -1,6 +1,16 @@
 History
 =======
 
+0.12 (2023-03-13)
+-----------------
+* Switch to aioredis 2.x (#124)
+* Add async (and synchronous) `RedisBackend.from_url` constructor (#125, #126)
+* Switch from nose to pytest (#129)
+* Remove `Endpoint.multicast_subscribe` and `netifaces` dependency (#130)
+* Fix Lua script for `set_indexed` so that `wait_indexed` actually works (#127)
+* Make aio `wait_key` more robust (#128)
+* General cleanup (#122, #123)
+
 0.11 (2021-05-07)
 -----------------
 * Add asynchronous RDBWriter class (#108)
