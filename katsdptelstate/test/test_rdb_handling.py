@@ -20,7 +20,7 @@ import unittest
 import shutil
 import os
 import tempfile
-from distutils.version import LooseVersion
+from packaging.version import Version
 from typing import Mapping, Iterable, BinaryIO, Optional, Union
 
 import redis
@@ -150,7 +150,7 @@ class TestRDBHandling(unittest.TestCase):
     def _test_hash(self, items: Mapping[bytes, bytes]) -> None:
         # redis-py 3.5 implements multi-item hset and deprecates hmset.
         # Use whichever version will work and avoid a warning.
-        if redis.__version__ >= LooseVersion('3.5'):     # type: ignore
+        if Version(redis.__version__) >= Version('3.5'):     # type: ignore
             self.tr.hset('my_hash', mapping=items)
         else:
             self.tr.hmset('my_hash', items)

@@ -568,7 +568,7 @@ class TestTelescopeStateRedisFromUrl(TestTelescopeState):
 
 
 class TestSharedMemoryBackend:
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.async_backend = MemoryBackend()
         self.sync_backend = self.async_backend.to_sync()
         self.async_ts = TelescopeState(self.async_backend)

@@ -4,6 +4,8 @@
 async_timeout
 fakeredis[lua]
 lupa==1.9                  # via fakeredis[lua]
+packaging
+pyparsing                  # via packaging
 pytest
 pytest-asyncio==0.19.0
 pytest-cov
