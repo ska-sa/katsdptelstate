@@ -1,7 +1,7 @@
 History
 =======
 
-0.12 (2023-03-14)
+0.12 (2023-03-13)
 -----------------
 * Switch to aioredis 2.x (#124)
 * Add async (and synchronous) `RedisBackend.from_url` constructor (#125, #126)
