@@ -554,7 +554,7 @@ class TestTelescopeStateRedisFromUrl(TestTelescopeState):
             return fakeredis.aioredis.FakeRedis()
 
         with mock.patch(
-                'aioredis.Redis.from_url',
+                'redis.asyncio.Redis.from_url',
                 side_effect=make_fakeredis,
                 autospec=True) as mock_redis:
             backend = await RedisBackend.from_url('redis://example.invalid/')

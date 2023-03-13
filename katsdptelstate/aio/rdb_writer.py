@@ -17,7 +17,7 @@
 import logging
 from typing import Iterable, Union, Optional
 
-import aioredis
+from redis import asyncio as aioredis
 
 from ..rdb_writer_base import RDBWriterBase
 from ..utils import ensure_binary

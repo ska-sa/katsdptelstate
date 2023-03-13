@@ -23,7 +23,7 @@ from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator,
                     Iterable, Callable, Awaitable, Optional, Union, Any)
 
 import pkg_resources
-import aioredis
+from redis import asyncio as aioredis
 
 from .. import utils
 from .backend import Backend
