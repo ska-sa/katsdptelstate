@@ -27,9 +27,9 @@ news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
 tests_require = [
     'async_timeout>=1.3.0',
-    'fakeredis[lua,aioredis]>=1.4.0',
+    'fakeredis[lua,aioredis]>=1.6.0,<2',
     'pytest',
-    'pytest-asyncio'
+    'pytest-asyncio>=0.17.0'
 ]
 
 setup(name='katsdptelstate',
@@ -62,7 +62,7 @@ setup(name='katsdptelstate',
           'hiredis',          # Not strictly required, but improves performance
           'msgpack',
           'numpy',
-          'redis>=3.3',
+          'redis>=3.3,<4.2',
           'six>=1.12'
       ],
       extras_require={
