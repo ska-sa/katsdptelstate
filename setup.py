@@ -28,7 +28,6 @@ long_description = readme + '\n\n' + news
 tests_require = [
     'async_timeout>=1.3.0',
     'fakeredis[lua]>=2.0.0',
-    'packaging',
     'pytest',
     'pytest-asyncio>=0.17.0'
 ]

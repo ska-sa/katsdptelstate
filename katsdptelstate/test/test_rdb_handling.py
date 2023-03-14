@@ -20,7 +20,6 @@ import unittest
 import shutil
 import os
 import tempfile
-from packaging.version import Version
 from typing import Mapping, Iterable, BinaryIO, Optional, Union
 
 import redis
@@ -148,12 +147,7 @@ class TestRDBHandling(unittest.TestCase):
     #     self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
     def _test_hash(self, items: Mapping[bytes, bytes]) -> None:
-        # redis-py 3.5 implements multi-item hset and deprecates hmset.
-        # Use whichever version will work and avoid a warning.
-        if Version(redis.__version__) >= Version('3.5'):     # type: ignore
-            self.tr.hset('my_hash', mapping=items)
-        else:
-            self.tr.hmset('my_hash', items)
+        self.tr.hset('my_hash', mapping=items)
         with RDBWriter(self.base('hash.rdb')) as rdbw:
             rdbw.save(self.tr)
 
