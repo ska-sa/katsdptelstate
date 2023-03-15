@@ -60,7 +60,7 @@ class TabloidRedis(fakeredis.FakeRedis):
             data = self.zrange(key, 0, -1)
             return dump_zset(data)
         elif key_type == b'string':
-            return dump_string(self.get(key))
+            return dump_string(self.get(key))      # type: ignore[arg-type]
         elif key_type == b'hash':
             return dump_hash(self.hgetall(key))
         raise NotImplementedError("Unsupported key type {}. Must be either "
@@ -146,7 +146,7 @@ class TestRDBHandling(unittest.TestCase):
     #     """Ziplist with >4GB of data (can't be encoded as ziplist)"""
     #     self._test_zset([(b'%03d' % i) + b'?' * 500000000 for i in range(10)])
 
-    def _test_hash(self, items: Mapping[bytes, bytes]) -> None:
+    def _test_hash(self, items: Mapping[Union[str, bytes], Union[bytes, float, int, str]]) -> None:
         self.tr.hset('my_hash', mapping=items)
         with RDBWriter(self.base('hash.rdb')) as rdbw:
             rdbw.save(self.tr)
