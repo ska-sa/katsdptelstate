@@ -8,3 +8,4 @@ repos:
   hooks:
     - id: mypy
       args: []
+      additional_dependencies: [redis==4.5.1]
