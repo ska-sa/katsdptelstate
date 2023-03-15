@@ -1,7 +1,7 @@
 History
 =======
 
-0.13 (2023-03-14)
+0.13 (2023-03-15)
 -----------------
 * Upgrade to redis-py>=4.2 and fakeredis>=2, fix test warnings (#132)
 * This now requires at least Python 3.7 and no more aioredis
