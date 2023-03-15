@@ -85,12 +85,12 @@ class RedisBackend(Backend):
 
     def __init__(self, client: aioredis.Redis) -> None:
         self.client = client
-        self._pubsub = client.pubsub()  # type: aioredis.client.PubSub
+        self._pubsub = client.pubsub()
         self._pubsub_task = asyncio.get_event_loop().create_task(self._run_pubsub())
         self._commands = asyncio.Queue()  # type: asyncio.Queue[_Command]
         # Channels are indexed by key, not pub/sub channel name
         self._channels = {}       # type: Dict[bytes, Set[asyncio.Queue[_QueueItem]]]
-        self._scripts = {}        # type: Dict[str, aioredis.client.Script]
+        self._scripts = {}
         self._close_task = None   # type: Optional[asyncio.Task]
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:

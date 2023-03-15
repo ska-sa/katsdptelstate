@@ -45,8 +45,7 @@ class RedisCallback(BackendCallback):
 
     def set(self, key: bytes, value: bytes, expiry: Optional[datetime], info: dict) -> None:
         self.client_busy = True
-        # mypy 0.720's typeshed doesn't allow bytes keys
-        self.client.set(key, value)        # type: ignore
+        self.client.set(key, value)
         if expiry is not None:
             self.client.expireat(key, expiry)
         self.client_busy = False
@@ -119,7 +118,7 @@ class RedisBackend(Backend):
             # redis.TimeoutError: bad host
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
-        self._scripts = {}     # type: Dict[str, redis.client.Script]
+        self._scripts = {}
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:
             script = pkg_resources.resource_string(
@@ -150,19 +149,16 @@ class RedisBackend(Backend):
         return rdb_reader.load_from_file(RedisCallback(self.client), file)
 
     def __contains__(self, key: bytes) -> bool:
-        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-        return bool(self.client.exists(key))     # type: ignore
+        return bool(self.client.exists(key))
 
     def keys(self, filter: bytes) -> List[bytes]:
         return self.client.keys(filter)
 
     def delete(self, key: bytes) -> None:
-        # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-        self.client.unlink(key)                  # type: ignore
+        self.client.unlink(key)
 
     def clear(self) -> None:
-        # typeshed doesn't know about the asynchronous argument
-        self.client.flushdb(asynchronous=True)   # type: ignore
+        self.client.flushdb(asynchronous=True)
 
     def key_type(self, key: bytes) -> Optional[KeyType]:
         type_ = self.client.type(key)
@@ -254,8 +250,7 @@ class RedisBackend(Backend):
         p = self.client.pubsub()
         with contextlib.closing(p):
             for key in keys:
-                # ignore due to typeshed bug: https://github.com/python/typeshed/pull/3969
-                p.subscribe(b'update/' + key)     # type: ignore
+                p.subscribe(b'update/' + key)
             timeout = yield None
             while True:
                 assert timeout is not None
