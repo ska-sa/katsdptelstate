@@ -554,7 +554,7 @@ class TestTelescopeStateRedisFromUrl(TestTelescopeState):
             return fakeredis.aioredis.FakeRedis()
 
         with mock.patch(
-                'aioredis.Redis.from_url',
+                'redis.asyncio.Redis.from_url',
                 side_effect=make_fakeredis,
                 autospec=True) as mock_redis:
             backend = await RedisBackend.from_url('redis://example.invalid/')
@@ -568,7 +568,7 @@ class TestTelescopeStateRedisFromUrl(TestTelescopeState):
 
 
 class TestSharedMemoryBackend:
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.async_backend = MemoryBackend()
         self.sync_backend = self.async_backend.to_sync()
         self.async_ts = TelescopeState(self.async_backend)

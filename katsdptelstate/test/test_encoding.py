@@ -81,6 +81,9 @@ class _TestEncoding:
         assert np.isnan(decoded)
 
     @mock.patch('katsdptelstate.encoding._allow_pickle', False)
+    # Ignore these warnings... If they ever become errors, they'll be turned into DecodeErrors.
+    @pytest.mark.filterwarnings(r"ignore:Passing \(type, 1\):FutureWarning")
+    @pytest.mark.filterwarnings(r"ignore:invalid escape sequence:DeprecationWarning")
     def test_fuzz(self) -> None:
         if self.encoding == ENCODING_PICKLE:
             pytest.skip("Pickles will exhaust memory or crash given a bad pickle")

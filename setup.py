@@ -27,7 +27,7 @@ news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
 tests_require = [
     'async_timeout>=1.3.0',
-    'fakeredis[lua,aioredis]>=1.6.0,<2',
+    'fakeredis[lua]>=2.0.0',
     'pytest',
     'pytest-asyncio>=0.17.0'
 ]
@@ -47,27 +47,28 @@ setup(name='katsdptelstate',
           'License :: OSI Approved :: BSD License',
           'Operating System :: OS Independent',
           'Programming Language :: Python',
-          'Programming Language :: Python :: 3.5',
-          'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10',
+          'Programming Language :: Python :: 3.11',
           'Topic :: Software Development :: Libraries :: Python Modules',
           'Topic :: Scientific/Engineering :: Astronomy'],
       platforms=['OS Independent'],
       keywords='meerkat ska',
-      python_requires='>=3.5',
+      python_requires='>=3.7',
       setup_requires=['katversion'],
       use_katversion=True,
       install_requires=[
           'hiredis',          # Not strictly required, but improves performance
           'msgpack',
           'numpy',
-          'redis>=3.3,<4.2',
+          'redis>=4.2',
           'six>=1.12'
       ],
       extras_require={
           'rdb': ['rdbtools', 'python-lzf'],
-          'aio': ['aioredis>=2.0.0a1'],
+          'aio': [],
           'test': tests_require
       },
       tests_require=tests_require,
