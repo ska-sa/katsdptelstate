@@ -297,13 +297,14 @@ class RedisBackend(Backend):
         together rather than handled independently, because it's not clear
         that a single :class:`aioredis.client.PubSub` is async-safe.
         """
+        get_message_task: Optional[asyncio.Task] = None
+        command_queue_task: Optional[asyncio.Task] = None
         try:
             loop = asyncio.get_event_loop()
             # Ensure we are always subscribed to something, as a workaround for
             # https://github.com/aio-libs/aioredis-py/issues/1206.
             await self._pubsub.subscribe(_DUMMY_CHANNEL)
-            get_message_task: Optional[asyncio.Task] = None
-            command_queue_task: asyncio.Task = loop.create_task(self._commands.get())
+            command_queue_task = loop.create_task(self._commands.get())
             tasks: Set[asyncio.Future] = {command_queue_task}
             while True:
                 # get_message raises an error if we try this when not connected.
@@ -357,7 +358,8 @@ class RedisBackend(Backend):
         finally:
             if get_message_task is not None:
                 get_message_task.cancel()
-            command_queue_task.cancel()
+            if command_queue_task is not None:
+                command_queue_task.cancel()
 
     async def monitor_keys(self, keys: Iterable[bytes]) -> AsyncGenerator[KeyUpdateBase, None]:
         # Refer to katsdptelstate.redis.RedisBackend for details of the protocol.
