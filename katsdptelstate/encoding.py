@@ -61,13 +61,16 @@ _warn_on_pickle = False
 _pickle_lock = threading.Lock()       # Protects _allow_pickle, _warn_on_pickle
 
 
-PICKLE_WARNING = ('The telescope state contains pickled values. This is a security risk, '
-                  'but you have enabled it with set_allow_pickle.')
-PICKLE_ERROR = ('The telescope state contains pickled values. This is a security risk, '
-                'so is disabled by default. If you trust the source of the data, you '
-                'can allow the pickles to be loaded by setting '
-                'KATSDPTELSTATE_ALLOW_PICKLE=1 in the environment. This is needed for '
-                'MeerKAT data up to March 2019.')
+PICKLE_WARNING = ('The telescope state contains pickled values. This is a'
+                  ' security risk, but you have enabled it with '
+                  'set_allow_pickle.')
+PICKLE_ERROR = ('The telescope state contains pickled values. This is a '
+                'security risk, so is disabled by default. This is needed for'
+                ' MeerKAT data before March 2019. If you trust the source of'
+                ' the data, you can allow the pickles to be loaded by setting'
+                ' KATSDPTELSTATE_ALLOW_PICKLE=1 in the environment. In bash'
+                ' this is done with "export KATSDPTELSTATE_ALLOW_PICKLE=1" or'
+                ' in the code with "katsdptelstate.set_allow_pickle(True)"')
 
 
 # See https://stackoverflow.com/questions/11305790
