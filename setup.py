@@ -35,6 +35,7 @@ tests_require = [
 setup(name='katsdptelstate',
       description='Karoo Array Telescope - Telescope State Client',
       long_description=long_description,
+      long_description_content_type='text/x-rst',
       author='MeerKAT SDP team',
       author_email='sdpdev+katsdptelstate@ska.ac.za',
       packages=find_packages(),

@@ -4,3 +4,4 @@ exclude .gitignore
 include Dockerfile
 include redis.conf
 include doc/*
+include NEWS.rst
