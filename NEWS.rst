@@ -1,6 +1,13 @@
 History
 =======
 
+0.14 (2024-02-26)
+-----------------
+* Improvements to internal type hints (#133)
+* Get lupa version (for testing) from katsdpdockerbase (#134)
+* Fix variables referenced before use in exception path (#135)
+* Improve error message when opening old files containing pickles (#136)
+
 0.13 (2023-03-15)
 -----------------
 * Upgrade to redis-py>=4.2 and fakeredis>=2, fix test warnings (#132)
