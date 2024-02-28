@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ################################################################################
-# Copyright (c) 2015-2019, National Research Foundation (Square Kilometre Array)
+# Copyright (c) 2015-2024, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -35,8 +35,9 @@ tests_require = [
 setup(name='katsdptelstate',
       description='Karoo Array Telescope - Telescope State Client',
       long_description=long_description,
+      long_description_content_type='text/x-rst',
       author='MeerKAT SDP team',
-      author_email='sdpdev+katsdptelstate@ska.ac.za',
+      author_email='sdpdev+katsdptelstate@sarao.ac.za',
       packages=find_packages(),
       package_data={'': ['lua_scripts/*.lua', 'py.typed']},
       url='https://github.com/ska-sa/katsdptelstate',
@@ -52,10 +53,11 @@ setup(name='katsdptelstate',
           'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10',
           'Programming Language :: Python :: 3.11',
+          'Programming Language :: Python :: 3.12',
           'Topic :: Software Development :: Libraries :: Python Modules',
           'Topic :: Scientific/Engineering :: Astronomy'],
       platforms=['OS Independent'],
-      keywords='meerkat ska',
+      keywords='meerkat sarao',
       python_requires='>=3.7',
       setup_requires=['katversion'],
       use_katversion=True,
