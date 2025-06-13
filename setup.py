@@ -27,6 +27,7 @@ news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
 tests_require = [
     'async_timeout>=1.3.0',
+    # XXX The tests fail for fakeredis >= 2.12.0 and < 2.21.3
     'fakeredis[lua]>=2.0.0',
     'pytest',
     'pytest-asyncio>=0.17.0'
