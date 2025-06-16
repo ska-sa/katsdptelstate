@@ -64,6 +64,7 @@ setup(name='katsdptelstate',
       use_katversion=True,
       install_requires=[
           'hiredis',          # Not strictly required, but improves performance
+          'importlib-resources; python_version < "3.9"',
           'msgpack',
           'numpy',
           'redis>=4.2',

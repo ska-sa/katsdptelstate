@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2019-2023, National Research Foundation (SARAO)
+# Copyright (c) 2019-2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -17,10 +17,15 @@
 import contextlib
 from datetime import datetime
 import itertools
+import sys
 from typing import List, Tuple, Dict, BinaryIO, Generator, Iterable, Optional, Union, Any
 
-import pkg_resources
 import redis
+
+if sys.version_info >= (3, 9):
+    import importlib.resources as importlib_resources
+else:
+    import importlib_resources
 
 from . import utils
 from .backend import Backend, KeyUpdateBase, MutableKeyUpdate, ImmutableKeyUpdate, IndexedKeyUpdate
@@ -119,10 +124,11 @@ class RedisBackend(Backend):
             # redis.ConnectionError: good host, bad port
             raise ConnectionError("could not connect to redis server: {}".format(e))
         self._scripts = {}
+        package_files = importlib_resources.files('katsdptelstate')
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:
-            script = pkg_resources.resource_string(
-                'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
+            path = package_files.joinpath('lua_scripts/{}.lua'.format(script_name))
+            script = path.read_bytes()
             self._scripts[script_name] = self.client.register_script(script)
 
     @classmethod

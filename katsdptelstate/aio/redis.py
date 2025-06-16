@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2019-2023, National Research Foundation (SARAO)
+# Copyright (c) 2019-2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -19,11 +19,16 @@ import contextlib
 import enum
 import itertools
 import logging
+import sys
 from typing import (List, Tuple, Dict, Set, Generator, AsyncGenerator,
                     Iterable, Callable, Awaitable, Optional, Union, Any)
 
-import pkg_resources
 from redis import asyncio as aioredis
+
+if sys.version_info >= (3, 9):
+    import importlib.resources as importlib_resources
+else:
+    import importlib_resources
 
 from .. import utils
 from .backend import Backend
@@ -92,10 +97,11 @@ class RedisBackend(Backend):
         self._channels = {}       # type: Dict[bytes, Set[asyncio.Queue[_QueueItem]]]
         self._scripts = {}
         self._close_task = None   # type: Optional[asyncio.Task]
+        package_files = importlib_resources.files('katsdptelstate')
         for script_name in ['get', 'set_immutable', 'get_indexed', 'set_indexed',
                             'add_mutable']:
-            script = pkg_resources.resource_string(
-                'katsdptelstate', 'lua_scripts/{}.lua'.format(script_name))
+            path = package_files.joinpath('lua_scripts/{}.lua'.format(script_name))
+            script = path.read_bytes()
             self._scripts[script_name] = self.client.register_script(script)
 
     @classmethod
