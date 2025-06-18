@@ -71,7 +71,7 @@ setup(name='katsdptelstate',
           'six>=1.12'
       ],
       extras_require={
-          'rdb': ['rdbtools', 'python-lzf'],
+          'rdb': ['rdbtools', 'python-lzf', 'setuptools; python_version >= "3.12"'],
           'aio': [],
           'test': tests_require
       },
