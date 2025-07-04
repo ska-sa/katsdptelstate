@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2015-2023, National Research Foundation (SARAO)
+# Copyright (c) 2015-2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -83,7 +83,11 @@ class _TestEncoding:
     @mock.patch('katsdptelstate.encoding._allow_pickle', False)
     # Ignore these warnings... If they ever become errors, they'll be turned into DecodeErrors.
     @pytest.mark.filterwarnings(r"ignore:Passing \(type, 1\):FutureWarning")
+    # Python >= 3.12
+    @pytest.mark.filterwarnings(r"ignore:invalid escape sequence:SyntaxWarning")
+    # Python < 3.12
     @pytest.mark.filterwarnings(r"ignore:invalid escape sequence:DeprecationWarning")
+    @pytest.mark.filterwarnings(r"ignore:Data type alias:DeprecationWarning")
     def test_fuzz(self) -> None:
         if self.encoding == ENCODING_PICKLE:
             pytest.skip("Pickles will exhaust memory or crash given a bad pickle")

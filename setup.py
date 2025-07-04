@@ -27,6 +27,7 @@ news = open(os.path.join(here, 'NEWS.rst')).read()
 long_description = readme + '\n\n' + news
 tests_require = [
     'async_timeout>=1.3.0',
+    # XXX The tests fail for fakeredis >= 2.12.0 and < 2.21.3
     'fakeredis[lua]>=2.0.0',
     'pytest',
     'pytest-asyncio>=0.17.0'
@@ -48,12 +49,7 @@ setup(name='katsdptelstate',
           'License :: OSI Approved :: BSD License',
           'Operating System :: OS Independent',
           'Programming Language :: Python',
-          'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9',
-          'Programming Language :: Python :: 3.10',
-          'Programming Language :: Python :: 3.11',
-          'Programming Language :: Python :: 3.12',
+          'Programming Language :: Python :: 3',
           'Topic :: Software Development :: Libraries :: Python Modules',
           'Topic :: Scientific/Engineering :: Astronomy'],
       platforms=['OS Independent'],
@@ -63,13 +59,14 @@ setup(name='katsdptelstate',
       use_katversion=True,
       install_requires=[
           'hiredis',          # Not strictly required, but improves performance
+          'importlib-resources; python_version < "3.9"',
           'msgpack',
           'numpy',
           'redis>=4.2',
           'six>=1.12'
       ],
       extras_require={
-          'rdb': ['rdbtools', 'python-lzf'],
+          'rdb': ['rdbtools', 'python-lzf', 'setuptools; python_version >= "3.12"'],
           'aio': [],
           'test': tests_require
       },

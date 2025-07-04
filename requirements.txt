@@ -1,7 +1,9 @@
 -c https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
 
 hiredis
+importlib-resources
 msgpack
 numpy
 redis
 six
+zipp                      # via importlib-resources

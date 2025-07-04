@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2015-2021, National Research Foundation (SARAO)
+# Copyright (c) 2015-2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -175,7 +175,7 @@ class TestTelescopeState(unittest.TestCase):
 
     def test_immutable_wrong_type(self) -> None:
         self.ts.add('test_mutable', 5)
-        self.ts.add('test_indexed', 5, 5)
+        self.ts.set_indexed('test_indexed', 5, 5)
         with self.assertRaises(ImmutableKeyError):
             self.ts.add('test_mutable', 5, immutable=True)
         with self.assertRaises(ImmutableKeyError):
@@ -577,7 +577,7 @@ class TestTelescopeState(unittest.TestCase):
 class TestTelescopeStateRedis(TestTelescopeState):
     def make_telescope_state(self) -> TelescopeState:
         def make_fakeredis(**kwargs):
-            return fakeredis.FakeRedis()
+            return fakeredis.FakeRedis(server=fakeredis.FakeServer())
 
         with mock.patch('redis.Redis', side_effect=make_fakeredis) as mock_redis:
             ts = TelescopeState('example.com', 1)
