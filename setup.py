@@ -42,11 +42,10 @@ setup(name='katsdptelstate',
       packages=find_packages(),
       package_data={'': ['lua_scripts/*.lua', 'py.typed']},
       url='https://github.com/ska-sa/katsdptelstate',
-      license='Modified BSD',
+      license='BSD-3-Clause',
       classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
-          'License :: OSI Approved :: BSD License',
           'Operating System :: OS Independent',
           'Programming Language :: Python',
           'Programming Language :: Python :: 3',
@@ -70,6 +69,5 @@ setup(name='katsdptelstate',
           'aio': [],
           'test': tests_require
       },
-      tests_require=tests_require,
       zip_safe=False     # For py.typed
       )
