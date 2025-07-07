@@ -1,6 +1,11 @@
 History
 =======
 
+1.0.0 (2025-07-07)
+------------------
+* Admit that we are at version 1.0 by now (#140)
+* Refresh for Python 3.13, NumPy 2.0 and latest fakeredis (#139)
+
 0.14 (2024-02-28)
 -----------------
 * Improvements to internal type hints (#133)

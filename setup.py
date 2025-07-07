@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ################################################################################
-# Copyright (c) 2015-2024, National Research Foundation (SARAO)
+# Copyright (c) 2015-2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -42,11 +42,10 @@ setup(name='katsdptelstate',
       packages=find_packages(),
       package_data={'': ['lua_scripts/*.lua', 'py.typed']},
       url='https://github.com/ska-sa/katsdptelstate',
-      license='Modified BSD',
+      license='BSD-3-Clause',
       classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
-          'License :: OSI Approved :: BSD License',
           'Operating System :: OS Independent',
           'Programming Language :: Python',
           'Programming Language :: Python :: 3',
@@ -70,6 +69,5 @@ setup(name='katsdptelstate',
           'aio': [],
           'test': tests_require
       },
-      tests_require=tests_require,
       zip_safe=False     # For py.typed
       )
